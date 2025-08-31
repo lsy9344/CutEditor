@@ -1,0 +1,20 @@
+{
+    "id": "4-vert",
+    "name": "4컷-세로",
+    "canvas": {
+      "width_mm": 100,
+      "height_mm": 150,
+      "dpi": 600,
+      "bleed_mm": 1.5,
+      "safe_mm": 2.0,
+      "background": "#ffffff"
+    },
+    "overlay": "/overlays/4_vertical.png",
+    "slots": [
+      { "id": "s1", "x_mm": 5,  "y_mm": 5,  "w_mm": 43, "h_mm": 68, "rotation": 0, "mode": "cover" },
+      { "id": "s2", "x_mm": 52, "y_mm": 5,  "w_mm": 43, "h_mm": 68, "rotation": 0, "mode": "cover" },
+      { "id": "s3", "x_mm": 5,  "y_mm": 77, "w_mm": 43, "h_mm": 68, "rotation": 0, "mode": "cover" },
+      { "id": "s4", "x_mm": 52, "y_mm": 77, "w_mm": 43, "h_mm": 68, "rotation": 0, "mode": "cover" }
+    ],
+    "texts": []
+  }

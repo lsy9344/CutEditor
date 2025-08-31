@@ -1,0 +1,20 @@
+{
+    "id": "4-hor",
+    "name": "4컷-가로",
+    "canvas": {
+      "width_mm": 150,
+      "height_mm": 100,
+      "dpi": 600,
+      "bleed_mm": 1.5,
+      "safe_mm": 2.0,
+      "background": "#ffffff"
+    },
+    "overlay": "/overlays/4_horizontal.png",
+    "slots": [
+      { "id": "s1", "x_mm": 5,  "y_mm": 5,  "w_mm": 68, "h_mm": 43, "rotation": 0, "mode": "cover" },
+      { "id": "s2", "x_mm": 77, "y_mm": 5,  "w_mm": 68, "h_mm": 43, "rotation": 0, "mode": "cover" },
+      { "id": "s3", "x_mm": 5,  "y_mm": 52, "w_mm": 68, "h_mm": 43, "rotation": 0, "mode": "cover" },
+      { "id": "s4", "x_mm": 77, "y_mm": 52, "w_mm": 68, "h_mm": 43, "rotation": 0, "mode": "cover" }
+    ],
+    "texts": []
+}
