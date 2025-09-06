@@ -9,3 +9,5 @@
 ## CanvasStage Props/Events (예시)
 - props: { template, slots[], guides, selection, zoom }
 - events: onSelect(objectId), onTransform(change), onDropImage(file, slotId)
+
+컴포넌트를 새로 만들지 말고 /Users/sooyeol/Desktop/Code/cut_editor_250830/src/components/components.css 컴포넌트만 사용하세요.

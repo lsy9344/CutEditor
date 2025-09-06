@@ -1,0 +1,20 @@
+# CutEditor Python Dependencies
+# 기존 PySide2 기반 데스크톱 애플리케이션용 (Python 3.13 호환)
+
+# GUI Framework (PySide2 대신 PySide6 사용)
+PySide6>=6.5.0
+
+# Image Processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+
+# Scientific Computing
+numpy>=1.24.0
+
+# Development Tools
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
+
+# Optional: For building executable
+pyinstaller>=5.0.0
