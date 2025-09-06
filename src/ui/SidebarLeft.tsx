@@ -1,21 +1,26 @@
 import React, { useState } from "react";
+import type { FrameType } from "../types/frame";
 
 export type SidebarLeftProps = {
-  selectedFrame: string | null;
-  onFrameSelect: (frame: string | null) => void;
+  selectedFrame: FrameType | null;
+  onFrameSelect: (frame: FrameType | null) => void;
+  frameColor: string;
+  onFrameColorChange: (color: string) => void;
 };
 
 export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   selectedFrame,
   onFrameSelect,
+  frameColor,
+  onFrameColorChange,
 }) => {
-  const [hoveredFrame, setHoveredFrame] = useState<string | null>(null);
+  const [hoveredFrame, setHoveredFrame] = useState<FrameType | null>(null);
 
-  const handleFrameSelect = (frame: string) => {
+  const handleFrameSelect = (frame: FrameType) => {
     onFrameSelect(frame);
   };
 
-  const handleMouseEnter = (frame: string) => {
+  const handleMouseEnter = (frame: FrameType) => {
     setHoveredFrame(frame);
   };
 
@@ -23,7 +28,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     setHoveredFrame(null);
   };
 
-  const frameOptions = [
+  const frameOptions: Array<{value: FrameType, label: string, image: string}> = [
     { value: "2", label: "2컷 가로", image: "2v.png" },
     { value: "2v", label: "2컷 세로", image: "2v.png" },
     { value: "4", label: "4컷", image: "9.png" },
@@ -92,6 +97,22 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
             </div>
           ))}
         </div>
+      </div>
+      
+      <hr className="linear-mt-6 linear-mb-6" style={{ border: 'none', borderTop: '1px solid var(--linear-neutral-500)' }} />
+      
+      <h3>프레임 색상 변경</h3>
+      <div className="linear-mt-4">
+        <label>
+          <h4>프레임 색상</h4>
+          <input 
+            type="color"
+            className="linear-input linear-mt-4"
+            value={frameColor}
+            onChange={(e) => onFrameColorChange(e.target.value)}
+            style={{ width: '100%', height: '40px' }}
+          />
+        </label>
       </div>
     </aside>
   );

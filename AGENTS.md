@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+# 항상 한국어로 대답하세요.
+
 ## Project Structure & Module Organization
 - `src/`: 웹 클라이언트 소스
   - `state/`(타입·스토어), `templates/`(로더·검증), `canvas/`(스테이지), `export/`(타일러·메시지), `workers/`(렌더 워커), `ui/`(사이드바/푸터), `utils/`(단위 변환)

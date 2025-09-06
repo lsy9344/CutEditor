@@ -1,6 +1,8 @@
 import React, { useState, useRef } from "react";
 
-export const SidebarRight: React.FC = () => {
+export type SidebarRightProps = {};
+
+export const SidebarRight: React.FC<SidebarRightProps> = () => {
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
   const textInputRef = useRef<HTMLInputElement>(null);
