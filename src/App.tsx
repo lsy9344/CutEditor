@@ -68,6 +68,8 @@ function App() {
         <SidebarLeft 
           selectedFrame={editorState.selectedFrame}
           onFrameSelect={handleFrameSelect}
+          frameColor={editorState.frameColor}
+          onFrameColorChange={handleFrameColorChange}
         />
         <CanvasStage 
           template={editorState.template}
@@ -81,10 +83,7 @@ function App() {
           onImageUpload={handleImageUpload}
           onImageTransform={handleImageTransform}
         />
-        <SidebarRight 
-          frameColor={editorState.frameColor}
-          onFrameColorChange={handleFrameColorChange}
-        />
+        <SidebarRight />
       </div>
       
       <WizardFooter />

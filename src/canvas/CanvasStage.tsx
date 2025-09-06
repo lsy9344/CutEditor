@@ -22,6 +22,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   zoom, 
   selectedFrame,
   userImages,
+  frameColor,
   onZoomChange,
   onSelect,
   onImageUpload,
@@ -32,6 +33,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
   const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement>>(new Map());
+  const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
@@ -50,6 +52,80 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       setFrameImage(null);
     }
   }, [selectedFrame, frameLayout?.imagePath]);
+
+  // 헥사 색상 -> RGB 변환
+  const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
+    const s = hex.replace('#', '');
+    if (s.length === 3) {
+      const r = parseInt(s[0] + s[0], 16);
+      const g = parseInt(s[1] + s[1], 16);
+      const b = parseInt(s[2] + s[2], 16);
+      return { r, g, b };
+    }
+    if (s.length === 6) {
+      const r = parseInt(s.slice(0, 2), 16);
+      const g = parseInt(s.slice(2, 4), 16);
+      const b = parseInt(s.slice(4, 6), 16);
+      return { r, g, b };
+    }
+    return null;
+  };
+
+  // 프레임 이미지의 흰색 영역을 선택된 색으로 치환
+  useEffect(() => {
+    if (!frameImage || !frameColor) {
+      setProcessedFrameCanvas(null);
+      return;
+    }
+
+    const rgb = hexToRgb(frameColor);
+    if (!rgb) {
+      setProcessedFrameCanvas(null);
+      return;
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      setProcessedFrameCanvas(null);
+      return;
+    }
+
+    // 원본 이미지 크기 기준으로 처리
+    const w = frameImage.naturalWidth || frameImage.width;
+    const h = frameImage.naturalHeight || frameImage.height;
+    canvas.width = w;
+    canvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(frameImage, 0, 0, w, h);
+
+    try {
+      const imageData = ctx.getImageData(0, 0, w, h);
+      const data = imageData.data;
+      // 임계값: 거의 흰색(밝은 영역)만 치환
+      const whiteThreshold = 245; // 0~255
+      const alphaThreshold = 10;  // 투명 픽셀은 무시
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        if (a > alphaThreshold && r >= whiteThreshold && g >= whiteThreshold && b >= whiteThreshold) {
+          data[i] = rgb.r;
+          data[i + 1] = rgb.g;
+          data[i + 2] = rgb.b;
+          // alpha는 유지
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      setProcessedFrameCanvas(canvas);
+    } catch (e) {
+      // CORS 또는 다른 이유로 접근 실패 시 원본 사용
+      setProcessedFrameCanvas(null);
+    }
+  }, [frameImage, frameColor]);
 
   // 사용자 이미지 로드
   useEffect(() => {
@@ -190,7 +266,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             {/* 배경: 프레임 이미지가 있으면 먼저 그려서 보이도록 함 */}
             {frameImage ? (
               <KonvaImage
-                image={frameImage}
+                image={processedFrameCanvas ?? frameImage}
                 x={0}
                 y={0}
                 width={frameLayout.canvasWidth}
