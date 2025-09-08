@@ -243,6 +243,90 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
   };
 
+  // 이미지 휠 줌 핸들러
+  const handleImageWheel = (e: Konva.KonvaEventObject<WheelEvent>, imageId: string) => {
+    e.evt.preventDefault();
+    const userImage = userImages.find(img => img.id === imageId);
+    if (!userImage) return;
+
+    // NaN 체크
+    if (isNaN(userImage.scaleX) || isNaN(userImage.scaleY)) return;
+
+    const scaleBy = 1.1;
+    const oldScale = userImage.scaleX;
+    const deltaY = e.evt.deltaY;
+    
+    // deltaY NaN 체크
+    if (isNaN(deltaY)) return;
+    
+    const newScale = deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+    
+    // 스케일 제한 (0.1 ~ 3.0)
+    const clampedScale = Math.max(0.1, Math.min(3.0, newScale));
+    
+    // 최종 NaN 체크
+    if (isNaN(clampedScale)) return;
+    
+    handleImageTransform(imageId, { scaleX: clampedScale, scaleY: clampedScale });
+  };
+
+  // 이미지 드래그 이동 제한 핸들러
+  const handleImageDragMove = (e: Konva.KonvaEventObject<DragEvent>, imageId: string, slot: { x: number; y: number; width: number; height: number }, displayWidth: number, displayHeight: number) => {
+    const userImage = userImages.find(img => img.id === imageId);
+    if (!userImage) return;
+
+    const node = e.target;
+    const currentX = node.x();
+    const currentY = node.y();
+    
+    // NaN 체크
+    if (isNaN(currentX) || isNaN(currentY)) return;
+    
+    const scaledWidth = displayWidth * userImage.scaleX;
+    const scaledHeight = displayHeight * userImage.scaleY;
+    
+    // NaN 체크
+    if (isNaN(scaledWidth) || isNaN(scaledHeight)) return;
+    
+    // 슬롯 내에서 이미지가 움직일 수 있는 범위 계산
+    let minX, maxX, minY, maxY;
+    
+    if (scaledWidth <= slot.width) {
+      // 이미지가 슬롯보다 작거나 같은 경우: 슬롯 내에서만 이동
+      minX = slot.x;
+      maxX = slot.x + slot.width - scaledWidth;
+    } else {
+      // 이미지가 슬롯보다 큰 경우: 슬롯을 완전히 덮도록 제한
+      minX = slot.x + slot.width - scaledWidth;
+      maxX = slot.x;
+    }
+    
+    if (scaledHeight <= slot.height) {
+      // 이미지가 슬롯보다 작거나 같은 경우: 슬롯 내에서만 이동
+      minY = slot.y;
+      maxY = slot.y + slot.height - scaledHeight;
+    } else {
+      // 이미지가 슬롯보다 큰 경우: 슬롯을 완전히 덮도록 제한
+      minY = slot.y + slot.height - scaledHeight;
+      maxY = slot.y;
+    }
+    
+    // NaN 체크
+    if (isNaN(minX) || isNaN(maxX) || isNaN(minY) || isNaN(maxY)) return;
+    
+    // 경계 제한 적용
+    const clampedX = Math.max(minX, Math.min(maxX, currentX));
+    const clampedY = Math.max(minY, Math.min(maxY, currentY));
+    
+    // 최종 NaN 체크
+    if (!isNaN(clampedX)) {
+      node.x(clampedX);
+    }
+    if (!isNaN(clampedY)) {
+      node.y(clampedY);
+    }
+  };
+
   // 외부 팔레트 설정 로드 (배포자가 편집 가능)
   // 주의: 훅 순서를 안정화하기 위해 조건부 반환보다 위에서 호출
   useEffect(() => {
@@ -596,6 +680,87 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             }
           }}
         >
+          {/* 사용자 이미지 레이어 (프레임 이미지 뒤에 배치) */}
+          <Layer>
+            {frameLayout.slots.map((slot) => {
+              const userImage = userImages.find(img => img.slotId === slot.id);
+              const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
+              
+              if (userImage && loadedImg && loadedImg !== null) {
+                // 이미지를 슬롯 중앙에 배치하기 위한 계산
+                const imageAspectRatio = loadedImg.width / loadedImg.height;
+                const slotAspectRatio = slot.width / slot.height;
+                
+                let displayWidth = slot.width;
+                let displayHeight = slot.height;
+                
+                // 비율을 유지하면서 슬롯에 맞추기 (contain)
+                if (imageAspectRatio > slotAspectRatio) {
+                  displayHeight = slot.width / imageAspectRatio;
+                } else {
+                  displayWidth = slot.height * imageAspectRatio;
+                }
+                
+                // 중앙 정렬을 위한 오프셋 계산
+                const centerX = slot.x + (slot.width - displayWidth) / 2 + userImage.x;
+                const centerY = slot.y + (slot.height - displayHeight) / 2 + userImage.y;
+                
+                return (
+                  <Group
+                    key={slot.id}
+                    clipFunc={(ctx) => {
+                      // 슬롯 영역으로 클리핑
+                      ctx.rect(slot.x, slot.y, slot.width, slot.height);
+                    }}
+                  >
+                    <KonvaImage
+                      key={userImage.id}
+                      image={loadedImg}
+                      x={centerX}
+                      y={centerY}
+                      width={displayWidth}
+                      height={displayHeight}
+                      scaleX={userImage.scaleX}
+                      scaleY={userImage.scaleY}
+                      rotation={userImage.rotation}
+                      draggable={true}
+                      onClick={() => onSelect?.(userImage.id)}
+                      onWheel={(e) => handleImageWheel(e, userImage.id)}
+                      onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
+                      onDragEnd={(e) => {
+                        // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
+                        const finalX = e.target.x();
+                        const finalY = e.target.y();
+                        
+                        // NaN 체크
+                        if (isNaN(finalX) || isNaN(finalY)) return;
+                        
+                        const newX = finalX - slot.x - (slot.width - displayWidth) / 2;
+                        const newY = finalY - slot.y - (slot.height - displayHeight) / 2;
+                        
+                        // 최종 NaN 체크
+                        if (!isNaN(newX) && !isNaN(newY)) {
+                          handleImageTransform(userImage.id, { x: newX, y: newY });
+                        }
+                      }}
+                      onTransformEnd={(e) => {
+                        const node = e.target;
+                        handleImageTransform(userImage.id, {
+                          scaleX: node.scaleX(),
+                          scaleY: node.scaleY(),
+                          rotation: node.rotation()
+                        });
+                      }}
+                    />
+                  </Group>
+                );
+              }
+              
+              return null;
+            })}
+          </Layer>
+
+          {/* 프레임 이미지 레이어 (사용자 이미지 위에 배치) */}
           <Layer>
             {/* 배경: 프레임 이미지가 있으면 먼저 그려서 보이도록 함 */}
             {frameImage ? (
@@ -616,135 +781,82 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 fill="white"
               />
             )}
-            
-            {/* 슬롯 영역들 */}
-            {frameLayout.slots.map((slot) => (
-              <Group key={slot.id}>
-                {/* 슬롯 배경 (드롭 존) */}
-                <Rect
-                  x={slot.x}
-                  y={slot.y}
-                  width={slot.width}
-                  height={slot.height}
-                  fill={draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)'}
-                  stroke={draggedSlotId === slot.id ? '#007bff' : '#ccc'}
-                  strokeWidth={2}
-                  onMouseEnter={() => {
-                    console.log('🔥 Slot mouse enter:', slot.id);
-                    setDraggedSlotId(slot.id);
-                    currentSlotIdRef.current = slot.id;
-                  }}
-                  onMouseLeave={() => {
-                    console.log('🔥 Slot mouse leave:', slot.id);
-                    setDraggedSlotId(null);
-                    // 마우스 떠날 때는 ref를 초기화하지 않음 (드래그나 클릭 중일 수 있음)
-                  }}
-                  onClick={(e) => {
-                    console.log('🔥 Slot clicked!!! slot.id:', slot.id);
-                    console.log('🔥 Click event:', e);
-                    handleSlotClick(slot.id);
-                  }}
-                />
-                
-                {/* 사용자 이미지 */}
-                {(() => {
-                  const userImage = userImages.find(img => img.slotId === slot.id);
-                  const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
-                  
-                  if (userImage && loadedImg && loadedImg !== null) {
-                    // 이미지를 슬롯 중앙에 배치하기 위한 계산
-                    const imageAspectRatio = loadedImg.width / loadedImg.height;
-                    const slotAspectRatio = slot.width / slot.height;
-                    
-                    let displayWidth = slot.width;
-                    let displayHeight = slot.height;
-                    
-                    // 비율을 유지하면서 슬롯에 맞추기 (contain)
-                    if (imageAspectRatio > slotAspectRatio) {
-                      displayHeight = slot.width / imageAspectRatio;
-                    } else {
-                      displayWidth = slot.height * imageAspectRatio;
-                    }
-                    
-                    // 중앙 정렬을 위한 오프셋 계산
-                    const centerX = slot.x + (slot.width - displayWidth) / 2 + userImage.x;
-                    const centerY = slot.y + (slot.height - displayHeight) / 2 + userImage.y;
-                    
-                    return (
-                      <KonvaImage
-                        key={userImage.id}
-                        image={loadedImg}
-                        x={centerX}
-                        y={centerY}
-                        width={displayWidth}
-                        height={displayHeight}
-                        scaleX={userImage.scaleX}
-                        scaleY={userImage.scaleY}
-                        rotation={userImage.rotation}
-                        draggable={true}
-                        onClick={() => onSelect?.(userImage.id)}
-                        onDragEnd={(e) => {
-                          const newX = e.target.x() - slot.x - (slot.width - displayWidth) / 2;
-                          const newY = e.target.y() - slot.y - (slot.height - displayHeight) / 2;
-                          handleImageTransform(userImage.id, { x: newX, y: newY });
-                        }}
-                        onTransformEnd={(e) => {
-                          const node = e.target;
-                          handleImageTransform(userImage.id, {
-                            scaleX: node.scaleX(),
-                            scaleY: node.scaleY(),
-                            rotation: node.rotation()
-                          });
-                        }}
-                      />
-                    );
-                  }
-                  
-                  return null;
-                })()}
+          </Layer>
+
+          {/* 슬롯 인터랙션 레이어 (최상위) */}
+          <Layer>
+            {frameLayout.slots.map((slot) => {
+              const userImage = userImages.find(img => img.slotId === slot.id);
+              const hasImage = userImage && loadedImages.get(userImage.id);
+              
+              return (
+                <Group key={slot.id}>
+                  {/* 슬롯 배경 (드롭 존) - 이미지가 있을 때는 투명하게 */}
+                  <Rect
+                    x={slot.x}
+                    y={slot.y}
+                    width={slot.width}
+                    height={slot.height}
+                    fill={hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)')}
+                    stroke={hasImage ? 'transparent' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')}
+                    strokeWidth={2}
+                    listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
+                    onMouseEnter={() => {
+                      if (!hasImage) {
+                        console.log('🔥 Slot mouse enter:', slot.id);
+                        setDraggedSlotId(slot.id);
+                        currentSlotIdRef.current = slot.id;
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (!hasImage) {
+                        console.log('🔥 Slot mouse leave:', slot.id);
+                        setDraggedSlotId(null);
+                      }
+                    }}
+                    onClick={(e) => {
+                      if (!hasImage) {
+                        console.log('🔥 Slot clicked!!! slot.id:', slot.id);
+                        console.log('🔥 Click event:', e);
+                        handleSlotClick(slot.id);
+                      }
+                    }}
+                  />
                 
                 {/* 슬롯 레이블 */}
-                {(() => {
-                  const userImage = userImages.find(img => img.slotId === slot.id);
-                  const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
-                  
-                  // 이미지가 없거나, 로딩 중이거나, 로딩 실패한 경우 레이블 표시
-                  if (!userImage || !loadedImg || loadedImg === null) {
-                    let labelText = "클릭해서 이미지 추가";
-                    if (userImage && loadedImg === null) {
-                      labelText = "이미지 로딩 실패";
-                    } else if (userImage && !loadedImg) {
-                      labelText = "이미지 로딩 중...";
-                    }
-                    
-                    return (
-                      <Group>
-                        <Rect
-                          x={slot.x + slot.width / 2 - 60}
-                          y={slot.y + slot.height / 2 - 10}
-                          width={120}
-                          height={20}
-                          fill="rgba(0, 0, 0, 0.7)"
-                          cornerRadius={10}
-                        />
-                        <Text
-                          x={slot.x + slot.width / 2 - 60}
-                          y={slot.y + slot.height / 2 - 6}
-                          width={120}
-                          text={labelText}
-                          fontSize={10}
-                          fill="white"
-                          align="center"
-                        />
-                      </Group>
-                    );
+                {!hasImage && (() => {
+                  let labelText = "클릭해서 이미지 추가";
+                  if (userImage && loadedImages.get(userImage.id) === null) {
+                    labelText = "이미지 로딩 실패";
+                  } else if (userImage && !loadedImages.get(userImage.id)) {
+                    labelText = "이미지 로딩 중...";
                   }
-                  return null;
+                  
+                  return (
+                    <Group>
+                      <Rect
+                        x={slot.x + slot.width / 2 - 60}
+                        y={slot.y + slot.height / 2 - 10}
+                        width={120}
+                        height={20}
+                        fill="rgba(0, 0, 0, 0.7)"
+                        cornerRadius={10}
+                      />
+                      <Text
+                        x={slot.x + slot.width / 2 - 60}
+                        y={slot.y + slot.height / 2 - 6}
+                        width={120}
+                        text={labelText}
+                        fontSize={10}
+                        fill="white"
+                        align="center"
+                      />
+                    </Group>
+                  );
                 })()}
               </Group>
-            ))}
-            
-            {/* 오버레이는 제거: 프레임 이미지를 배경으로 사용 */}
+              );
+            })}
           </Layer>
         </Stage>
       </div>
