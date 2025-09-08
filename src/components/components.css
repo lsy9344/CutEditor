@@ -265,7 +265,7 @@ p {
 .linear-footer {
   background-color: var(--linear-neutral-900);
   color: var(--linear-neutral-50);
-  padding: var(--linear-space-8) 0;
+  padding: var(--linear-space-2) 0;
 }
 
 /* ================================
@@ -464,7 +464,7 @@ p {
 .app-header {
   background-color: var(--linear-neutral-700);
   border-bottom: 1px solid var(--linear-neutral-500);
-  padding: var(--linear-space-2) var(--linear-space-3);
+  padding: var(--linear-space-1) var(--linear-space-3);
 }
 
 .app-header h1 {
