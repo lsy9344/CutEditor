@@ -33,12 +33,36 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 커스텀 컬러 팔레트 관련
+  const [showCustomPalette, setShowCustomPalette] = useState(false);
+  const paletteCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
+  const customPickButtonRef = useRef<HTMLButtonElement | null>(null);
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
   const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement>>(new Map());
   const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
+  // 빠른 선택 스와치 색상 (외부 설정으로 오버라이드 가능)
+  const [presetColors, setPresetColors] = useState<string[]>([
+    '#FFFFFF', // White
+    '#000000', // Black
+    '#E5E7EB', // Light Gray
+    '#8D6E63', // Brown
+    '#F4D03F', // Gold
+    '#C8F7DC', // Mint
+    '#CDE9FF', // Light Blue
+    '#FAD2E1', // Light Pink
+  ]);
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
+  
+  // 팔레트 미리보기 상태 (항상 동일 훅 순서 유지를 위해 상단으로 이동)
+  const [palettePreview, setPalettePreview] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    color: string;
+  }>({ visible: false, x: 0, y: 0, color: '#FFFFFF' });
   
   // 프레임 이미지 로드 (캐시 우회 및 오류 처리)
   useEffect(() => {
@@ -193,6 +217,98 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
   };
 
+  // 외부 팔레트 설정 로드 (배포자가 편집 가능)
+  // 주의: 훅 순서를 안정화하기 위해 조건부 반환보다 위에서 호출
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch('/config/frame_palette.json', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        const arr = Array.isArray(json) ? json : Array.isArray((json as any)?.frameColors) ? (json as any).frameColors : null;
+        if (!arr) return;
+        const hexRe = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+        const normalized = (arr as unknown[]).filter((c) => typeof c === 'string' && hexRe.test(c as string)) as string[];
+        if (!cancelled && normalized.length > 0) {
+          setPresetColors(normalized.slice(0, 24)); // 최대 24개까지 허용
+        }
+      } catch (_) {
+        // 네트워크/파싱 오류 시 기본값 유지
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+
+  // 커스텀 원형 팔레트 렌더링 (showCustomPalette 의존)
+  // 주의: 훅 순서를 안정화하기 위해 조건부 반환보다 위에서 호출
+  useEffect(() => {
+    if (!showCustomPalette) return;
+    const canvas = paletteCanvasRef.current;
+    if (!canvas) return;
+    const size = 160;
+    const radius = size / 2 - 2; // padding for border
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const img = ctx.createImageData(size, size);
+    const data = img.data;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const dx = x - size / 2;
+        const dy = y - size / 2;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const idx = (y * size + x) * 4;
+        if (dist <= radius) {
+          let angle = Math.atan2(dy, dx); // -PI..PI
+          if (angle < 0) angle += Math.PI * 2; // 0..2PI
+          const h = (angle * 180) / Math.PI; // 0..360
+          const s = Math.min(1, dist / radius);
+          const v = 1; // 최대 명도
+          const { r, g, b } = hsvToRgb(h, s, v);
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 255;
+        } else {
+          data[idx + 3] = 0;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    // 외곽선
+    ctx.beginPath();
+    ctx.arc(size / 2, size / 2, radius + 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }, [showCustomPalette]);
+
+  // 팔레트 외부 클릭 시 닫기
+  // 주의: 훅 순서를 안정화하기 위해 조건부 반환보다 위에서 호출
+  useEffect(() => {
+    if (!showCustomPalette) return;
+    const onDown = (e: MouseEvent) => {
+      const anchor = paletteAnchorRef.current;
+      const btn = customPickButtonRef.current;
+      if (!anchor || !btn) return;
+      if (!anchor.contains(e.target as Node) && !btn.contains(e.target as Node)) {
+        setShowCustomPalette(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowCustomPalette(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showCustomPalette]);
+
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
     return (
@@ -220,6 +336,78 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const isHorizontal = Boolean(selectedFrame && /h$/.test(selectedFrame));
   const wrapperTargetHeight = isHorizontal ? Math.max(frameLayout.canvasWidth, frameLayout.canvasHeight) * zoom : undefined;
 
+  // HSV -> RGB 변환
+  const hsvToRgb = (h: number, s: number, v: number) => {
+    const c = v * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = v - c;
+    let r1 = 0, g1 = 0, b1 = 0;
+    if (0 <= h && h < 60) { r1 = c; g1 = x; b1 = 0; }
+    else if (60 <= h && h < 120) { r1 = x; g1 = c; b1 = 0; }
+    else if (120 <= h && h < 180) { r1 = 0; g1 = c; b1 = x; }
+    else if (180 <= h && h < 240) { r1 = 0; g1 = x; b1 = c; }
+    else if (240 <= h && h < 300) { r1 = x; g1 = 0; b1 = c; }
+    else { r1 = c; g1 = 0; b1 = x; }
+    const r = Math.round((r1 + m) * 255);
+    const g = Math.round((g1 + m) * 255);
+    const b = Math.round((b1 + m) * 255);
+    return { r, g, b };
+  };
+
+  const rgbToHex = (r: number, g: number, b: number) => {
+    const toHex = (n: number) => n.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+  };
+
+  const getColorFromPosition = (canvas: HTMLCanvasElement, x: number, y: number) => {
+    const size = canvas.width;
+    const radius = size / 2 - 2;
+    const dx = x - size / 2;
+    const dy = y - size / 2;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > radius) return null;
+    let angle = Math.atan2(dy, dx);
+    if (angle < 0) angle += Math.PI * 2;
+    const h = (angle * 180) / Math.PI;
+    const s = Math.min(1, dist / radius);
+    const v = 1;
+    const { r, g, b } = hsvToRgb(h, s, v);
+    return rgbToHex(r, g, b);
+  };
+
+  const handlePalettePick = (evt: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = paletteCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const hex = getColorFromPosition(canvas, x, y);
+    if (!hex) return;
+    onFrameColorChange && onFrameColorChange(hex);
+    setShowCustomPalette(false);
+  };
+
+  const handlePaletteMove = (evt: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = paletteCanvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const hex = getColorFromPosition(canvas, x, y);
+    if (!hex) {
+      setPalettePreview((p) => ({ ...p, visible: false }));
+      return;
+    }
+    // 미리보기는 커서 바로 위에 약간 오프셋
+    const offsetX = 14;
+    const offsetY = -18;
+    setPalettePreview({ visible: true, x: x + offsetX, y: y + offsetY, color: hex });
+  };
+
+  const handlePaletteLeave = () => {
+    setPalettePreview((p) => ({ ...p, visible: false }));
+  };
+
   return (
     <div className="linear-card linear-fade-in">
       <div
@@ -233,7 +421,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         <div 
           style={{ 
             border: '2px dashed var(--linear-neutral-500)', 
-            borderRadius: '8px',
+            borderRadius: '0px',
             overflow: 'hidden',
             position: 'relative'
           }}
@@ -254,19 +442,99 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           borderRadius: '8px',
           zIndex: 10
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>프레임 색상:</label>
-            <input 
-              type="color"
-              className="linear-input"
-              value={frameColor}
-              onChange={(e) => {
-                if (onFrameColorChange) {
-                  onFrameColorChange(e.target.value);
-                }
-              }}
-              style={{ width: '40px', height: '24px', padding: '2px' }}
-            />
+          <div>
+            <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>프레임 색상</label>
+              <button
+                ref={customPickButtonRef}
+                type="button"
+                className="linear-button linear-button--secondary"
+                style={{ height: 24, padding: '0 8px', fontSize: 12 }}
+                onClick={() => setShowCustomPalette((v) => !v)}
+                aria-expanded={showCustomPalette}
+                aria-haspopup="dialog"
+              >
+                직접 선택
+              </button>
+              {showCustomPalette && (
+                <div
+                  className="linear-card"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 'calc(100% + 6px)',
+                    padding: 8,
+                    border: '1px solid var(--linear-neutral-500)',
+                    borderRadius: '8px',
+                    background: 'var(--linear-neutral-700)',
+                    zIndex: 20,
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)'
+                  }}
+                  role="dialog"
+                  aria-label="원형 색상 팔레트"
+                >
+                  <div style={{ position: 'relative' }}>
+                    <canvas
+                      ref={paletteCanvasRef}
+                      onClick={handlePalettePick}
+                      onMouseMove={handlePaletteMove}
+                      onMouseLeave={handlePaletteLeave}
+                      style={{
+                        display: 'block',
+                        width: 160,
+                        height: 160,
+                        cursor: 'crosshair',
+                        borderRadius: '50%',
+                      }}
+                    />
+                    {palettePreview.visible && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: palettePreview.x - 16,
+                          top: palettePreview.y - 16,
+                          width: 32,
+                          height: 32,
+                          borderRadius: '50%',
+                          background: palettePreview.color,
+                          border: '2px solid var(--linear-neutral-900)',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+                          pointerEvents: 'none',
+                        }}
+                        aria-hidden
+                        title={palettePreview.color}
+                      />
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {/* 쉬운 팔레트: 외부 설정 기반 스와치 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {presetColors.map((color) => {
+                const isSelected = color.toLowerCase() === frameColor.toLowerCase();
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    aria-label={`색상 ${color}`}
+                    className="linear-button linear-button--secondary"
+                    onClick={() => onFrameColorChange && onFrameColorChange(color)}
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      padding: 0,
+                      backgroundColor: color,
+                      border: isSelected ? '2px solid var(--linear-primary-500)' : '1px solid var(--linear-neutral-500)',
+                      boxShadow: color.toLowerCase() === '#ffffff' ? 'inset 0 0 0 1px var(--linear-neutral-500)' : undefined,
+                    }}
+                    title={color}
+                  />
+                );
+              })}
+            </div>
+            {/* 기본 컬러 인풋 제거: 커스텀 원형 팔레트 사용 */}
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>

@@ -57,7 +57,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
         <p style={{ marginBottom: "16px", color: "var(--linear-secondary-400)" }}>
           아래 버튼을 클릭하여 프레임을 선택하세요.
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
           {frameOptions.map((option) => (
             <div key={option.value} style={{ position: "relative" }}>
               <button
@@ -71,11 +71,14 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                 onMouseLeave={handleMouseLeave}
                 style={{
                   width: "100%",
-                  height: "48px",
-                  aspectRatio: "1",
+                  height: "64px",
+                  border: selectedFrame === option.value 
+                    ? "2px solid var(--linear-primary-500)" 
+                    : "2px solid var(--linear-neutral-500)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  fontSize: "12px",
                 }}
               >
                 {option.label}
