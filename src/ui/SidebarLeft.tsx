@@ -29,15 +29,29 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   };
 
   const frameOptions: Array<{value: FrameType, label: string, image: string}> = [
-    { value: "2", label: "2컷 가로", image: "2v.png" },
+    { value: "2h", label: "2컷 가로", image: "2h.png" },
     { value: "2v", label: "2컷 세로", image: "2v.png" },
-    { value: "4", label: "4컷", image: "9.png" },
-    { value: "6", label: "6컷", image: "2v.png" },
-    { value: "9", label: "9컷", image: "9.png" },
+    { value: "4h", label: "4컷 가로", image: "9.png" },
+    { value: "4v", label: "4컷 세로", image: "9.png" },
+    { value: "6h", label: "6컷 가로", image: "2v.png" },
+    { value: "6v", label: "6컷 세로", image: "2v.png" },
+    { value: "9h", label: "9컷 가로", image: "9.png" },
+    { value: "9v", label: "9컷 세로", image: "9.png" },
   ];
 
   return (
     <aside className="linear-card">
+      <div style={{ marginBottom: "24px", textAlign: "center" }}>
+        <h2 style={{ margin: "0", fontSize: "var(--linear-text-lg)", fontWeight: "var(--linear-font-medium)" }}>
+          다비스튜디오 컷편집기
+        </h2>
+        <p style={{ margin: "4px 0 0 0", fontSize: "var(--linear-text-xs)", color: "var(--linear-secondary-400)" }}>
+          2/4/6/9컷 편집, 레터링
+        </p>
+      </div>
+      
+      <hr style={{ border: 'none', borderTop: '1px solid var(--linear-neutral-500)', margin: '0 0 24px 0' }} />
+      
       <h3>프레임 선택</h3>
       <div className="linear-mt-4 linear-grid" style={{ gridTemplateColumns: "1fr" }}>
         <p style={{ marginBottom: "16px", color: "var(--linear-secondary-400)" }}>
@@ -97,22 +111,6 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
             </div>
           ))}
         </div>
-      </div>
-      
-      <hr className="linear-mt-6 linear-mb-6" style={{ border: 'none', borderTop: '1px solid var(--linear-neutral-500)' }} />
-      
-      <h3>프레임 색상 변경</h3>
-      <div className="linear-mt-4">
-        <label>
-          <h4>프레임 색상</h4>
-          <input 
-            type="color"
-            className="linear-input linear-mt-4"
-            value={frameColor}
-            onChange={(e) => onFrameColorChange(e.target.value)}
-            style={{ width: '100%', height: '40px' }}
-          />
-        </label>
       </div>
     </aside>
   );

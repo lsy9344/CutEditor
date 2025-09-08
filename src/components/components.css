@@ -483,24 +483,24 @@ p {
 /* App Main - Three column layout */
 .app-main {
   display: grid;
-  grid-template-columns: 400px 1fr 400px;
+  grid-template-columns: 320px 1fr 320px;
   flex: 1;
   min-height: 0; /* Allow flexbox children to shrink */
   gap: var(--linear-space-1);
-  padding: var(--linear-space-1);
+  padding: 4px var(--linear-space-1) var(--linear-space-1);
   background-color: var(--linear-neutral-900);
 }
 
 /* Responsive layout for smaller screens */
 @media (max-width: 1200px) {
   .app-main {
-    grid-template-columns: 280px 1fr 280px;
+    grid-template-columns: 300px 1fr 300px;
   }
 }
 
 @media (max-width: 1024px) {
   .app-main {
-    grid-template-columns: 250px 1fr 250px;
+    grid-template-columns: 280px 1fr 280px;
   }
 }
 

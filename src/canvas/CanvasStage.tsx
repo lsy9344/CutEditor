@@ -16,6 +16,7 @@ export type CanvasStageProps = {
   onZoomChange?: (zoom: number) => void;
   onImageUpload?: (file: File, slotId: string) => void;
   onImageTransform?: (imageId: string, transform: Partial<UserImage>) => void;
+  onFrameColorChange?: (color: string) => void;
 };
 
 export const CanvasStage: React.FC<CanvasStageProps> = ({ 
@@ -26,7 +27,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onZoomChange,
   onSelect,
   onImageUpload,
-  onImageTransform
+  onImageTransform,
+  onFrameColorChange
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -121,7 +123,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
       ctx.putImageData(imageData, 0, 0);
       setProcessedFrameCanvas(canvas);
-    } catch (e) {
+    } catch {
       // CORS 또는 다른 이유로 접근 실패 시 원본 사용
       setProcessedFrameCanvas(null);
     }
@@ -215,41 +217,78 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     );
   }
 
+  const isHorizontal = Boolean(selectedFrame && /h$/.test(selectedFrame));
+  const wrapperTargetHeight = isHorizontal ? Math.max(frameLayout.canvasWidth, frameLayout.canvasHeight) * zoom : undefined;
+
   return (
     <div className="linear-card linear-fade-in">
-      <div className="linear-flex" style={{ justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h3>캔버스</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label style={{ color: 'var(--linear-neutral-50)' }}>줌:</label>
-          <input
-            type="number"
-            className="linear-input"
-            value={Math.round(zoom * 100)}
-            onChange={(e) => {
-              const value = parseFloat(e.target.value);
-              if (!isNaN(value) && value > 0 && onZoomChange) {
-                onZoomChange(value / 100);
-              }
-            }}
-            min="10"
-            max="400"
-            step="10"
-            style={{ width: '80px' }}
-          />
-          <span style={{ color: 'var(--linear-secondary-400)' }}>%</span>
-        </div>
-      </div>
-
-      <div 
-        style={{ 
-          border: '2px dashed var(--linear-neutral-500)', 
-          borderRadius: '8px',
-          overflow: 'hidden',
-          position: 'relative'
+      <div
+        style={{
+          display: isHorizontal ? 'flex' : undefined,
+          flexDirection: isHorizontal ? 'column' : undefined,
+          justifyContent: isHorizontal ? 'center' : undefined,
+          height: wrapperTargetHeight,
         }}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
       >
+        <div 
+          style={{ 
+            border: '2px dashed var(--linear-neutral-500)', 
+            borderRadius: '8px',
+            overflow: 'hidden',
+            position: 'relative'
+          }}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+        {/* 컨트롤 패널을 캔버스 우측 중앙에 오버레이 */}
+        <div style={{
+          position: 'absolute',
+          right: '16px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          background: 'rgba(0, 0, 0, 0.8)',
+          padding: '12px',
+          borderRadius: '8px',
+          zIndex: 10
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>프레임 색상:</label>
+            <input 
+              type="color"
+              className="linear-input"
+              value={frameColor}
+              onChange={(e) => {
+                if (onFrameColorChange) {
+                  onFrameColorChange(e.target.value);
+                }
+              }}
+              style={{ width: '40px', height: '24px', padding: '2px' }}
+            />
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>줌:</label>
+            <input
+              type="number"
+              className="linear-input"
+              value={Math.round(zoom * 100)}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                if (!isNaN(value) && value > 0 && onZoomChange) {
+                  onZoomChange(value / 100);
+                }
+              }}
+              min="10"
+              max="400"
+              step="10"
+              style={{ width: '60px', fontSize: '12px', height: '24px' }}
+            />
+            <span style={{ color: 'var(--linear-secondary-400)', fontSize: '12px' }}>%</span>
+          </div>
+        </div>
         <Stage
           ref={stageRef}
           width={frameLayout.canvasWidth * zoom}
@@ -306,22 +345,40 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
                   
                   if (userImage && loadedImg) {
+                    // 이미지를 슬롯 중앙에 배치하기 위한 계산
+                    const imageAspectRatio = loadedImg.width / loadedImg.height;
+                    const slotAspectRatio = slot.width / slot.height;
+                    
+                    let displayWidth = slot.width;
+                    let displayHeight = slot.height;
+                    
+                    // 비율을 유지하면서 슬롯에 맞추기 (contain)
+                    if (imageAspectRatio > slotAspectRatio) {
+                      displayHeight = slot.width / imageAspectRatio;
+                    } else {
+                      displayWidth = slot.height * imageAspectRatio;
+                    }
+                    
+                    // 중앙 정렬을 위한 오프셋 계산
+                    const centerX = slot.x + (slot.width - displayWidth) / 2 + userImage.x;
+                    const centerY = slot.y + (slot.height - displayHeight) / 2 + userImage.y;
+                    
                     return (
                       <KonvaImage
                         key={userImage.id}
                         image={loadedImg}
-                        x={slot.x + userImage.x}
-                        y={slot.y + userImage.y}
-                        width={slot.width}
-                        height={slot.height}
+                        x={centerX}
+                        y={centerY}
+                        width={displayWidth}
+                        height={displayHeight}
                         scaleX={userImage.scaleX}
                         scaleY={userImage.scaleY}
                         rotation={userImage.rotation}
                         draggable={true}
                         onClick={() => onSelect?.(userImage.id)}
                         onDragEnd={(e) => {
-                          const newX = e.target.x() - slot.x;
-                          const newY = e.target.y() - slot.y;
+                          const newX = e.target.x() - slot.x - (slot.width - displayWidth) / 2;
+                          const newY = e.target.y() - slot.y - (slot.height - displayHeight) / 2;
                           handleImageTransform(userImage.id, { x: newX, y: newY });
                         }}
                         onTransformEnd={(e) => {
@@ -357,10 +414,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           </Layer>
         </Stage>
       </div>
-
-      <p style={{ marginTop: '16px', color: 'var(--linear-secondary-400)', fontSize: '14px' }}>
-        슬롯을 클릭하거나 이미지를 드래그해서 업로드하세요
-      </p>
+      </div>
 
       <input
         ref={fileInputRef}
