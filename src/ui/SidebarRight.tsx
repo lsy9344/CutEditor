@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 
-export type SidebarRightProps = {};
+export type SidebarRightProps = Record<string, never>;
 
 export const SidebarRight: React.FC<SidebarRightProps> = () => {
   const [textInput, setTextInput] = useState("");

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Group } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Group, Text } from "react-konva";
 import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
@@ -42,6 +42,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement>>(new Map());
   const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
+  const currentSlotIdRef = useRef<string | null>(null);
   // 빠른 선택 스와치 색상 (외부 설정으로 오버라이드 가능)
   const [presetColors, setPresetColors] = useState<string[]>([
     '#FFFFFF', // White
@@ -162,10 +163,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         img.onload = () => {
           setLoadedImages(prev => new Map(prev).set(userImage.id, img));
         };
+        img.onerror = () => {
+          console.error(`Failed to load image: ${userImage.id}`);
+          // 로딩 실패한 이미지도 Map에 null로 추가하여 무한 재시도 방지
+          setLoadedImages(prev => new Map(prev).set(userImage.id, null));
+        };
         img.src = userImage.url;
       }
     });
-  }, [userImages, loadedImages]);
+  }, [userImages]);
 
   // 드래그 앤 드롭 핸들러
   const handleDragOver = (e: React.DragEvent) => {
@@ -179,26 +185,46 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     
     const files = Array.from(e.dataTransfer.files);
     const imageFile = files.find(file => file.type.startsWith('image/'));
+    const slotId = currentSlotIdRef.current;
     
-    if (imageFile && draggedSlotId) {
-      onImageUpload(imageFile, draggedSlotId);
+    if (imageFile && slotId) {
+      onImageUpload(imageFile, slotId);
     }
     
     setDraggedSlotId(null);
-  }, [onImageUpload, draggedSlotId]);
+    currentSlotIdRef.current = null;
+  }, [onImageUpload]);
 
   // 슬롯 클릭 핸들러 (파일 선택)
   const handleSlotClick = (slotId: string) => {
+    console.log('🔥 handleSlotClick called with slotId:', slotId);
+    console.log('🔥 fileInputRef.current:', fileInputRef.current);
     setDraggedSlotId(slotId);
+    currentSlotIdRef.current = slotId; // ref에도 저장
+    console.log('🔥 currentSlotIdRef.current set to:', currentSlotIdRef.current);
     fileInputRef.current?.click();
+    console.log('🔥 fileInputRef.current.click() executed');
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('🔥 handleFileSelect called');
     const file = e.target.files?.[0];
-    if (file && draggedSlotId && onImageUpload) {
-      onImageUpload(file, draggedSlotId);
+    console.log('🔥 selected file:', file);
+    console.log('🔥 draggedSlotId:', draggedSlotId);
+    console.log('🔥 currentSlotIdRef.current:', currentSlotIdRef.current);
+    console.log('🔥 onImageUpload function:', onImageUpload);
+    
+    const slotId = currentSlotIdRef.current; // ref에서 가져오기
+    
+    if (file && slotId && onImageUpload) {
+      console.log('🔥 calling onImageUpload with:', file.name, slotId);
+      onImageUpload(file, slotId);
+    } else {
+      console.log('🔥 onImageUpload not called. file:', !!file, 'slotId:', !!slotId, 'onImageUpload:', !!onImageUpload);
     }
+    
     setDraggedSlotId(null);
+    currentSlotIdRef.current = null; // ref 초기화
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -226,15 +252,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         const res = await fetch('/config/frame_palette.json', { cache: 'no-store' });
         if (!res.ok) return;
         const json = await res.json();
-        const arr = Array.isArray(json) ? json : Array.isArray((json as any)?.frameColors) ? (json as any).frameColors : null;
+        const arr = Array.isArray(json) ? json : Array.isArray((json as Record<string, unknown>)?.frameColors) ? (json as Record<string, unknown>).frameColors : null;
         if (!arr) return;
         const hexRe = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
         const normalized = (arr as unknown[]).filter((c) => typeof c === 'string' && hexRe.test(c as string)) as string[];
         if (!cancelled && normalized.length > 0) {
           setPresetColors(normalized.slice(0, 24)); // 최대 24개까지 허용
         }
-      } catch (_) {
+      } catch (error) {
         // 네트워크/파싱 오류 시 기본값 유지
+        console.warn('Failed to load frame palette config:', error);
       }
     };
     load();
@@ -383,7 +410,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     const y = evt.clientY - rect.top;
     const hex = getColorFromPosition(canvas, x, y);
     if (!hex) return;
-    onFrameColorChange && onFrameColorChange(hex);
+    onFrameColorChange?.(hex);
     setShowCustomPalette(false);
   };
 
@@ -519,7 +546,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     type="button"
                     aria-label={`색상 ${color}`}
                     className="linear-button linear-button--secondary"
-                    onClick={() => onFrameColorChange && onFrameColorChange(color)}
+                    onClick={() => onFrameColorChange?.(color)}
                     style={{
                       width: 28,
                       height: 28,
@@ -602,9 +629,21 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   fill={draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)'}
                   stroke={draggedSlotId === slot.id ? '#007bff' : '#ccc'}
                   strokeWidth={2}
-                  onMouseEnter={() => setDraggedSlotId(slot.id)}
-                  onMouseLeave={() => setDraggedSlotId(null)}
-                  onClick={() => handleSlotClick(slot.id)}
+                  onMouseEnter={() => {
+                    console.log('🔥 Slot mouse enter:', slot.id);
+                    setDraggedSlotId(slot.id);
+                    currentSlotIdRef.current = slot.id;
+                  }}
+                  onMouseLeave={() => {
+                    console.log('🔥 Slot mouse leave:', slot.id);
+                    setDraggedSlotId(null);
+                    // 마우스 떠날 때는 ref를 초기화하지 않음 (드래그나 클릭 중일 수 있음)
+                  }}
+                  onClick={(e) => {
+                    console.log('🔥 Slot clicked!!! slot.id:', slot.id);
+                    console.log('🔥 Click event:', e);
+                    handleSlotClick(slot.id);
+                  }}
                 />
                 
                 {/* 사용자 이미지 */}
@@ -612,7 +651,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const userImage = userImages.find(img => img.slotId === slot.id);
                   const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
                   
-                  if (userImage && loadedImg) {
+                  if (userImage && loadedImg && loadedImg !== null) {
                     // 이미지를 슬롯 중앙에 배치하기 위한 계산
                     const imageAspectRatio = loadedImg.width / loadedImg.height;
                     const slotAspectRatio = slot.width / slot.height;
@@ -665,16 +704,43 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 })()}
                 
                 {/* 슬롯 레이블 */}
-                {!userImages.some(img => img.slotId === slot.id) && (
-                  <Rect
-                    x={slot.x + slot.width / 2 - 40}
-                    y={slot.y + slot.height / 2 - 10}
-                    width={80}
-                    height={20}
-                    fill="rgba(0, 0, 0, 0.7)"
-                    cornerRadius={10}
-                  />
-                )}
+                {(() => {
+                  const userImage = userImages.find(img => img.slotId === slot.id);
+                  const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
+                  
+                  // 이미지가 없거나, 로딩 중이거나, 로딩 실패한 경우 레이블 표시
+                  if (!userImage || !loadedImg || loadedImg === null) {
+                    let labelText = "클릭해서 이미지 추가";
+                    if (userImage && loadedImg === null) {
+                      labelText = "이미지 로딩 실패";
+                    } else if (userImage && !loadedImg) {
+                      labelText = "이미지 로딩 중...";
+                    }
+                    
+                    return (
+                      <Group>
+                        <Rect
+                          x={slot.x + slot.width / 2 - 60}
+                          y={slot.y + slot.height / 2 - 10}
+                          width={120}
+                          height={20}
+                          fill="rgba(0, 0, 0, 0.7)"
+                          cornerRadius={10}
+                        />
+                        <Text
+                          x={slot.x + slot.width / 2 - 60}
+                          y={slot.y + slot.height / 2 - 6}
+                          width={120}
+                          text={labelText}
+                          fontSize={10}
+                          fill="white"
+                          align="center"
+                        />
+                      </Group>
+                    );
+                  }
+                  return null;
+                })()}
               </Group>
             ))}
             

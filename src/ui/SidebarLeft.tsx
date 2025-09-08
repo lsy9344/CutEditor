@@ -4,15 +4,13 @@ import type { FrameType } from "../types/frame";
 export type SidebarLeftProps = {
   selectedFrame: FrameType | null;
   onFrameSelect: (frame: FrameType | null) => void;
-  frameColor: string;
-  onFrameColorChange: (color: string) => void;
+  frameColor?: string;
+  onFrameColorChange?: (color: string) => void;
 };
 
 export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   selectedFrame,
   onFrameSelect,
-  frameColor,
-  onFrameColorChange,
 }) => {
   const [hoveredFrame, setHoveredFrame] = useState<FrameType | null>(null);
 
