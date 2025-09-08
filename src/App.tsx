@@ -14,6 +14,10 @@ function App() {
     setEditorState(prev => ({ ...prev, selection: id }))
   }
 
+  const handleSlotSelect = (slotId: string | null) => {
+    setEditorState(prev => ({ ...prev, selectedSlot: slotId }))
+  }
+
   const handleFrameSelect = (frameType: FrameType | null) => {
     setEditorState(prev => ({ ...prev, selectedFrame: frameType }))
   }
@@ -78,11 +82,13 @@ function App() {
         <CanvasStage 
           template={editorState.template}
           selection={editorState.selection}
+          selectedSlot={editorState.selectedSlot}
           zoom={editorState.zoom}
           selectedFrame={editorState.selectedFrame}
           userImages={editorState.userImages}
           frameColor={editorState.frameColor}
           onSelect={handleSelect}
+          onSlotSelect={handleSlotSelect}
           onZoomChange={handleZoomChange}
           onImageUpload={handleImageUpload}
           onImageTransform={handleImageTransform}

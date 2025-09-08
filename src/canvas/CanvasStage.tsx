@@ -8,11 +8,13 @@ import { FRAME_LAYOUTS } from "../types/frame";
 export type CanvasStageProps = {
   template: Template | null;
   selection: string | null;
+  selectedSlot: string | null;
   zoom: number;
   selectedFrame: FrameType | null;
   userImages: UserImage[];
   frameColor: string;
   onSelect?: (id: string | null) => void;
+  onSlotSelect?: (slotId: string | null) => void;
   onZoomChange?: (zoom: number) => void;
   onImageUpload?: (file: File, slotId: string) => void;
   onImageTransform?: (imageId: string, transform: Partial<UserImage>) => void;
@@ -22,10 +24,12 @@ export type CanvasStageProps = {
 export const CanvasStage: React.FC<CanvasStageProps> = ({ 
   zoom, 
   selectedFrame,
+  selectedSlot,
   userImages,
   frameColor,
   onZoomChange,
   onSelect,
+  onSlotSelect,
   onImageUpload,
   onImageTransform,
   onFrameColorChange
@@ -195,10 +199,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     currentSlotIdRef.current = null;
   }, [onImageUpload]);
 
-  // 슬롯 클릭 핸들러 (파일 선택)
+  // 슬롯 클릭 핸들러 (선택 상태 변경 및 파일 선택)
   const handleSlotClick = (slotId: string) => {
     console.log('🔥 handleSlotClick called with slotId:', slotId);
-    console.log('🔥 fileInputRef.current:', fileInputRef.current);
+    
+    // 슬롯 선택 상태 업데이트
+    onSlotSelect?.(slotId);
+    
     setDraggedSlotId(slotId);
     currentSlotIdRef.current = slotId; // ref에도 저장
     console.log('🔥 currentSlotIdRef.current set to:', currentSlotIdRef.current);
@@ -677,6 +684,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           onClick={(e) => {
             if (e.target === e.target.getStage()) {
               onSelect?.(null);
+              onSlotSelect?.(null);  // 슬롯 선택도 해제
             }
           }}
         >
@@ -788,6 +796,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             {frameLayout.slots.map((slot) => {
               const userImage = userImages.find(img => img.slotId === slot.id);
               const hasImage = userImage && loadedImages.get(userImage.id);
+              const isSelected = selectedSlot === slot.id;
               
               return (
                 <Group key={slot.id}>
@@ -798,8 +807,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     width={slot.width}
                     height={slot.height}
                     fill={hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)')}
-                    stroke={hasImage ? 'transparent' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')}
-                    strokeWidth={2}
+                    stroke={hasImage ? 'transparent' : (isSelected ? '#ff6b35' : (draggedSlotId === slot.id ? '#007bff' : '#ccc'))}
+                    strokeWidth={isSelected ? 3 : 2}
                     listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
                     onMouseEnter={() => {
                       if (!hasImage) {
@@ -822,6 +831,21 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       }
                     }}
                   />
+                  
+                  {/* 이미지가 있는 슬롯의 선택 표시 및 클릭 영역 */}
+                  {hasImage && (
+                    <Rect
+                      x={slot.x}
+                      y={slot.y}
+                      width={slot.width}
+                      height={slot.height}
+                      fill="transparent"
+                      stroke={isSelected ? "#ff6b35" : "transparent"}
+                      strokeWidth={3}
+                      listening={true}
+                      onClick={() => onSlotSelect?.(slot.id)}
+                    />
+                  )}
                 
                 {/* 슬롯 레이블 */}
                 {!hasImage && (() => {

@@ -7,6 +7,7 @@ import type { FrameType, UserImage } from "../types/frame";
 export type EditorState = {
   template: Template | null;
   selection: string | null; // 선택된 객체 id
+  selectedSlot: string | null; // 선택된 슬롯 id
   zoom: number; // 0.1 ~ 4.0
   selectedFrame: FrameType | null; // 선택된 프레임
   userImages: UserImage[]; // 업로드된 이미지들
@@ -16,6 +17,7 @@ export type EditorState = {
 export const createInitialState = (): EditorState => ({
   template: null,
   selection: null,
+  selectedSlot: null,
   zoom: 1,
   selectedFrame: null,
   userImages: [],
