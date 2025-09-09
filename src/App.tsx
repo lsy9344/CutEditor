@@ -54,6 +54,7 @@ function App() {
   }
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
+    console.log('[App] onImageTransform', { imageId, transform });
     setEditorState(prev => ({
       ...prev,
       userImages: prev.userImages.map(img =>
