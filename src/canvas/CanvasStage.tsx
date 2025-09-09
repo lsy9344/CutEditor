@@ -238,16 +238,20 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   // 이미지 변형 핸들러
-  const handleImageTransform = (imageId: string, newAttrs: { x?: number; y?: number; scaleX?: number; scaleY?: number; rotation?: number }) => {
-    if (onImageTransform) {
-      onImageTransform(imageId, {
-        x: newAttrs.x,
-        y: newAttrs.y,
-        scaleX: newAttrs.scaleX,
-        scaleY: newAttrs.scaleY,
-        rotation: newAttrs.rotation
-      });
-    }
+  const handleImageTransform = (
+    imageId: string,
+    newAttrs: { x?: number; y?: number; scaleX?: number; scaleY?: number; rotation?: number }
+  ) => {
+    if (!onImageTransform) return;
+    const payload: Partial<UserImage> = {};
+    if (typeof newAttrs.x === 'number' && Number.isFinite(newAttrs.x)) payload.x = newAttrs.x;
+    if (typeof newAttrs.y === 'number' && Number.isFinite(newAttrs.y)) payload.y = newAttrs.y;
+    if (typeof newAttrs.scaleX === 'number' && Number.isFinite(newAttrs.scaleX)) payload.scaleX = newAttrs.scaleX;
+    if (typeof newAttrs.scaleY === 'number' && Number.isFinite(newAttrs.scaleY)) payload.scaleY = newAttrs.scaleY;
+    if (typeof newAttrs.rotation === 'number' && Number.isFinite(newAttrs.rotation)) payload.rotation = newAttrs.rotation;
+    // 변경이 없으면 호출 생략
+    if (Object.keys(payload).length === 0) return;
+    onImageTransform(imageId, payload);
   };
 
   // 이미지 휠 줌 핸들러 (해당 슬롯/이미지에만 적용)
@@ -261,7 +265,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     console.log('[wheel] start', { imageId, hasSlot: !!slot, deltaY: e.evt?.deltaY, hasTransformCb: typeof onImageTransform === 'function' });
     // 상위로 버블링되거나 페이지 스크롤 되지 않도록 차단
     e.evt.preventDefault();
-    // @ts-ignore: Konva 이벤트 버블 차단
+    // @ts-expect-error: Konva 이벤트 버블 차단
     e.cancelBubble = true;
 
     const userImage = userImages.find(img => img.id === imageId);
@@ -272,15 +276,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     onSlotSelect?.(userImage.slotId);
     console.log('[wheel] selecting', { imageId: userImage.id, slotId: userImage.slotId });
 
-    // NaN 체크 (스케일이 비정상이라도 기본값으로 보정하여 진행)
-    if (!Number.isFinite(userImage.scaleX) || !Number.isFinite(userImage.scaleY)) {
-      console.warn('[wheel] invalid userImage scale detected. normalizing to 1');
-      userImage.scaleX = 1;
-      userImage.scaleY = 1;
-    }
-
     const scaleBy = 1.1;
-    const oldScale = Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1;
+    // 실제 노드 스케일을 우선 사용(상태-뷰 불일치 방지)
+    let oldScale = Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1;
     const deltaY = e.evt.deltaY;
     console.log('[wheel] scales', { oldScale, deltaY });
     
@@ -300,81 +298,114 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     let nextTransform: Partial<UserImage> = { scaleX: clampedScale, scaleY: clampedScale };
 
     if (slot && displayWidth && displayHeight) {
-      const node = e.target as unknown as Konva.Image;
-      const stage = node.getStage();
-      const pointer = stage?.getPointerPosition();
-      if (pointer) {
-        const stageScaleX = stage?.scaleX() || 1;
-        const stageScaleY = stage?.scaleY() || 1;
-        // 스테이지 스케일을 제거하여 캔버스 좌표계로 환산
-        const px = pointer.x / stageScaleX;
-        const py = pointer.y / stageScaleY;
+      const targetNode = e.target as unknown as Konva.Node;
+      // 실제 이미지 노드 찾기(배경 Rect에서 휠이 들어온 경우 대비)
+      let imgNode: Konva.Image | null = null;
+      if ((targetNode as Konva.Node & { className?: string }).className === 'Image') {
+        imgNode = targetNode as unknown as Konva.Image;
+      } else {
+        const parent = (targetNode as Konva.Node & { getParent?: () => Konva.Container })?.getParent?.();
+        const found = parent?.findOne('Image') as Konva.Image | undefined;
+        if (found) imgNode = found;
+      }
+      if (!imgNode) return;
 
-        const imgX = node.x();
-        const imgY = node.y();
-        console.log('[wheel] pointer', { raw: stage?.getPointerPosition(), px, py, imgX, imgY });
-        if (Number.isFinite(imgX) && Number.isFinite(imgY)) {
-          // 포인터 기준 로컬 좌표
-          const localX = (px - imgX) / oldScale;
-          const localY = (py - imgY) / oldScale;
-          // 포인터 고정: 새 스케일에서 포인터 위치가 동일하도록 원점 이동
-          let newImgX = px - localX * clampedScale;
-          let newImgY = py - localY * clampedScale;
-
-          // 슬롯 경계로 위치 클램프
-          const scaledW = displayWidth * clampedScale;
-          const scaledH = displayHeight * clampedScale;
-          let minX: number, maxX: number, minY: number, maxY: number;
-          if (scaledW <= slot.width) {
-            minX = slot.x;
-            maxX = slot.x + slot.width - scaledW;
-          } else {
-            minX = slot.x + slot.width - scaledW;
-            maxX = slot.x;
+      const stage = imgNode.getStage();
+      // 휠 이벤트에서 getPointerPosition이 누락되는 경우가 있어, 이벤트 좌표로 보정
+      let px: number | undefined;
+      let py: number | undefined;
+      if (stage && e.evt && typeof e.evt.clientX === 'number' && typeof e.evt.clientY === 'number') {
+        try {
+          const rect = stage.container().getBoundingClientRect();
+          const stageScaleX = stage.scaleX() || 1;
+          const stageScaleY = stage.scaleY() || 1;
+          px = (e.evt.clientX - rect.left) / stageScaleX;
+          py = (e.evt.clientY - rect.top) / stageScaleY;
+        } catch {
+          const pointer = stage.getPointerPosition();
+          if (pointer) {
+            const stageScaleX = stage.scaleX() || 1;
+            const stageScaleY = stage.scaleY() || 1;
+            px = pointer.x / stageScaleX;
+            py = pointer.y / stageScaleY;
           }
-          if (scaledH <= slot.height) {
-            minY = slot.y;
-            maxY = slot.y + slot.height - scaledH;
-          } else {
-            minY = slot.y + slot.height - scaledH;
-            maxY = slot.y;
-          }
-          newImgX = Math.max(minX, Math.min(maxX, newImgX));
-          newImgY = Math.max(minY, Math.min(maxY, newImgY));
-
-          // 즉시 반영: 실제 Konva 이미지 노드도 갱신(시각 확인용)
-          try {
-            let imgNode = node as unknown as Konva.Image;
-            if ((imgNode as any).className !== 'Image') {
-              const parent = (node as any).getParent?.();
-              const found = parent?.findOne('Image') as Konva.Image | undefined;
-              if (found) imgNode = found;
-            }
-            imgNode.scaleX(clampedScale);
-            imgNode.scaleY(clampedScale);
-            imgNode.position({ x: newImgX, y: newImgY });
-            imgNode.getLayer()?.batchDraw();
-          } catch (err) {
-            console.warn('[wheel] immediate update failed', err);
-          }
-
-          // 상태 저장용 상대 좌표로 변환
-          const relX = newImgX - slot.x - (slot.width - displayWidth) / 2;
-          const relY = newImgY - slot.y - (slot.height - displayHeight) / 2;
-          if (!isNaN(relX) && !isNaN(relY)) {
-            nextTransform.x = relX;
-            nextTransform.y = relY;
-          }
-          console.log('[wheel] nextTransform', nextTransform);
+        }
+      } else if (stage) {
+        const pointer = stage.getPointerPosition();
+        if (pointer) {
+          const stageScaleX = stage.scaleX() || 1;
+          const stageScaleY = stage.scaleY() || 1;
+          px = pointer.x / stageScaleX;
+          py = pointer.y / stageScaleY;
         }
       }
+
+      // 최신 노드 스케일을 기준(oldScale 보정)
+      const nodeScale = Number.isFinite(imgNode.scaleX()) ? imgNode.scaleX() : oldScale;
+      if (Number.isFinite(nodeScale)) oldScale = nodeScale;
+
+      // 현재 노드 위치(무조건 유효값으로 보정)
+      const imgX = Number.isFinite(imgNode.x()) ? imgNode.x() : slot.x;
+      const imgY = Number.isFinite(imgNode.y()) ? imgNode.y() : slot.y;
+
+      // 로컬 좌표(anchor): 포인터가 없으면 이미지 중앙 기준으로 고정
+      const localX = px !== undefined ? (px - imgX) / oldScale : (displayWidth / 2);
+      const localY = py !== undefined ? (py - imgY) / oldScale : (displayHeight / 2);
+
+      // 새 스케일에서 포인터(또는 중앙) 고정되도록 원점 이동
+      let newImgX = (px !== undefined ? px : (imgX + localX * oldScale)) - localX * clampedScale;
+      let newImgY = (py !== undefined ? py : (imgY + localY * oldScale)) - localY * clampedScale;
+
+      // 슬롯 경계로 위치 클램프
+      const scaledW = displayWidth * clampedScale;
+      const scaledH = displayHeight * clampedScale;
+      // 직전 상태(구 스케일)에서 이미지가 슬롯을 벗어나 있었는지 축별로 판단
+      const prevScaledW = displayWidth * oldScale;
+      const prevScaledH = displayHeight * oldScale;
+      const prevInsideMinX = slot.x;
+      const prevInsideMaxX = slot.x + slot.width - prevScaledW;
+      const prevInsideMinY = slot.y;
+      const prevInsideMaxY = slot.y + slot.height - prevScaledH;
+      const wasOverflowX = imgX < prevInsideMinX || imgX > prevInsideMaxX;
+      const wasOverflowY = imgY < prevInsideMinY || imgY > prevInsideMaxY;
+
+      let minX: number, maxX: number, minY: number, maxY: number;
+      // 축별로, 직전에 슬롯을 벗어났다면 이번 프레임도 외부 이동 허용(스냅 방지)
+      if (wasOverflowX) {
+        minX = slot.x - scaledW;
+        maxX = slot.x + slot.width;
+      } else if (scaledW <= slot.width) {
+        minX = slot.x;
+        maxX = slot.x + slot.width - scaledW;
+      } else {
+        minX = slot.x - scaledW;
+        maxX = slot.x + slot.width;
+      }
+
+      if (wasOverflowY) {
+        minY = slot.y - scaledH;
+        maxY = slot.y + slot.height;
+      } else if (scaledH <= slot.height) {
+        minY = slot.y;
+        maxY = slot.y + slot.height - scaledH;
+      } else {
+        minY = slot.y - scaledH;
+        maxY = slot.y + slot.height;
+      }
+      newImgX = Math.max(minX, Math.min(maxX, newImgX));
+      newImgY = Math.max(minY, Math.min(maxY, newImgY));
+
+      // 상태 저장용 상대 좌표로 변환 (항상 x/y 포함시켜 재렌더 시 튐 방지)
+      const relX = newImgX - slot.x - (slot.width - displayWidth) / 2;
+      const relY = newImgY - slot.y - (slot.height - displayHeight) / 2;
+      if (!isNaN(relX)) nextTransform.x = relX;
+      if (!isNaN(relY)) nextTransform.y = relY;
+      console.log('[wheel] nextTransform', nextTransform);
     }
 
     console.log('[wheel] dispatch transform', nextTransform);
-    // 내부 핸들러 통해 상태 업데이트
+    // 내부 핸들러 통해 상태 업데이트(유효 필드만 반영)
     handleImageTransform(imageId, nextTransform);
-    // 방어적: 부모 콜백을 직접 호출하여 반영 보장
-    try { onImageTransform?.(imageId, nextTransform); } catch {}
     console.log('[wheel] applied');
   };
 
@@ -390,8 +421,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     // NaN 체크
     if (isNaN(currentX) || isNaN(currentY)) return;
     
-    const scaledWidth = displayWidth * userImage.scaleX;
-    const scaledHeight = displayHeight * userImage.scaleY;
+    // 즉시 갱신된 Konva 노드의 실제 스케일을 우선 사용 (휠 줌 직후 상태 반영 지연에 의한 튐 방지)
+    const nodeScaleX = Number.isFinite((node as Konva.Node).scaleX()) ? (node as Konva.Node).scaleX() : (Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1);
+    const nodeScaleY = Number.isFinite((node as Konva.Node).scaleY()) ? (node as Konva.Node).scaleY() : (Number.isFinite(userImage.scaleY) ? userImage.scaleY : 1);
+    const scaledWidth = displayWidth * nodeScaleX;
+    const scaledHeight = displayHeight * nodeScaleY;
     
     // NaN 체크
     if (isNaN(scaledWidth) || isNaN(scaledHeight)) return;
@@ -404,9 +438,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       minX = slot.x;
       maxX = slot.x + slot.width - scaledWidth;
     } else {
-      // 이미지가 슬롯보다 큰 경우: 슬롯을 완전히 덮도록 제한
-      minX = slot.x + slot.width - scaledWidth;
-      maxX = slot.x;
+      // 이미지가 슬롯보다 큰 경우: 슬롯 밖으로도 이동 허용(완전 이탈 포함)
+      minX = slot.x - scaledWidth;
+      maxX = slot.x + slot.width;
     }
     
     if (scaledHeight <= slot.height) {
@@ -414,9 +448,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       minY = slot.y;
       maxY = slot.y + slot.height - scaledHeight;
     } else {
-      // 이미지가 슬롯보다 큰 경우: 슬롯을 완전히 덮도록 제한
-      minY = slot.y + slot.height - scaledHeight;
-      maxY = slot.y;
+      // 이미지가 슬롯보다 큰 경우: 슬롯 밖으로도 이동 허용(완전 이탈 포함)
+      minY = slot.y - scaledHeight;
+      maxY = slot.y + slot.height;
     }
     
     // NaN 체크
@@ -1004,7 +1038,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   );
                 })()}
               </Group>
-              );
+              )
             })}
           </Layer>
         </Stage>
