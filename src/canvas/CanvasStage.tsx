@@ -286,9 +286,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (isNaN(deltaY)) return;
     
     const newScale = deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
-    
-    // 스케일 제한 (0.1 ~ 3.0)
-    const clampedScale = Math.max(0.1, Math.min(3.0, newScale));
+
+    // 스케일 제한 상한 제거 (하한만 유지하여 0 이하 방지)
+    const clampedScale = Math.max(0.1, newScale);
     console.log('[wheel] newScale', { newScale, clampedScale });
     
     // 최종 NaN 체크
@@ -370,17 +370,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const wasOverflowY = imgY < prevInsideMinY || imgY > prevInsideMaxY;
 
       let minX: number, maxX: number, minY: number, maxY: number;
-      // 축별로, 직전에 슬롯을 벗어났다면 이번 프레임도 외부 이동 허용(스냅 방지)
-      if (wasOverflowX) {
-        minX = slot.x - scaledW;
-        maxX = slot.x + slot.width;
-      } else if (scaledW <= slot.width) {
-        minX = slot.x;
-        maxX = slot.x + slot.width - scaledW;
-      } else {
-        minX = slot.x - scaledW;
-        maxX = slot.x + slot.width;
-      }
+      // X축: 이미지가 슬롯보다 작아도 좌우 외부 이동을 허용
+      minX = slot.x - scaledW;
+      maxX = slot.x + slot.width;
 
       if (wasOverflowY) {
         minY = slot.y - scaledH;
@@ -433,15 +425,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     // 슬롯 내에서 이미지가 움직일 수 있는 범위 계산
     let minX, maxX, minY, maxY;
     
-    if (scaledWidth <= slot.width) {
-      // 이미지가 슬롯보다 작거나 같은 경우: 슬롯 내에서만 이동
-      minX = slot.x;
-      maxX = slot.x + slot.width - scaledWidth;
-    } else {
-      // 이미지가 슬롯보다 큰 경우: 슬롯 밖으로도 이동 허용(완전 이탈 포함)
-      minX = slot.x - scaledWidth;
-      maxX = slot.x + slot.width;
-    }
+    // X축: 이미지가 슬롯보다 작아도 좌우 외부 이동 허용
+    minX = slot.x - scaledWidth;
+    maxX = slot.x + slot.width;
     
     if (scaledHeight <= slot.height) {
       // 이미지가 슬롯보다 작거나 같은 경우: 슬롯 내에서만 이동
@@ -792,22 +778,32 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>줌:</label>
-            <input
-              type="number"
-              className="linear-input"
-              value={Math.round(zoom * 100)}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value);
-                if (!isNaN(value) && value > 0 && onZoomChange) {
-                  onZoomChange(value / 100);
-                }
-              }}
-              min="10"
-              max="400"
-              step="10"
-              style={{ width: '60px', fontSize: '12px', height: '24px' }}
-            />
-            <span style={{ color: 'var(--linear-secondary-400)', fontSize: '12px' }}>%</span>
+            {(() => {
+              const selectedImage = selectedSlot ? userImages.find(img => img.slotId === selectedSlot) : null;
+              const currentScale = selectedImage && Number.isFinite(selectedImage.scaleX) ? (selectedImage.scaleX as number) : 1;
+              return (
+                <>
+                  <input
+                    type="number"
+                    className="linear-input"
+                    value={Math.round(currentScale * 10)}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value);
+                      if (!isNaN(value) && value > 0 && selectedImage) {
+                        const nextScale = Math.max(0.1, value / 10);
+                        handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
+                      }
+                    }}
+                    min="1"
+                    step="5"
+                    style={{ width: '60px', fontSize: '12px', height: '24px' }}
+                    disabled={!selectedImage}
+                    title={selectedImage ? '선택된 슬롯의 이미지 줌(%)' : '슬롯을 선택하거나 이미지를 추가하세요'}
+                  />
+                  <span style={{ color: 'var(--linear-secondary-400)', fontSize: '12px' }}>%</span>
+                </>
+              );
+            })()}
           </div>
         </div>
         <Stage
