@@ -43,7 +43,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const customPickButtonRef = useRef<HTMLButtonElement | null>(null);
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
-  const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement>>(new Map());
+  const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
   const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
   const currentSlotIdRef = useRef<string | null>(null);
@@ -732,7 +732,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       scaleY={userImage.scaleY}
                       rotation={userImage.rotation}
                       draggable={true}
-                      onClick={() => onSelect?.(userImage.id)}
+                      onClick={() => {
+                        onSelect?.(userImage.id);
+                        onSlotSelect?.(slot.id);
+                      }}
                       onWheel={(e) => handleImageWheel(e, userImage.id)}
                       onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
                       onDragEnd={(e) => {
@@ -832,7 +835,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     }}
                   />
                   
-                  {/* 이미지가 있는 슬롯의 선택 표시 및 클릭 영역 */}
+                  {/* 이미지가 있는 슬롯의 선택 표시 */}
                   {hasImage && (
                     <Rect
                       x={slot.x}
@@ -842,8 +845,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       fill="transparent"
                       stroke={isSelected ? "#ff6b35" : "transparent"}
                       strokeWidth={3}
-                      listening={true}
-                      onClick={() => onSlotSelect?.(slot.id)}
+                      listening={false}
                     />
                   )}
                 
