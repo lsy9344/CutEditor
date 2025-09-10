@@ -295,7 +295,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (isNaN(clampedScale)) return;
     
     // 스케일 적용 + 포인터 기준 위치 보정
-    let nextTransform: Partial<UserImage> = { scaleX: clampedScale, scaleY: clampedScale };
+    const nextTransform: Partial<UserImage> = { scaleX: clampedScale, scaleY: clampedScale };
 
     if (slot && displayWidth && displayHeight) {
       const targetNode = e.target as unknown as Konva.Node;

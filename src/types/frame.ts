@@ -60,8 +60,8 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 10, y: 47, width: 463, height: 274 },
-      { id: "slot-2", x: 10, y: 332, width: 463, height: 274 }
+      { id: "slot-1", x: 9, y: 47, width: 465, height: 274 },
+      { id: "slot-2", x: 9, y: 332, width: 465, height: 274 }
     ]
   },
   // 호환: 키워드 미기재 시 세로로 간주

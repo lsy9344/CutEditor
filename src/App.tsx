@@ -2,7 +2,6 @@ import React, { useState } from 'react'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
 import { SidebarRight } from './ui/SidebarRight'
-import { WizardFooter } from './ui/WizardFooter'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import type { FrameType, UserImage } from './types/frame'
@@ -98,7 +97,6 @@ function App() {
         <SidebarRight />
       </div>
       
-      <WizardFooter />
     </div>
   )
 }
