@@ -8,6 +8,16 @@ import type { FrameType, UserImage } from './types/frame'
 
 function App() {
   const [editorState, setEditorState] = useState<EditorState>(createInitialState())
+  const [texts, setTexts] = useState<Array<{
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }>>([]);
 
   const handleSelect = (id: string | null) => {
     setEditorState(prev => ({ ...prev, selection: id }))
@@ -70,6 +80,23 @@ function App() {
     setEditorState(prev => ({ ...prev, zoom }))
   }
 
+  const handleTextInsert = (textData: {
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }) => {
+    const newText = {
+      id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      ...textData,
+      x: 100, // 기본 위치
+      y: 100
+    };
+    
+    setTexts(prev => [...prev, newText]);
+  }
+
   return (
     <div className="app-container">
       <div className="app-main">
@@ -87,6 +114,7 @@ function App() {
           selectedFrame={editorState.selectedFrame}
           userImages={editorState.userImages}
           frameColor={editorState.frameColor}
+          texts={texts}
           onSelect={handleSelect}
           onSlotSelect={handleSlotSelect}
           onZoomChange={handleZoomChange}
@@ -94,7 +122,7 @@ function App() {
           onImageTransform={handleImageTransform}
           onFrameColorChange={handleFrameColorChange}
         />
-        <SidebarRight />
+        <SidebarRight onTextInsert={handleTextInsert} />
       </div>
       
     </div>

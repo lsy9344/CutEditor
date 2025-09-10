@@ -13,6 +13,16 @@ export type CanvasStageProps = {
   selectedFrame: FrameType | null;
   userImages: UserImage[];
   frameColor: string;
+  texts?: Array<{
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }>;
   onSelect?: (id: string | null) => void;
   onSlotSelect?: (slotId: string | null) => void;
   onZoomChange?: (zoom: number) => void;
@@ -27,7 +37,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   selectedSlot,
   userImages,
   frameColor,
-  onZoomChange,
+  texts = [],
   onSelect,
   onSlotSelect,
   onImageUpload,
@@ -265,8 +275,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     console.log('[wheel] start', { imageId, hasSlot: !!slot, deltaY: e.evt?.deltaY, hasTransformCb: typeof onImageTransform === 'function' });
     // 상위로 버블링되거나 페이지 스크롤 되지 않도록 차단
     e.evt.preventDefault();
-    // @ts-expect-error: Konva 이벤트 버블 차단
-    e.cancelBubble = true;
+    // Konva 이벤트 버블 차단
+    (e as any).cancelBubble = true;
 
     const userImage = userImages.find(img => img.id === imageId);
     if (!userImage) return;
@@ -360,19 +370,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const scaledW = displayWidth * clampedScale;
       const scaledH = displayHeight * clampedScale;
       // 직전 상태(구 스케일)에서 이미지가 슬롯을 벗어나 있었는지 축별로 판단
-      const prevScaledW = displayWidth * oldScale;
       const prevScaledH = displayHeight * oldScale;
-      const prevInsideMinX = slot.x;
-      const prevInsideMaxX = slot.x + slot.width - prevScaledW;
       const prevInsideMinY = slot.y;
       const prevInsideMaxY = slot.y + slot.height - prevScaledH;
-      const wasOverflowX = imgX < prevInsideMinX || imgX > prevInsideMaxX;
       const wasOverflowY = imgY < prevInsideMinY || imgY > prevInsideMaxY;
 
-      let minX: number, maxX: number, minY: number, maxY: number;
+      let minY: number, maxY: number;
       // X축: 이미지가 슬롯보다 작아도 좌우 외부 이동을 허용
-      minX = slot.x - scaledW;
-      maxX = slot.x + slot.width;
+      const minX = slot.x - scaledW;
+      const maxX = slot.x + slot.width;
 
       if (wasOverflowY) {
         minY = slot.y - scaledH;
@@ -423,11 +429,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (isNaN(scaledWidth) || isNaN(scaledHeight)) return;
     
     // 슬롯 내에서 이미지가 움직일 수 있는 범위 계산
-    let minX, maxX, minY, maxY;
+    let minY, maxY;
     
     // X축: 이미지가 슬롯보다 작아도 좌우 외부 이동 허용
-    minX = slot.x - scaledWidth;
-    maxX = slot.x + slot.width;
+    const minX = slot.x - scaledWidth;
+    const maxX = slot.x + slot.width;
     
     if (scaledHeight <= slot.height) {
       // 이미지가 슬롯보다 작거나 같은 경우: 슬롯 내에서만 이동
@@ -945,6 +951,24 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 fill="white"
               />
             )}
+          </Layer>
+
+          {/* 텍스트 레이어 (프레임 위에 표시) */}
+          <Layer>
+            {texts.map((textItem) => (
+              <Text
+                key={textItem.id}
+                x={textItem.x}
+                y={textItem.y}
+                text={textItem.text}
+                fontSize={textItem.fontSize}
+                fontFamily={textItem.fontFamily}
+                fill={textItem.fontColor}
+                fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                draggable={true}
+                onClick={() => onSelect?.(textItem.id)}
+              />
+            ))}
           </Layer>
 
           {/* 슬롯 인터랙션 레이어 (최상위) */}

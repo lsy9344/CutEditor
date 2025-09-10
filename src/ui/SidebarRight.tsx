@@ -1,8 +1,16 @@
 import React, { useState, useRef } from "react";
 
-export type SidebarRightProps = Record<string, never>;
+export type SidebarRightProps = {
+  onTextInsert?: (textData: {
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }) => void;
+};
 
-export const SidebarRight: React.FC<SidebarRightProps> = () => {
+export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
   const [isItalic, setIsItalic] = useState(false);
@@ -16,6 +24,21 @@ export const SidebarRight: React.FC<SidebarRightProps> = () => {
       textInputRef.current.value = value;
       textInputRef.current.focus();
     }
+  };
+
+  const handleTextInsert = () => {
+    if (!textInput.trim()) {
+      alert("텍스트를 입력해주세요.");
+      return;
+    }
+    
+    onTextInsert?.({
+      text: textInput,
+      fontSize: textSize,
+      fontFamily,
+      fontColor,
+      isItalic,
+    });
   };
 
   return (
@@ -71,7 +94,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = () => {
           
           <div className="linear-flex linear-mt-4">
             <button className="linear-button linear-button--secondary">삭제</button>
-            <button className="linear-button linear-button--primary">삽입</button>
+            <button className="linear-button linear-button--primary" onClick={handleTextInsert}>삽입</button>
           </div>
         </div>
       </aside>
