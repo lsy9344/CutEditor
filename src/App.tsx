@@ -18,9 +18,17 @@ function App() {
     fontColor: string;
     isItalic: boolean;
   }>>([]);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
 
   const handleSelect = (id: string | null) => {
     setEditorState(prev => ({ ...prev, selection: id }))
+    
+    // 텍스트 선택 상태 업데이트
+    if (id && texts.some(text => text.id === id)) {
+      setSelectedTextId(id)
+    } else {
+      setSelectedTextId(null)
+    }
   }
 
   const handleSlotSelect = (slotId: string | null) => {
@@ -95,6 +103,30 @@ function App() {
     };
     
     setTexts(prev => [...prev, newText]);
+    setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
+  }
+
+
+  const handleTextMove = (textId: string, x: number, y: number) => {
+    setTexts(prev => 
+      prev.map(text => 
+        text.id === textId ? { ...text, x, y } : text
+      )
+    );
+  }
+
+  const handleTextUpdate = (textId: string, updates: Partial<{
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }>) => {
+    setTexts(prev => 
+      prev.map(text => 
+        text.id === textId ? { ...text, ...updates } : text
+      )
+    );
   }
 
   return (
@@ -108,7 +140,7 @@ function App() {
         />
         <CanvasStage 
           template={editorState.template}
-          selection={editorState.selection}
+          selection={selectedTextId}
           selectedSlot={editorState.selectedSlot}
           zoom={editorState.zoom}
           selectedFrame={editorState.selectedFrame}
@@ -121,8 +153,14 @@ function App() {
           onImageUpload={handleImageUpload}
           onImageTransform={handleImageTransform}
           onFrameColorChange={handleFrameColorChange}
+          onTextMove={handleTextMove}
+          onTextUpdate={handleTextUpdate}
         />
-        <SidebarRight onTextInsert={handleTextInsert} />
+        <SidebarRight 
+          selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}
+          onTextInsert={handleTextInsert}
+          onTextUpdate={handleTextUpdate}
+        />
       </div>
       
     </div>

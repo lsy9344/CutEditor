@@ -3,7 +3,7 @@
 
 import type { WorkerIn, WorkerOut } from "../export/messages";
 
-declare const self: DedicatedWorkerGlobalScope;
+declare const self: Worker;
 
 self.onmessage = async (ev: MessageEvent<WorkerIn>) => {
   const msg = ev.data;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Group, Text } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line } from "react-konva";
 import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
@@ -29,9 +29,18 @@ export type CanvasStageProps = {
   onImageUpload?: (file: File, slotId: string) => void;
   onImageTransform?: (imageId: string, transform: Partial<UserImage>) => void;
   onFrameColorChange?: (color: string) => void;
+  onTextMove?: (textId: string, x: number, y: number) => void;
+  onTextUpdate?: (textId: string, updates: Partial<{
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }>) => void;
 };
 
 export const CanvasStage: React.FC<CanvasStageProps> = ({ 
+  selection,
   zoom, 
   selectedFrame,
   selectedSlot,
@@ -42,7 +51,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onSlotSelect,
   onImageUpload,
   onImageTransform,
-  onFrameColorChange
+  onFrameColorChange,
+  onTextMove,
+  onTextUpdate // eslint-disable-line @typescript-eslint/no-unused-vars
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -276,7 +287,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     // 상위로 버블링되거나 페이지 스크롤 되지 않도록 차단
     e.evt.preventDefault();
     // Konva 이벤트 버블 차단
-    (e as any).cancelBubble = true;
+    (e as { cancelBubble?: boolean }).cancelBubble = true;
 
     const userImage = userImages.find(img => img.id === imageId);
     if (!userImage) return;
@@ -366,30 +377,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       let newImgX = (px !== undefined ? px : (imgX + localX * oldScale)) - localX * clampedScale;
       let newImgY = (py !== undefined ? py : (imgY + localY * oldScale)) - localY * clampedScale;
 
-      // 슬롯 경계로 위치 클램프
+      // 슬롯 경계로 위치 클램프 - X축과 Y축 모두 자유롭게 이동 허용
       const scaledW = displayWidth * clampedScale;
       const scaledH = displayHeight * clampedScale;
-      // 직전 상태(구 스케일)에서 이미지가 슬롯을 벗어나 있었는지 축별로 판단
-      const prevScaledH = displayHeight * oldScale;
-      const prevInsideMinY = slot.y;
-      const prevInsideMaxY = slot.y + slot.height - prevScaledH;
-      const wasOverflowY = imgY < prevInsideMinY || imgY > prevInsideMaxY;
-
-      let minY: number, maxY: number;
-      // X축: 이미지가 슬롯보다 작아도 좌우 외부 이동을 허용
+      
+      // X축: 이미지가 슬롯 밖으로도 자유롭게 이동 허용
       const minX = slot.x - scaledW;
       const maxX = slot.x + slot.width;
-
-      if (wasOverflowY) {
-        minY = slot.y - scaledH;
-        maxY = slot.y + slot.height;
-      } else if (scaledH <= slot.height) {
-        minY = slot.y;
-        maxY = slot.y + slot.height - scaledH;
-      } else {
-        minY = slot.y - scaledH;
-        maxY = slot.y + slot.height;
-      }
+      
+      // Y축: X축과 동일하게 이미지가 슬롯 밖으로도 자유롭게 이동 허용
+      const minY = slot.y - scaledH;
+      const maxY = slot.y + slot.height;
       newImgX = Math.max(minX, Math.min(maxX, newImgX));
       newImgY = Math.max(minY, Math.min(maxY, newImgY));
 
@@ -428,22 +426,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     // NaN 체크
     if (isNaN(scaledWidth) || isNaN(scaledHeight)) return;
     
-    // 슬롯 내에서 이미지가 움직일 수 있는 범위 계산
-    let minY, maxY;
+    // 슬롯 밖으로 자유롭게 이미지 이동 허용 (X축과 Y축 동일하게)
     
-    // X축: 이미지가 슬롯보다 작아도 좌우 외부 이동 허용
+    // X축: 이미지가 슬롯 밖으로도 자유롭게 이동 가능
     const minX = slot.x - scaledWidth;
     const maxX = slot.x + slot.width;
     
-    if (scaledHeight <= slot.height) {
-      // 이미지가 슬롯보다 작거나 같은 경우: 슬롯 내에서만 이동
-      minY = slot.y;
-      maxY = slot.y + slot.height - scaledHeight;
-    } else {
-      // 이미지가 슬롯보다 큰 경우: 슬롯 밖으로도 이동 허용(완전 이탈 포함)
-      minY = slot.y - scaledHeight;
-      maxY = slot.y + slot.height;
-    }
+    // Y축: X축과 동일하게 이미지가 슬롯 밖으로도 자유롭게 이동 가능
+    const minY = slot.y - scaledHeight;
+    const maxY = slot.y + slot.height;
     
     // NaN 체크
     if (isNaN(minX) || isNaN(maxX) || isNaN(minY) || isNaN(maxY)) return;
@@ -953,22 +944,85 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             )}
           </Layer>
 
+          {/* 가이드라인 레이어 (프레임 위에 표시) */}
+          <Layer>
+            {(() => {
+              const isHorizontal = Boolean(selectedFrame && /v$/.test(selectedFrame));
+              const centerX = frameLayout.canvasWidth / 2;
+              const centerY = frameLayout.canvasHeight / 2;
+              
+              if (isHorizontal) {
+                // 가로 프레임: 가로 중앙에 세로선 그리기
+                return (
+                  <Line
+                    points={[centerX, 0, centerX, frameLayout.canvasHeight]}
+                    stroke="rgba(128, 128, 128, 0.5)"
+                    strokeWidth={1}
+                    listening={false}
+                  />
+                );
+              } else {
+                // 세로 프레임: 세로 중앙에 가로선 그리기
+                return (
+                  <Line
+                    points={[0, centerY, frameLayout.canvasWidth, centerY]}
+                    stroke="rgba(128, 128, 128, 0.5)"
+                    strokeWidth={1}
+                    listening={false}
+                  />
+                );
+              }
+            })()}
+          </Layer>
+
           {/* 텍스트 레이어 (프레임 위에 표시) */}
           <Layer>
-            {texts.map((textItem) => (
-              <Text
-                key={textItem.id}
-                x={textItem.x}
-                y={textItem.y}
-                text={textItem.text}
-                fontSize={textItem.fontSize}
-                fontFamily={textItem.fontFamily}
-                fill={textItem.fontColor}
-                fontStyle={textItem.isItalic ? 'italic' : 'normal'}
-                draggable={true}
-                onClick={() => onSelect?.(textItem.id)}
-              />
-            ))}
+            {texts.map((textItem) => {
+              const isSelected = selection === textItem.id;
+              return (
+                <Group key={textItem.id}>
+                  <Text
+                    x={textItem.x}
+                    y={textItem.y}
+                    text={textItem.text}
+                    fontSize={textItem.fontSize}
+                    fontFamily={textItem.fontFamily}
+                    fill={textItem.fontColor}
+                    fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                    draggable={true}
+                    onClick={() => onSelect?.(textItem.id)}
+                    onDragEnd={(e) => {
+                      const newX = e.target.x();
+                      const newY = e.target.y();
+                      onTextMove?.(textItem.id, newX, newY);
+                    }}
+                  />
+                  {/* 선택된 텍스트에 테두리 표시 */}
+                  {isSelected && (
+                    <Rect
+                      x={textItem.x - 2}
+                      y={textItem.y - 2}
+                      width={(() => {
+                        // 간단한 텍스트 너비 계산 (더 정확한 방법)
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                          ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
+                          const metrics = ctx.measureText(textItem.text);
+                          return metrics.width + 4;
+                        }
+                        return (textItem.text.length * textItem.fontSize * 0.6) + 4;
+                      })()}
+                      height={textItem.fontSize + 4}
+                      fill="transparent"
+                      stroke="#ff6b35"
+                      strokeWidth={2}
+                      listening={false}
+                    />
+                  )}
+                </Group>
+              );
+            })}
           </Layer>
 
           {/* 슬롯 인터랙션 레이어 (최상위) */}

@@ -1,6 +1,16 @@
 import React, { useState, useRef } from "react";
 
 export type SidebarRightProps = {
+  selectedText?: {
+    id: string;
+    text: string;
+    x: number;
+    y: number;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  };
   onTextInsert?: (textData: {
     text: string;
     fontSize: number;
@@ -8,15 +18,33 @@ export type SidebarRightProps = {
     fontColor: string;
     isItalic: boolean;
   }) => void;
+  onTextUpdate?: (textId: string, updates: Partial<{
+    text: string;
+    fontSize: number;
+    fontFamily: string;
+    fontColor: string;
+    isItalic: boolean;
+  }>) => void;
 };
 
-export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
+export const SidebarRight: React.FC<SidebarRightProps> = ({ 
+  selectedText,
+  onTextInsert,
+  onTextUpdate
+}) => {
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
   const [isItalic, setIsItalic] = useState(false);
   const [fontFamily, setFontFamily] = useState("Inter");
   const [fontColor, setFontColor] = useState("#000000");
   const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 선택된 텍스트의 속성을 표시
+  const displayedTextSize = selectedText?.fontSize ?? textSize;
+  const displayedFontFamily = selectedText?.fontFamily ?? fontFamily;
+  const displayedFontColor = selectedText?.fontColor ?? fontColor;
+  const displayedIsItalic = selectedText?.isItalic ?? isItalic;
+
 
   const handleDescriptionSelect = (value: string) => {
     if (textInputRef.current) {
@@ -32,6 +60,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
       return;
     }
     
+    // 항상 새 텍스트 삽입
     onTextInsert?.({
       text: textInput,
       fontSize: textSize,
@@ -40,6 +69,36 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
       isItalic,
     });
   };
+
+  const handleTextSizeChange = (newSize: number) => {
+    setTextSize(newSize);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { fontSize: newSize });
+    }
+  };
+
+  const handleFontFamilyChange = (newFontFamily: string) => {
+    setFontFamily(newFontFamily);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { fontFamily: newFontFamily });
+    }
+  };
+
+  const handleFontColorChange = (newColor: string) => {
+    setFontColor(newColor);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { fontColor: newColor });
+    }
+  };
+
+  const handleItalicToggle = () => {
+    const newIsItalic = !displayedIsItalic;
+    setIsItalic(newIsItalic);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { isItalic: newIsItalic });
+    }
+  };
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
@@ -94,7 +153,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
           
           <div className="linear-flex linear-mt-4">
             <button className="linear-button linear-button--secondary">삭제</button>
-            <button className="linear-button linear-button--primary" onClick={handleTextInsert}>삽입</button>
+            <button className="linear-button linear-button--primary" onClick={handleTextInsert}>
+              삽입
+            </button>
           </div>
         </div>
       </aside>
@@ -109,8 +170,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
               type="number"
               className="linear-input linear-input--number linear-mt-2"
               style={{ borderColor: 'var(--linear-neutral-300)', width: '60px' }}
-              value={textSize}
-              onChange={(e) => setTextSize(Number(e.target.value))}
+              value={displayedTextSize}
+              onChange={(e) => handleTextSizeChange(Number(e.target.value))}
               min="1"
               max="99"
               placeholder="16"
@@ -123,8 +184,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
             <select 
               className="linear-select linear-mt-2"
               style={{ borderColor: 'var(--linear-neutral-300)' }}
-              value={fontFamily}
-              onChange={(e) => setFontFamily(e.target.value)}
+              value={displayedFontFamily}
+              onChange={(e) => handleFontFamilyChange(e.target.value)}
             >
               <option value="Inter">Inter</option>
               <option value="Noto Sans KR">Noto Sans KR</option>
@@ -146,8 +207,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
                 height: '36px',
                 padding: '2px'
               }}
-              value={fontColor}
-              onChange={(e) => setFontColor(e.target.value)}
+              value={displayedFontColor}
+              onChange={(e) => handleFontColorChange(e.target.value)}
             />
           </label>
           
@@ -155,9 +216,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({ onTextInsert }) => {
           <label>
             <p>기울임</p>
             <button 
-              className={`linear-button linear-mt-2 ${isItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
+              className={`linear-button linear-mt-2 ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
               style={{ width: '60px', fontSize: '14px' }}
-              onClick={() => setIsItalic(!isItalic)}
+              onClick={handleItalicToggle}
             >
               <em>/</em>
             </button>
