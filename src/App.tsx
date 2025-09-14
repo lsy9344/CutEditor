@@ -40,7 +40,20 @@ function App() {
   }
 
   const handleFrameSelect = (frameType: FrameType | null) => {
-    setEditorState(prev => ({ ...prev, selectedFrame: frameType }))
+    setEditorState(prev => {
+      const changed = frameType !== prev.selectedFrame;
+      return {
+        ...prev,
+        selectedFrame: frameType,
+        // 다른 프레임 버튼 클릭 시 슬롯 이미지 초기화 및 선택 해제
+        userImages: changed ? [] : prev.userImages,
+        selectedSlot: changed ? null : prev.selectedSlot,
+        selection: changed ? null : prev.selection,
+      };
+    })
+    // 텍스트 및 텍스트 선택 상태 초기화
+    setTexts([]);
+    setSelectedTextId(null);
   }
 
   const handleImageUpload = (file: File, slotId: string) => {

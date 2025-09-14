@@ -48,8 +48,8 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: HORIZONTAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 8, y: 50, width: 384, height: 180 },
-      { id: "slot-2", x: 50, y: 270, width: 300, height: 180 }
+      { id: "slot-1", x: 46, y: 10, width: 285, height: 426 },
+      { id: "slot-2", x: 330, y: 10, width: 276, height: 464 }
     ]
   },
   "2v": {
