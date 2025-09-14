@@ -1,10 +1,12 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
+import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
 import { SidebarRight } from './ui/SidebarRight'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import type { FrameType, UserImage } from './types/frame'
+import { FRAME_LAYOUTS } from './types/frame'
 
 function App() {
   const [editorState, setEditorState] = useState<EditorState>(createInitialState())
@@ -19,6 +21,8 @@ function App() {
     isItalic: boolean;
   }>>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [exportMode, setExportMode] = useState<boolean>(false);
+  const stageRef = useRef<Konva.Stage | null>(null);
 
   const handleSelect = (id: string | null) => {
     setEditorState(prev => ({ ...prev, selection: id }))
@@ -129,6 +133,55 @@ function App() {
     );
   }
 
+  // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
+  const handleExport = async () => {
+    const frameType = editorState.selectedFrame;
+    if (!frameType) {
+      alert('프레임을 먼저 선택해주세요.');
+      return;
+    }
+    // 목표 해상도 계산 (docs/task/export_functionality.md: 1200 DPI, 10x15cm)
+    const isHorizontal = /h$/.test(frameType);
+    const targetDpi = 1200;
+    const cmToPx = (cm: number) => Math.round((cm * targetDpi) / 2.54);
+    const targetWidthPx = cmToPx(isHorizontal ? 15 : 10);
+    const targetHeightPx = cmToPx(isHorizontal ? 10 : 15);
+
+    // Stage 준비 및 오버레이 제거
+    setExportMode(true);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
+    try {
+      const stage = stageRef.current;
+      if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
+
+      // 현재 Stage 크기 기준으로 pixelRatio 계산
+      const stageW = stage.width();
+      const stageH = stage.height();
+      const ratioX = targetWidthPx / stageW;
+      const ratioY = targetHeightPx / stageH;
+      // 비율 차이가 있을 경우 평균치가 아닌 X 기준으로 맞추고 높이는 자연스레 스케일됨
+      const pixelRatio = ratioX;
+
+      // 고해상도 PNG 추출 (lossless)
+      const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
+
+      // 다운로드 트리거
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      a.href = dataUrl;
+      a.download = `cut_export_${frameType}_${ts}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      console.error('Export 실패:', e);
+      alert('내보내기에 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setExportMode(false);
+    }
+  }
+
   return (
     <div className="app-container">
       <div className="app-main">
@@ -146,6 +199,8 @@ function App() {
           selectedFrame={editorState.selectedFrame}
           userImages={editorState.userImages}
           frameColor={editorState.frameColor}
+          exportMode={exportMode}
+          stageRefExternal={stageRef}
           texts={texts}
           onSelect={handleSelect}
           onSlotSelect={handleSlotSelect}
@@ -160,6 +215,7 @@ function App() {
           selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}
           onTextInsert={handleTextInsert}
           onTextUpdate={handleTextUpdate}
+          onExport={handleExport}
         />
       </div>
       

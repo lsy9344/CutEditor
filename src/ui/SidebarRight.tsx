@@ -25,12 +25,14 @@ export type SidebarRightProps = {
     fontColor: string;
     isItalic: boolean;
   }>) => void;
+  onExport?: () => void;
 };
 
 export const SidebarRight: React.FC<SidebarRightProps> = ({ 
   selectedText,
   onTextInsert,
-  onTextUpdate
+  onTextUpdate,
+  onExport
 }) => {
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
@@ -229,7 +231,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       {/* 세 번째 카드: 내보내기 */}
       <aside className="linear-card">
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <button className="linear-button linear-button--primary">내보내기</button>
+          <button className="linear-button linear-button--primary" onClick={onExport}>내보내기</button>
         </div>
       </aside>
     </div>

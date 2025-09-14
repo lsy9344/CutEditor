@@ -13,6 +13,8 @@ export type CanvasStageProps = {
   selectedFrame: FrameType | null;
   userImages: UserImage[];
   frameColor: string;
+  exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
+  stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
   texts?: Array<{
     id: string;
     text: string;
@@ -46,6 +48,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   selectedSlot,
   userImages,
   frameColor,
+  exportMode = false,
+  stageRefExternal,
   texts = [],
   onSelect,
   onSlotSelect,
@@ -804,7 +808,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           </div>
         </div>
         <Stage
-          ref={stageRef}
+          ref={(node) => {
+            stageRef.current = node;
+            if (stageRefExternal) {
+              // 외부에서도 동일 참조를 사용할 수 있게 전달
+              (stageRefExternal as React.MutableRefObject<Konva.Stage | null>).current = node;
+            }
+          }}
           width={frameLayout.canvasWidth * zoom}
           height={frameLayout.canvasHeight * zoom}
           scaleX={zoom}
@@ -945,35 +955,37 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           </Layer>
 
           {/* 가이드라인 레이어 (프레임 위에 표시) */}
-          <Layer>
-            {(() => {
-              const isHorizontal = Boolean(selectedFrame && /v$/.test(selectedFrame));
-              const centerX = frameLayout.canvasWidth / 2;
-              const centerY = frameLayout.canvasHeight / 2;
-              
-              if (isHorizontal) {
-                // 가로 프레임: 가로 중앙에 세로선 그리기
-                return (
-                  <Line
-                    points={[centerX, 0, centerX, frameLayout.canvasHeight]}
-                    stroke="rgba(128, 128, 128, 0.5)"
-                    strokeWidth={1}
-                    listening={false}
-                  />
-                );
-              } else {
-                // 세로 프레임: 세로 중앙에 가로선 그리기
-                return (
-                  <Line
-                    points={[0, centerY, frameLayout.canvasWidth, centerY]}
-                    stroke="rgba(128, 128, 128, 0.5)"
-                    strokeWidth={1}
-                    listening={false}
-                  />
-                );
-              }
-            })()}
-          </Layer>
+          {!exportMode && (
+            <Layer>
+              {(() => {
+                const isHorizontal = Boolean(selectedFrame && /v$/.test(selectedFrame));
+                const centerX = frameLayout.canvasWidth / 2;
+                const centerY = frameLayout.canvasHeight / 2;
+                
+                if (isHorizontal) {
+                  // 가로 프레임: 가로 중앙에 세로선 그리기
+                  return (
+                    <Line
+                      points={[centerX, 0, centerX, frameLayout.canvasHeight]}
+                      stroke="rgba(128, 128, 128, 0.5)"
+                      strokeWidth={1}
+                      listening={false}
+                    />
+                  );
+                } else {
+                  // 세로 프레임: 세로 중앙에 가로선 그리기
+                  return (
+                    <Line
+                      points={[0, centerY, frameLayout.canvasWidth, centerY]}
+                      stroke="rgba(128, 128, 128, 0.5)"
+                      strokeWidth={1}
+                      listening={false}
+                    />
+                  );
+                }
+              })()}
+            </Layer>
+          )}
 
           {/* 텍스트 레이어 (프레임 위에 표시) */}
           <Layer>
@@ -997,8 +1009,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       onTextMove?.(textItem.id, newX, newY);
                     }}
                   />
-                  {/* 선택된 텍스트에 테두리 표시 */}
-                  {isSelected && (
+                  {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
+                  {isSelected && !exportMode && (
                     <Rect
                       x={textItem.x - 2}
                       y={textItem.y - 2}
@@ -1040,9 +1052,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     y={slot.y}
                     width={slot.width}
                     height={slot.height}
-                    fill={hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)')}
-                    stroke={hasImage ? 'transparent' : (isSelected ? '#ff6b35' : (draggedSlotId === slot.id ? '#007bff' : '#ccc'))}
-                    strokeWidth={isSelected ? 3 : 2}
+                    fill={exportMode ? 'transparent' : (hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)'))}
+                    stroke={exportMode ? 'transparent' : (hasImage ? 'transparent' : (isSelected ? '#ff6b35' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')))}
+                    strokeWidth={exportMode ? 0 : (isSelected ? 3 : 2)}
                     listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
                     onMouseEnter={() => {
                       if (!hasImage) {
@@ -1074,7 +1086,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       width={slot.width}
                       height={slot.height}
                       fill="transparent"
-                      stroke={isSelected ? "#ff6b35" : "transparent"}
+                      stroke={!exportMode && isSelected ? "#ff6b35" : "transparent"}
                       strokeWidth={3}
                       listening={false}
                     />
