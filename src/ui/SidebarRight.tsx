@@ -52,18 +52,30 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   // 동적 폰트 로딩
   const { fonts, isLoading: fontsLoading } = useFonts();
 
-  // 폰트 목록이 로딩되면, 선택된 텍스트가 없을 때 첫 번째 폰트를 기본값으로 설정
+  // 폰트 목록이 로딩되면, 선택된 텍스트가 없을 때 NanumSquareNeo-aLt을 기본값으로 설정
   useEffect(() => {
     if (!fontsLoading && fonts.length > 0 && !selectedText) {
       const names = fonts.map(f => f.name);
       if (!names.includes(fontFamily)) {
-        setFontFamily(names[0]);
+        // NanumSquareNeo-aLt이 있으면 기본값으로 사용, 없으면 첫 번째 폰트 사용
+        const defaultFont = names.includes('NanumSquareNeo-aLt') ? 'NanumSquareNeo-aLt' : names[0];
+        setFontFamily(defaultFont);
       }
     }
   }, [fontsLoading, fonts, selectedText]);
 
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 너가 있어 더 아름다워♥, 2025.09.13';
+
+  // ESC 키로 모달 닫기
+  useEffect(() => {
+    if (!isFontPickerOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFontPickerOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isFontPickerOpen]);
 
   // 선택된 텍스트의 속성을 표시
   const displayedTextSize = selectedText?.fontSize ?? textSize;
