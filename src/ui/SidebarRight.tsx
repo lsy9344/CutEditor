@@ -45,6 +45,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   const [isItalic, setIsItalic] = useState(false);
   const [isVertical, setIsVertical] = useState(false);
   const [fontFamily, setFontFamily] = useState("");
+  const [isFontPickerOpen, setFontPickerOpen] = useState(false);
   const [fontColor, setFontColor] = useState("#000000");
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   
@@ -60,6 +61,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       }
     }
   }, [fontsLoading, fonts, selectedText]);
+
+  // 고정 미리보기 문구
+  const fontPreviewText = '내 세상은 너가 있어 더 아름다워♥, 2025.09.13';
 
   // 선택된 텍스트의 속성을 표시
   const displayedTextSize = selectedText?.fontSize ?? textSize;
@@ -231,33 +235,28 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             />
           </label>
           
-          {/* 상단 오른쪽: 폰트 */}
+          {/* 상단 오른쪽: 폰트 (모달 트리거) */}
           <label>
             <p>폰트</p>
-            <select 
-              className="linear-select linear-mt-2"
-              style={{ borderColor: 'var(--linear-neutral-300)' }}
-              value={displayedFontFamily}
-              onChange={(e) => handleFontFamilyChange(e.target.value)}
-              disabled={fontsLoading}
-            >
-              {fontsLoading ? (
-                <option value="">폰트 로딩 중...</option>
-              ) : (
-                fonts.map((font) => (
-                  <option
-                    key={font.name}
-                    value={font.name}
-                    // 파일명(확장자 제외)을 해당 폰트로 미리보기
-                    style={{ fontFamily: font.name, fontSize: '14px' }}
-                  >
-                    {font.displayName}
-                  </option>
-                ))
-              )}
-            </select>
+            <div className="linear-flex" style={{ alignItems: 'center' }}>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary linear-mt-2"
+                style={{
+                  border: '1px solid var(--linear-neutral-400)',
+                  padding: '6px 10px',
+                  fontSize: '14px',
+                  fontFamily: displayedFontFamily || 'var(--linear-font-family)'
+                }}
+                onClick={() => !fontsLoading && setFontPickerOpen(true)}
+                disabled={fontsLoading}
+                title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
+              >
+                {fontsLoading ? '폰트 로딩 중…' : (displayedFontFamily || '폰트 선택')}
+              </button>
+            </div>
           </label>
-          
+        
           {/* 하단 왼쪽: 폰트색상 */}
           <label>
             <p>폰트색상</p>
@@ -299,6 +298,113 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           </label>
         </div>
       </aside>
+
+      {/* 폰트 선택 모달 */}
+      {isFontPickerOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="linear-fade-in"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'var(--linear-backdrop)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+          onClick={() => setFontPickerOpen(false)}
+        >
+          <div
+            className="linear-card"
+            style={{
+              width: 'min(720px, 90vw)',
+              maxHeight: '80vh',
+              overflow: 'hidden',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="linear-flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>폰트 선택</h3>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => setFontPickerOpen(false)}
+              >
+                닫기
+              </button>
+            </div>
+            <div style={{ marginTop: '12px', fontSize: '14px', color: 'var(--linear-secondary-400)' }}>
+              파일명(확장자 제외)을 해당 폰트로 표시합니다. 클릭하면 적용됩니다.
+            </div>
+            <div
+              role="listbox"
+              aria-label="폰트 목록"
+              style={{
+                marginTop: '12px',
+                maxHeight: '60vh',
+                overflowY: 'auto',
+                border: '1px solid var(--linear-neutral-500)',
+                borderRadius: 'var(--linear-radius-sm)'
+              }}
+            >
+              {fonts.map((font) => (
+                <button
+                  key={font.name}
+                  role="option"
+                  aria-selected={font.name === displayedFontFamily}
+                  className="linear-button linear-button--secondary"
+                  style={{
+                    width: '100%',
+                    justifyContent: 'flex-start',
+                    padding: '10px 12px',
+                    borderBottom: '1px solid var(--linear-neutral-500)',
+                    fontSize: '16px',
+                    background: font.name === displayedFontFamily ? 'var(--linear-overlay-light)' : 'transparent'
+                  }}
+                  onClick={() => {
+                    handleFontFamilyChange(font.name);
+                    setFontPickerOpen(false);
+                  }}
+                  title={`${font.displayName}`}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
+                    <span
+                      style={{
+                        fontFamily: font.name,
+                        fontSize: '16px',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        flex: 1
+                      }}
+                    >
+                      {fontPreviewText}
+                    </span>
+                    <span
+                      style={{
+                        color: 'var(--linear-secondary-400)',
+                        fontSize: '12px',
+                        fontFamily: 'var(--linear-font-family)',
+                        marginLeft: '8px'
+                      }}
+                    >
+                      {font.displayName}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {fonts.length === 0 && (
+                <div style={{ padding: '12px', color: 'var(--linear-secondary-400)', fontSize: '14px' }}>
+                  사용할 수 있는 폰트가 없습니다. public/font 폴더에 .ttf를 추가해 주세요.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 세 번째 카드: 내보내기 */}
       <aside className="linear-card">
