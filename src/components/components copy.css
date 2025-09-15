@@ -8,205 +8,102 @@
    CSS 커스텀 프로퍼티 (Design Tokens)
    ================================ */
 
-   :root {
-    /* ================================
-    새로운 테마 색상 시스템 (다크 모드 기준)
-    ================================ */
-    
-    /* Primary Colors - 새로운 테마의 메인 색상 */
-    --linear-primary-500: oklch(60.5% 0.11 25.3); /* 새 기본 색상 (dark의 --primary) */
-    --linear-primary-hover: oklch(67.5% 0.11 25.3);    /* 호버 시 약간 밝게 (조정값) */
-    --linear-primary-active: oklch(53.5% 0.11 25.3); /* 클릭 시 약간 어둡게 (조정값) */
+:root {
+  /* 색상 시스템 */
   
-    /* Neutral Colors - 배경 및 기본 텍스트 색상 */
-    --linear-neutral-900: oklch(0.1776 0 0);        /* 메인 배경 (dark의 --background) */
-    --linear-neutral-700: oklch(0.3163 0.0190 63.6992); /* 서브 배경 (dark의 --secondary) */
-    --linear-neutral-600: oklch(0.2134 0 0);        /* 카드 배경 (dark의 --card) */
-    --linear-neutral-500: oklch(0.2351 0.0115 91.7467); /* 보더 색상 (dark의 --border) */
-    --linear-neutral-400: oklch(0.4017 0 0);        /* 서브 보더/입력창 (dark의 --input) */
-    --linear-neutral-300: oklch(0.7699 0 0);        /* 비활성 요소 (dark의 --muted-foreground) */
-    
-    /* Text Colors - 텍스트 색상 */
-    --linear-neutral-50: oklch(0.9491 0 0);         /* 주요 텍스트 (dark의 --foreground) */
-    --linear-secondary-400: oklch(0.9247 0.0524 66.1732); /* 일반 텍스트 (dark의 --secondary-foreground) */
-    --linear-secondary-300: oklch(0.9491 0 0);      /* 서브 헤딩 (dark의 --card-foreground) */
-    --linear-secondary-200: oklch(0.7699 0 0);      /* 연한 텍스트 (dark의 --muted-foreground) */
+  /* Primary Colors - 주요 브랜드 색상 */
+  --linear-primary-500: rgb(94, 106, 210);
+  --linear-primary-hover: rgb(84, 96, 200);
+  --linear-primary-active: rgb(74, 86, 190);
   
-    /* Accent Colors - 상태 및 액센트 */
-    --linear-accent-white: oklch(1.0000 0 0);
-    --linear-accent-success: oklch(0.9245 0.0533 67.0855); /* --chart-5 색상 활용 */
-    --linear-accent-success-bg: oklch(0.9245 0.0533 67.0855 / 0.2);
-    --linear-accent-warning: oklch(0.9247 0.0524 66.1732); /* --chart-1 색상 활용 */
-    --linear-accent-warning-bg: oklch(0.9247 0.0524 66.1732 / 0.2);
-    --linear-accent-error: oklch(0.6271 0.1936 33.3390);    /* --destructive 색상 활용 */
-    --linear-accent-error-bg: oklch(0.6271 0.1936 33.3390 / 0.25);
-    --linear-accent-info: oklch(0.3481 0.0219 67.0001);    /* --chart-4 색상 활용 */
-    
-    /* 투명도 레이어 (기존 값 유지 또는 필요시 조정) */
-    --linear-overlay-light: rgba(255, 255, 255, 0.05);
-    --linear-overlay-medium: rgba(255, 255, 255, 0.1);
-    --linear-overlay-dark: rgba(40, 40, 40, 0.2);
-    --linear-overlay-darker: rgba(40, 40, 40, 0.4);
-    --linear-backdrop: rgba(10, 10, 10, 0.8);
+  /* Neutral Colors - 기본 텍스트 및 배경 */
+  --linear-neutral-50: rgb(247, 248, 248);    /* 주요 텍스트 (라이트 모드) */
+  --linear-neutral-900: rgb(8, 9, 10);        /* 메인 배경 (다크 모드) */
+  --linear-neutral-700: rgb(20, 21, 22);      /* 서브 배경 */
+  --linear-neutral-600: rgb(30, 30, 30);      /* 카드 배경 */
+  --linear-neutral-500: rgb(35, 35, 38);      /* 보더 색상 */
+  --linear-neutral-400: rgb(38, 38, 38);      /* 서브 보더 */
+  --linear-neutral-300: rgb(62, 62, 68);      /* 비활성 요소 */
   
-    /* ================================
-    새로운 테마 타이포그래피 & 간격 시스템
-    ================================ */
+  /* Secondary Colors - 보조 텍스트 */
+  --linear-secondary-400: rgb(138, 143, 152);  /* 일반 텍스트 */
+  --linear-secondary-300: rgb(208, 214, 224);  /* 서브 헤딩 */
+  --linear-secondary-200: rgb(230, 230, 230);  /* 연한 텍스트 */
   
-    /* Font Families (새로운 테마의 시스템 폰트로 변경) */
-    --linear-font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
-    
-    /* Font Sizes (기존 값 유지) */
-    --linear-text-6xl: 64px;
-    --linear-text-5xl: 56px;
-    --linear-text-xl: 21px;
-    --linear-text-lg: 17px;
-    --linear-text-base: 16px;
-    --linear-text-sm: 20px;
-    --linear-text-xs: 15px;
-    
-    /* Font Weights (기존 값 유지) */
-    --linear-font-normal: 400;
-    --linear-font-medium: 510;
-    --linear-font-semibold: 538;
-    
-    /* Line Heights (기존 값 유지) */
-    --linear-leading-tight: 1.06;
-    --linear-leading-snug: 1.1;
-    --linear-leading-normal: 1.33;
-    --linear-leading-relaxed: 1.6;
-    --linear-leading-loose: 1.71;
-    
-    /* Letter Spacing (기존 값 유지) */
-    --linear-tracking-tight: -1.82px;
-    --linear-tracking-snug: -1.408px;
-    --linear-tracking-normal: -0.37px;
-    --linear-tracking-wide: -0.182px;
-    
-    /* Spacing System (기존 값 유지) */
-    --linear-space-1: 8px;
-    --linear-space-2: 16px;
-    --linear-space-3: 24px;
-    --linear-space-4: 32px;
-    --linear-space-6: 48px;
-    --linear-space-8: 64px;
-    --linear-space-12: 96px;
-    --linear-space-16: 128px;
-    --linear-space-20: 160px;
-    --linear-space-24: 192px;
-    --linear-space-32: 256px;
+  /* Accent Colors - 상태 및 액센트 */
+  --linear-accent-white: rgb(255, 255, 255);
+  --linear-accent-success: rgb(104, 204, 88);
+  --linear-accent-success-bg: rgba(104, 204, 88, 0.25);
+  --linear-accent-warning: rgb(242, 153, 74);
+  --linear-accent-warning-bg: rgba(242, 153, 74, 0.25);
+  --linear-accent-error: rgb(197, 40, 40);
+  --linear-accent-error-bg: rgba(197, 40, 40, 0.25);
+  --linear-accent-info: rgb(2, 184, 204);
   
-    /* Border Radius (새로운 테마의 값으로 변경) */
-    /* --radius: 0.5rem; 은 8px 입니다. */
-    --linear-radius-sm: 4px;
-    --linear-radius-base: 8px;
-    --linear-radius-lg: 12px;
-    --linear-radius-xl: 16px;
-  }
+  /* 투명도 레이어 */
+  --linear-overlay-light: rgba(255, 255, 255, 0.05);
+  --linear-overlay-medium: rgba(255, 255, 255, 0.1);
+  --linear-overlay-dark: rgba(40, 40, 40, 0.2);
+  --linear-overlay-darker: rgba(40, 40, 40, 0.4);
+  --linear-backdrop: rgba(10, 10, 10, 0.8);
   
-  .dark {
-    /* ================================
-    새로운 테마 색상 시스템 (다크 모드 기준)
-    ================================ */
-    
-    /* Primary Colors - 새로운 테마의 메인 색상 */
-    --primary: var(--linear-primary-500);
-    --primary-foreground: var(--linear-neutral-50);
-    --primary-hover: var(--linear-primary-hover);
-    --primary-active: var(--linear-primary-active);
+  /* Typography System */
   
-    /* Neutral Colors - 배경 및 기본 텍스트 색상 */
-    --background: var(--linear-neutral-900);
-    --secondary: var(--linear-neutral-700);
-    --card: var(--linear-neutral-600);
-    --border: var(--linear-neutral-500);
-    --input: var(--linear-neutral-400);
-    --muted: var(--linear-neutral-300);
+  /* Font Families */
+  --linear-font-family: "Inter Variable", "SF Pro Display", -apple-system, "system-ui", "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
   
-    /* Text Colors - 텍스트 색상 */
-    --foreground: var(--linear-neutral-50);
-    --secondary-foreground: var(--linear-secondary-400);
-    --card-foreground: var(--linear-secondary-300);
-    --muted-foreground: var(--linear-secondary-200);
+  /* Font Sizes */
+  --linear-text-6xl: 64px;      /* H1 */
+  --linear-text-5xl: 56px;      /* H2 */
+  --linear-text-xl: 21px;       /* H3 */
+  --linear-text-lg: 17px;       /* Paragraph */
+  --linear-text-base: 16px;     /* Base */
+  --linear-text-sm: 20px;       /* Small */
+  --linear-text-xs: 15px;       /* Extra Small */
   
-    /* Accent Colors - 상태 및 액센트 */
-    --accent: var(--linear-accent-success);
-    --accent-foreground: var(--linear-neutral-900);
-    --destructive: var(--linear-accent-error);
-    --destructive-foreground: var(--linear-accent-white);
-    --chart-1: var(--linear-accent-warning);
-    --chart-2: oklch(0.8112 0.0695 58.6499);
-    --chart-3: oklch(0.8720 0.0451 56.1614);
-    --chart-4: var(--linear-accent-info);
-    --chart-5: var(--linear-accent-success);
+  /* Font Weights */
+  --linear-font-normal: 400;
+  --linear-font-medium: 510;
+  --linear-font-semibold: 538;
   
-    /* 기존에 없던 변수 추가 */
-    --ring: var(--linear-primary-500);
-    --popover: var(--linear-neutral-600);
-    --popover-foreground: var(--linear-neutral-50);
-    --sidebar: var(--linear-neutral-900);
-    --sidebar-foreground: var(--linear-neutral-50);
-    --sidebar-primary: var(--linear-primary-500);
-    --sidebar-primary-foreground: var(--linear-neutral-50);
-    --sidebar-accent: var(--linear-accent-success);
-    --sidebar-accent-foreground: var(--linear-neutral-900);
-    --sidebar-border: var(--linear-neutral-500);
-    --sidebar-ring: var(--linear-primary-500);
-  }
+  /* Line Heights */
+  --linear-leading-tight: 1.06;   /* 67.84px / 64px for H1 */
+  --linear-leading-snug: 1.1;     /* 61.6px / 56px for H2 */
+  --linear-leading-normal: 1.33;  /* 28px / 21px for H3 */
+  --linear-leading-relaxed: 1.6;  /* 27.2px / 17px for paragraph */
+  --linear-leading-loose: 1.71;   /* 24px / 14px for small text */
   
-  @theme inline {
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --color-card: var(--card);
-    --color-card-foreground: var(--card-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
-    --color-primary: var(--primary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-secondary: var(--secondary);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-accent: var(--accent);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-destructive: var(--destructive);
-    --color-destructive-foreground: var(--destructive-foreground);
-    --color-border: var(--border);
-    --color-input: var(--input);
-    --color-ring: var(--ring);
-    --color-chart-1: var(--chart-1);
-    --color-chart-2: var(--chart-2);
-    --color-chart-3: var(--chart-3);
-    --color-chart-4: var(--chart-4);
-    --color-chart-5: var(--chart-5);
-    --color-sidebar: var(--sidebar);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-ring: var(--sidebar-ring);
+  /* Letter Spacing */
+  --linear-tracking-tight: -1.82px;  /* H2 */
+  --linear-tracking-snug: -1.408px;  /* H1 */
+  --linear-tracking-normal: -0.37px; /* H3 */
+  --linear-tracking-wide: -0.182px;  /* H4 */
   
-    --font-sans: var(--linear-font-family);
-    --font-serif: Merriweather, serif; /* 기존 폰트 유지 */
-    --font-mono: Ubuntu Mono, monospace; /* 기존 폰트 유지 */
+  /* Spacing System (8px grid) */
   
-    --radius: var(--linear-radius-base);
-    --radius-sm: var(--linear-radius-sm);
-    --radius-md: calc(var(--linear-radius-base) + 2px); /* 10px */
-    --radius-lg: var(--linear-radius-lg);
-    --radius-xl: var(--linear-radius-xl);
+  /* Micro Spacing */
+  --linear-space-1: 8px;
+  --linear-space-2: 16px;
+  --linear-space-3: 24px;
+  --linear-space-4: 32px;
   
-    --shadow-2xs: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.04);
-    --shadow-xs: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.04);
-    --shadow-sm: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.09), 0px 1px 2px -4px hsl(0 0% 10.1961% / 0.09);
-    --shadow: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.09), 0px 1px 2px -4px hsl(0 0% 10.1961% / 0.09);
-    --shadow-md: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.09), 0px 2px 4px -4px hsl(0 0% 10.1961% / 0.09);
-    --shadow-lg: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.09), 0px 4px 6px -4px hsl(0 0% 10.1961% / 0.09);
-    --shadow-xl: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.09), 0px 8px 10px -4px hsl(0 0% 10.1961% / 0.09);
-    --shadow-2xl: 0px 6px 12px -3px hsl(0 0% 10.1961% / 0.22);
-  }
+  /* Component Spacing */
+  --linear-space-6: 48px;
+  --linear-space-8: 64px;
+  --linear-space-12: 96px;
+  --linear-space-16: 128px;
+  
+  /* Layout Spacing */
+  --linear-space-20: 160px;
+  --linear-space-24: 192px;
+  --linear-space-32: 256px;
+  
+  /* Border Radius */
+  --linear-radius-sm: 8px;
+  --linear-radius-base: 12px;
+  --linear-radius-lg: 16px;
+  --linear-radius-xl: 24px;
+}
 
 /* ================================
    기본 요소 스타일
@@ -306,7 +203,7 @@ p {
 
 /* Primary Button */
 .linear-button--primary {
-  background-color: #c35c63;
+  background-color: var(--linear-primary-500);
   color: var(--linear-accent-white);
   font-size: var(--linear-text-sm);
   padding: 0 var(--linear-space-2);
