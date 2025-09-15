@@ -1,4 +1,5 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { useFonts } from "../hooks/useFonts";
 
 export type SidebarRightProps = {
   selectedText?: {
@@ -10,6 +11,7 @@ export type SidebarRightProps = {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   };
   onTextInsert?: (textData: {
     text: string;
@@ -17,6 +19,7 @@ export type SidebarRightProps = {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }) => void;
   onTextUpdate?: (textId: string, updates: Partial<{
     text: string;
@@ -24,7 +27,9 @@ export type SidebarRightProps = {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }>) => void;
+  onTextDelete?: (textId: string) => void;
   onExport?: () => void;
 };
 
@@ -32,20 +37,36 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   selectedText,
   onTextInsert,
   onTextUpdate,
+  onTextDelete,
   onExport
 }) => {
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
   const [isItalic, setIsItalic] = useState(false);
-  const [fontFamily, setFontFamily] = useState("Inter");
+  const [isVertical, setIsVertical] = useState(false);
+  const [fontFamily, setFontFamily] = useState("");
   const [fontColor, setFontColor] = useState("#000000");
   const textInputRef = useRef<HTMLTextAreaElement>(null);
+  
+  // 동적 폰트 로딩
+  const { fonts, isLoading: fontsLoading } = useFonts();
+
+  // 폰트 목록이 로딩되면, 선택된 텍스트가 없을 때 첫 번째 폰트를 기본값으로 설정
+  useEffect(() => {
+    if (!fontsLoading && fonts.length > 0 && !selectedText) {
+      const names = fonts.map(f => f.name);
+      if (!names.includes(fontFamily)) {
+        setFontFamily(names[0]);
+      }
+    }
+  }, [fontsLoading, fonts, selectedText]);
 
   // 선택된 텍스트의 속성을 표시
   const displayedTextSize = selectedText?.fontSize ?? textSize;
   const displayedFontFamily = selectedText?.fontFamily ?? fontFamily;
   const displayedFontColor = selectedText?.fontColor ?? fontColor;
   const displayedIsItalic = selectedText?.isItalic ?? isItalic;
+  const displayedIsVertical = selectedText?.isVertical ?? isVertical;
 
 
   const handleDescriptionSelect = (value: string) => {
@@ -69,6 +90,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       fontFamily,
       fontColor,
       isItalic,
+      isVertical,
     });
   };
 
@@ -98,6 +120,25 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
     setIsItalic(newIsItalic);
     if (selectedText && onTextUpdate) {
       onTextUpdate(selectedText.id, { isItalic: newIsItalic });
+    }
+  };
+
+  const handleVerticalToggle = () => {
+    const newIsVertical = !displayedIsVertical;
+    setIsVertical(newIsVertical);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { isVertical: newIsVertical });
+    }
+  };
+
+  const handleTextDelete = () => {
+    if (!selectedText) {
+      alert("삭제할 텍스트를 먼저 선택해주세요.");
+      return;
+    }
+    
+    if (confirm(`"${selectedText.text}" 텍스트를 삭제하시겠습니까?`)) {
+      onTextDelete?.(selectedText.id);
     }
   };
 
@@ -154,7 +195,17 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           </label>
           
           <div className="linear-flex linear-mt-4">
-            <button className="linear-button linear-button--secondary">삭제</button>
+            <button 
+              className="linear-button linear-button--secondary" 
+              onClick={handleTextDelete}
+              disabled={!selectedText}
+              style={{ 
+                opacity: selectedText ? 1 : 0.5,
+                cursor: selectedText ? 'pointer' : 'not-allowed' 
+              }}
+            >
+              삭제
+            </button>
             <button className="linear-button linear-button--primary" onClick={handleTextInsert}>
               삽입
             </button>
@@ -188,12 +239,22 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               style={{ borderColor: 'var(--linear-neutral-300)' }}
               value={displayedFontFamily}
               onChange={(e) => handleFontFamilyChange(e.target.value)}
+              disabled={fontsLoading}
             >
-              <option value="Inter">Inter</option>
-              <option value="Noto Sans KR">Noto Sans KR</option>
-              <option value="Arial">Arial</option>
-              <option value="Georgia">Georgia</option>
-              <option value="Times New Roman">Times New Roman</option>
+              {fontsLoading ? (
+                <option value="">폰트 로딩 중...</option>
+              ) : (
+                fonts.map((font) => (
+                  <option
+                    key={font.name}
+                    value={font.name}
+                    // 파일명(확장자 제외)을 해당 폰트로 미리보기
+                    style={{ fontFamily: font.name, fontSize: '14px' }}
+                  >
+                    {font.displayName}
+                  </option>
+                ))
+              )}
             </select>
           </label>
           
@@ -214,16 +275,27 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             />
           </label>
           
-          {/* 하단 오른쪽: 기울임 */}
+          {/* 하단 오른쪽: 기울임 + 세로 정렬 */}
           <label>
-            <p>기울임</p>
-            <button 
-              className={`linear-button linear-mt-2 ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
-              style={{ width: '60px', fontSize: '14px' }}
-              onClick={handleItalicToggle}
-            >
-              <em>/</em>
-            </button>
+            <p>텍스트 스타일</p>
+            <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+              <button 
+                className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                style={{ fontSize: '12px', padding: '4px 8px' }}
+                onClick={handleItalicToggle}
+                title="기울임"
+              >
+                기울임
+              </button>
+              <button 
+                className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                style={{ fontSize: '12px', padding: '4px 8px' }}
+                onClick={handleVerticalToggle}
+                title="세로쓰기"
+              >
+                세로쓰기
+              </button>
+            </div>
           </label>
         </div>
       </aside>

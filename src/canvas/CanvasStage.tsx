@@ -24,6 +24,7 @@ export type CanvasStageProps = {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }>;
   onSelect?: (id: string | null) => void;
   onSlotSelect?: (slotId: string | null) => void;
@@ -38,6 +39,7 @@ export type CanvasStageProps = {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }>) => void;
   onImageDelete?: (imageId: string) => void;
 };
@@ -87,6 +89,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   ]);
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
+  
+  // 텍스트 세로 배치 유틸리티 함수
+  const formatVerticalText = (text: string, isVertical: boolean): string => {
+    return isVertical ? text.split('').join('\n') : text;
+  };
   
   // 팔레트 미리보기 상태 (항상 동일 훅 순서 유지를 위해 상단으로 이동)
   const [palettePreview, setPalettePreview] = useState<{
@@ -1023,7 +1030,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   <Text
                     x={textItem.x}
                     y={textItem.y}
-                    text={textItem.text}
+                    text={formatVerticalText(textItem.text, textItem.isVertical)}
                     fontSize={textItem.fontSize}
                     fontFamily={textItem.fontFamily}
                     fill={textItem.fontColor}
@@ -1042,17 +1049,30 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       x={textItem.x - 2}
                       y={textItem.y - 2}
                       width={(() => {
-                        // 간단한 텍스트 너비 계산 (더 정확한 방법)
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        if (ctx) {
-                          ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
-                          const metrics = ctx.measureText(textItem.text);
-                          return metrics.width + 4;
+                        if (textItem.isVertical) {
+                          // 세로 배치일 때: 한 글자의 폭
+                          return textItem.fontSize * 0.6 + 4;
+                        } else {
+                          // 가로 배치일 때: 기존 로직 유지
+                          const canvas = document.createElement('canvas');
+                          const ctx = canvas.getContext('2d');
+                          if (ctx) {
+                            ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
+                            const metrics = ctx.measureText(textItem.text);
+                            return metrics.width + 4;
+                          }
+                          return (textItem.text.length * textItem.fontSize * 0.6) + 4;
                         }
-                        return (textItem.text.length * textItem.fontSize * 0.6) + 4;
                       })()}
-                      height={textItem.fontSize + 4}
+                      height={(() => {
+                        if (textItem.isVertical) {
+                          // 세로 배치일 때: 글자 수 × 폰트 크기
+                          return textItem.text.length * textItem.fontSize + 4;
+                        } else {
+                          // 가로 배치일 때: 기존 로직 유지
+                          return textItem.fontSize + 4;
+                        }
+                      })()}
                       fill="transparent"
                       stroke="#ff6b35"
                       strokeWidth={2}

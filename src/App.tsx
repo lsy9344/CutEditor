@@ -18,6 +18,7 @@ function App() {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }>>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
@@ -110,6 +111,7 @@ function App() {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }) => {
     const newText = {
       id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -137,12 +139,23 @@ function App() {
     fontFamily: string;
     fontColor: string;
     isItalic: boolean;
+    isVertical: boolean;
   }>) => {
     setTexts(prev => 
       prev.map(text => 
         text.id === textId ? { ...text, ...updates } : text
       )
     );
+  }
+
+  const handleTextDelete = (textId: string) => {
+    setTexts(prev => prev.filter(text => text.id !== textId));
+    
+    // 삭제된 텍스트가 선택된 상태였다면 선택 해제
+    if (selectedTextId === textId) {
+      setSelectedTextId(null);
+      setEditorState(prev => ({ ...prev, selection: null }));
+    }
   }
 
   const handleImageDelete = (imageId: string) => {
@@ -247,6 +260,7 @@ function App() {
           selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}
           onTextInsert={handleTextInsert}
           onTextUpdate={handleTextUpdate}
+          onTextDelete={handleTextDelete}
           onExport={handleExport}
         />
       </div>
