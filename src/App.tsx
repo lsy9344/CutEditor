@@ -6,7 +6,6 @@ import { SidebarRight } from './ui/SidebarRight'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import type { FrameType, UserImage } from './types/frame'
-import { FRAME_LAYOUTS } from './types/frame'
 
 function App() {
   const [editorState, setEditorState] = useState<EditorState>(createInitialState())
@@ -146,6 +145,28 @@ function App() {
     );
   }
 
+  const handleImageDelete = (imageId: string) => {
+    setEditorState(prev => {
+      // 삭제할 이미지 찾기
+      const imageToDelete = prev.userImages.find(img => img.id === imageId);
+      
+      // Blob URL 메모리 해제
+      if (imageToDelete?.url) {
+        URL.revokeObjectURL(imageToDelete.url);
+      }
+      
+      // userImages 배열에서 해당 이미지 제거
+      const filteredImages = prev.userImages.filter(img => img.id !== imageId);
+      
+      return {
+        ...prev,
+        userImages: filteredImages,
+        // 선택 상태 초기화 (선택된 이미지가 삭제된 경우)
+        selection: prev.selection === imageId ? null : prev.selection
+      };
+    });
+  }
+
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
   const handleExport = async () => {
     const frameType = editorState.selectedFrame;
@@ -158,7 +179,6 @@ function App() {
     const targetDpi = 1200;
     const cmToPx = (cm: number) => Math.round((cm * targetDpi) / 2.54);
     const targetWidthPx = cmToPx(isHorizontal ? 15 : 10);
-    const targetHeightPx = cmToPx(isHorizontal ? 10 : 15);
 
     // Stage 준비 및 오버레이 제거
     setExportMode(true);
@@ -170,9 +190,7 @@ function App() {
 
       // 현재 Stage 크기 기준으로 pixelRatio 계산
       const stageW = stage.width();
-      const stageH = stage.height();
       const ratioX = targetWidthPx / stageW;
-      const ratioY = targetHeightPx / stageH;
       // 비율 차이가 있을 경우 평균치가 아닌 X 기준으로 맞추고 높이는 자연스레 스케일됨
       const pixelRatio = ratioX;
 
@@ -223,6 +241,7 @@ function App() {
           onFrameColorChange={handleFrameColorChange}
           onTextMove={handleTextMove}
           onTextUpdate={handleTextUpdate}
+          onImageDelete={handleImageDelete}
         />
         <SidebarRight 
           selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}

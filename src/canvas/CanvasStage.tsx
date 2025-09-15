@@ -39,6 +39,7 @@ export type CanvasStageProps = {
     fontColor: string;
     isItalic: boolean;
   }>) => void;
+  onImageDelete?: (imageId: string) => void;
 };
 
 export const CanvasStage: React.FC<CanvasStageProps> = ({ 
@@ -57,7 +58,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onImageTransform,
   onFrameColorChange,
   onTextMove,
-  onTextUpdate // eslint-disable-line @typescript-eslint/no-unused-vars
+  onTextUpdate, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onImageDelete
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -806,6 +808,31 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               );
             })()}
           </div>
+          
+          {/* 선택된 이미지 삭제 버튼 */}
+          {(() => {
+            const selectedImage = selectedSlot ? userImages.find(img => img.slotId === selectedSlot) : null;
+            return selectedImage && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  className="linear-button linear-button--secondary"
+                  onClick={() => onImageDelete?.(selectedImage.id)}
+                  style={{ 
+                    height: '24px', 
+                    padding: '0 12px', 
+                    fontSize: '12px',
+                    backgroundColor: 'var(--linear-accent-error)',
+                    color: 'var(--linear-accent-white)',
+                    border: '1px solid var(--linear-accent-error)'
+                  }}
+                  title="선택된 슬롯의 이미지를 삭제합니다"
+                >
+                  선택된 이미지 삭제
+                </button>
+              </div>
+            );
+          })()}
         </div>
         <Stage
           ref={(node) => {
