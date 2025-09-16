@@ -61,7 +61,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     frameColor: "#ffffff",
     slots: [
       { id: "slot-1", x: 9, y: 46, width: 465, height: 276 },
-      { id: "slot-2", x: 9, y: 332, width: 465, height: 276 }
+      { id: "slot-2", x: 9, y: 331, width: 465, height: 276 }
     ]
   },
   // 호환: 키워드 미기재 시 세로로 간주

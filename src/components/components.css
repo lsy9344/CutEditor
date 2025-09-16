@@ -13,16 +13,18 @@
     새로운 테마 색상 시스템 (다크 모드 기준)
     ================================ */
     
-    /* Primary Colors - 새로운 테마의 메인 색상 */
+    /* Primary Colors - 새로운 테마의 메인 색상 /// (명도, 채도, 색상)*/
     --linear-primary-500: oklch(60.5% 0.11 25.3); /* 새 기본 색상 (dark의 --primary) */
     --linear-primary-hover: oklch(67.5% 0.11 25.3);    /* 호버 시 약간 밝게 (조정값) */
     --linear-primary-active: oklch(53.5% 0.11 25.3); /* 클릭 시 약간 어둡게 (조정값) */
   
     /* Neutral Colors - 배경 및 기본 텍스트 색상 */
-    --linear-neutral-900: oklch(0.1776 0 0);        /* 메인 배경 (dark의 --background) */
+    --linear-neutral-900: oklch(25% 0.011 340.5);        /* 메인 배경 (dark의 --background) */
     --linear-neutral-700: oklch(0.3163 0.0190 63.6992); /* 서브 배경 (dark의 --secondary) */
-    --linear-neutral-600: oklch(0.2134 0 0);        /* 카드 배경 (dark의 --card) */
-    --linear-neutral-500: oklch(0.2351 0.0115 91.7467); /* 보더 색상 (dark의 --border) */
+    /*--linear-neutral-600: oklch(0.2134 0 0);        /* 카드 배경 (dark의 --card) */
+
+    --linear-neutral-600: oklch(0.323 0.015 340.5);        /* 카드 배경 (dark의 --card) */
+    --linear-neutral-500: oklch(55% 0.011 340.5);        /* 보더 색상 (dark의 --border) */
     --linear-neutral-400: oklch(0.4017 0 0);        /* 서브 보더/입력창 (dark의 --input) */
     --linear-neutral-300: oklch(0.7699 0 0);        /* 비활성 요소 (dark의 --muted-foreground) */
     
@@ -64,6 +66,7 @@
     --linear-text-base: 16px;
     --linear-text-sm: 20px;
     --linear-text-xs: 15px;
+    --linear-text-xxs: 13px;  /* 새로운 변수 추가 */
     
     /* Font Weights (기존 값 유지) */
     --linear-font-normal: 400;
@@ -306,7 +309,7 @@ p {
 
 /* Primary Button */
 .linear-button--primary {
-  background-color: #c35c63;
+  background-color: #df927f;
   color: var(--linear-accent-white);
   font-size: var(--linear-text-sm);
   padding: 0 var(--linear-space-2);
@@ -323,7 +326,7 @@ p {
 
 /* Secondary Button */
 .linear-button--secondary {
-  background-color: transparent;
+  background-color: #252525;
   color: var(--linear-secondary-400);
   font-size: var(--linear-text-xs);
   padding: 0 12px;
@@ -405,8 +408,8 @@ p {
 }
 
 /* Spacing Utilities */
-.linear-mt-4 { margin-top: var(--linear-space-4); }
-.linear-mb-4 { margin-bottom: var(--linear-space-4); }
+.linear-mt-4 { margin-top: var(--linear-space-1); }
+.linear-mb-4 { margin-bottom: var(--linear-space-1); }
 .linear-pt-8 { padding-top: var(--linear-space-8); }
 .linear-pb-8 { padding-bottom: var(--linear-space-8); }
 
@@ -589,8 +592,8 @@ p {
   grid-template-columns: 320px 1fr 320px;
   flex: 1;
   min-height: 0; /* Allow flexbox children to shrink */
-  gap: var(--linear-space-1);
-  padding: 4px var(--linear-space-1) var(--linear-space-1);
+  gap: var(--linear-space-2);
+  padding: var(--linear-space-2) var(--linear-space-2) var(--linear-space-2);
   background-color: var(--linear-neutral-900);
 }
 

@@ -1035,6 +1035,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     fontFamily={textItem.fontFamily}
                     fill={textItem.fontColor}
                     fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                    lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
                     draggable={true}
                     onClick={() => onSelect?.(textItem.id)}
                     onDragEnd={(e) => {

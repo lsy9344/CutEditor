@@ -52,7 +52,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
       
       <h3>프레임 선택</h3>
       <div className="linear-mt-4 linear-grid" style={{ gridTemplateColumns: "1fr" }}>
-        <p style={{ marginBottom: "16px", color: "var(--linear-secondary-400)" }}>
+        <p style={{ marginBottom: "2px", color: "var(--linear-secondary-400)", fontSize: "var(--linear-text-xs)" }}>
           아래 버튼을 클릭하여 프레임을 선택하세요.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
@@ -69,14 +69,14 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                 onMouseLeave={handleMouseLeave}
                 style={{
                   width: "100%",
-                  height: "64px",
-                  border: selectedFrame === option.value 
-                    ? "2px solid var(--linear-primary-500)" 
-                    : "2px solid var(--linear-neutral-500)",
+                  height: "48px",
+                  border: selectedFrame === option.value
+                    ? "1px solid var(--linear-primary-500)"
+                    : "1px solid var(--linear-neutral-500)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: "12px",
+                  fontSize: "14px",
                 }}
               >
                 {option.label}

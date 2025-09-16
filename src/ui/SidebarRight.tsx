@@ -33,7 +33,7 @@ export type SidebarRightProps = {
   onExport?: () => void;
 };
 
-export const SidebarRight: React.FC<SidebarRightProps> = ({ 
+export const SidebarRight: React.FC<SidebarRightProps> = ({
   selectedText,
   onTextInsert,
   onTextUpdate,
@@ -65,7 +65,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   }, [fontsLoading, fonts, selectedText]);
 
   // 고정 미리보기 문구
-  const fontPreviewText = '내 세상은 너가 있어 더 아름다워♥, 2025.09.13';
+  const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
 
   // ESC 키로 모달 닫기
   useEffect(() => {
@@ -167,15 +167,18 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         <div className="linear-grid linear-mt-4" style={{ gridTemplateColumns: "1fr" }}>
           {/* 텍스트 입력 영역 */}
           <label>
-            <p>텍스트를 입력하세요.</p>
+            <p style={{ fontSize: "var(--linear-text-xs)" }}>
+              텍스트를 입력하세요.
+            </p>
             <textarea
               ref={textInputRef as React.RefObject<HTMLTextAreaElement>}
-              className="linear-input linear-mt-2"
+              className="linear-input"
               style={{ 
                 width: '90%', 
                 borderColor: 'var(--linear-neutral-300)',
                 minHeight: '100px',
-                resize: 'vertical'
+                resize: 'vertical',
+                marginTop: 'var(--linear-space-1)'
               }}
               placeholder="예) 너의 100일을 축하해 :)"
               value={textInput}
@@ -183,11 +186,16 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             />
           </label>
           
-          <label className="linear-mt-2">
-            <p>레터링을 추천해 드릴게요 :)</p>
+          <label>
+            <p style={{ fontSize: "var(--linear-text-xs)" }}>
+              레터링을 추천해 드릴게요 :)
+            </p>
             <select 
-              className="linear-select linear-mt-2" 
-              style={{ borderColor: 'var(--linear-neutral-300)' }}
+              className="linear-select"
+              style={{ 
+                borderColor: 'var(--linear-neutral-300)',
+                marginTop: 'var(--linear-space-1)'
+              }}
               defaultValue=""
               onChange={(e) => {
                 if (e.target.value) {
@@ -211,18 +219,31 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           </label>
           
           <div className="linear-flex linear-mt-4">
-            <button 
-              className="linear-button linear-button--secondary" 
+            <button
+              className="linear-button linear-button--secondary"
               onClick={handleTextDelete}
               disabled={!selectedText}
-              style={{ 
+              style={{
                 opacity: selectedText ? 1 : 0.5,
-                cursor: selectedText ? 'pointer' : 'not-allowed' 
+                cursor: selectedText ? 'pointer' : 'not-allowed',
+                fontSize: '14px',
+                height: '48px',
+                border: '1px solid var(--linear-neutral-500)',
+                width: '100%'
               }}
             >
               삭제
             </button>
-            <button className="linear-button linear-button--primary" onClick={handleTextInsert}>
+            <button
+              className="linear-button linear-button--primary"
+              onClick={handleTextInsert}
+              style={{
+                fontSize: '14px',
+                height: '48px',
+                border: '1px solid var(--linear-neutral-500)',
+                width: '100%'
+              }}
+            >
               삽입
             </button>
           </div>
@@ -234,11 +255,17 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         <div className="linear-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "var(--linear-space-2)" }}>
           {/* 상단 왼쪽: 글자 크기 */}
           <label>
-            <p>글자 크기</p>
+            <p style={{ fontSize: "var(--linear-text-xs)" }}>
+              폰트 크기
+            </p>
             <input 
               type="number"
-              className="linear-input linear-input--number linear-mt-2"
-              style={{ borderColor: 'var(--linear-neutral-300)', width: '60px' }}
+              className="linear-input"
+              style={{ 
+                borderColor: 'var(--linear-neutral-300)', 
+                width: '40px',
+                marginTop: 'var(--linear-space-1)'
+              }}
               value={displayedTextSize}
               onChange={(e) => handleTextSizeChange(Number(e.target.value))}
               min="1"
@@ -249,20 +276,24 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           
           {/* 상단 오른쪽: 폰트 (모달 트리거) */}
           <label>
-            <p>폰트</p>
+            <p style={{ fontSize: "var(--linear-text-xs)" }}>
+              폰트 선택
+            </p>
             <div className="linear-flex" style={{ alignItems: 'center' }}>
               <button
                 type="button"
-                className="linear-button linear-button--secondary linear-mt-2"
+                className="linear-button linear-button--secondary"
+                onClick={() => !fontsLoading && setFontPickerOpen(true)}
+                disabled={fontsLoading}
+                title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
                 style={{
                   border: '1px solid var(--linear-neutral-400)',
                   padding: '6px 10px',
                   fontSize: '14px',
-                  fontFamily: displayedFontFamily || 'var(--linear-font-family)'
+                  fontFamily: displayedFontFamily || 'var(--linear-font-family)',
+                  width: '100%',
+                  marginTop: 'var(--linear-space-1)'
                 }}
-                onClick={() => !fontsLoading && setFontPickerOpen(true)}
-                disabled={fontsLoading}
-                title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
               >
                 {fontsLoading ? '폰트 로딩 중…' : (displayedFontFamily || '폰트 선택')}
               </button>
@@ -271,15 +302,18 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         
           {/* 하단 왼쪽: 폰트색상 */}
           <label>
-            <p>폰트색상</p>
+            <p style={{ fontSize: "var(--linear-text-xs)" }}>
+              폰트 색상
+            </p>
             <input 
               type="color"
-              className="linear-input linear-mt-2"
+              className="linear-input"
               style={{ 
                 borderColor: 'var(--linear-neutral-300)',
                 width: '60px',
                 height: '36px',
-                padding: '2px'
+                padding: '2px',
+                marginTop: 'var(--linear-space-1)'
               }}
               value={displayedFontColor}
               onChange={(e) => handleFontColorChange(e.target.value)}
@@ -288,21 +322,45 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           
           {/* 하단 오른쪽: 기울임 + 세로 정렬 */}
           <label>
-            <p>텍스트 스타일</p>
-            <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
-              <button 
+            <p style={{ fontSize: "var(--linear-text-xs)" }}>
+              폰트 스타일
+            </p>
+            <div style={{ display: 'flex', gap: '6px', marginTop: 'var(--linear-space-1)' }}>
+              <button
                 className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                style={{ fontSize: '12px', padding: '4px 8px' }}
                 onClick={handleItalicToggle}
                 title="기울임"
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  border: displayedIsItalic 
+                    ? '1px solid var(--linear-primary-500)' 
+                    : '1px solid var(--linear-neutral-500)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  whiteSpace: 'nowrap'
+                }}
               >
                 기울임
               </button>
-              <button 
+              <button
                 className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                style={{ fontSize: '12px', padding: '4px 8px' }}
                 onClick={handleVerticalToggle}
                 title="세로쓰기"
+                style={{
+                  width: '100%',
+                  height: '36px',
+                  border: displayedIsVertical 
+                    ? '1px solid var(--linear-primary-500)' 
+                    : '1px solid var(--linear-neutral-500)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '14px',
+                  whiteSpace: 'nowrap'
+                }}
               >
                 세로쓰기
               </button>
@@ -344,6 +402,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                 type="button"
                 className="linear-button linear-button--secondary"
                 onClick={() => setFontPickerOpen(false)}
+                style={{
+                  fontSize: '14px'
+                }}
               >
                 닫기
               </button>
@@ -373,7 +434,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                     justifyContent: 'flex-start',
                     padding: '10px 12px',
                     borderBottom: '1px solid var(--linear-neutral-500)',
-                    fontSize: '16px',
+                    fontSize: '14px',
                     background: font.name === displayedFontFamily ? 'var(--linear-overlay-light)' : 'transparent'
                   }}
                   onClick={() => {
@@ -421,7 +482,18 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       {/* 세 번째 카드: 내보내기 */}
       <aside className="linear-card">
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <button className="linear-button linear-button--primary" onClick={onExport}>내보내기</button>
+          <button
+            className="linear-button linear-button--primary"
+            onClick={onExport}
+            style={{
+              fontSize: '14px',
+              height: '48px',
+              border: '1px solid var(--linear-neutral-500)',
+              width: '100%'
+            }}
+          >
+            내보내기
+          </button>
         </div>
       </aside>
     </div>
