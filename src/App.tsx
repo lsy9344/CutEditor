@@ -112,14 +112,14 @@ function App() {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    x: number;
+    y: number;
   }) => {
     const newText = {
       id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       ...textData,
-      x: 100, // 기본 위치
-      y: 100
     };
-    
+
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
   }
@@ -256,7 +256,8 @@ function App() {
           onTextUpdate={handleTextUpdate}
           onImageDelete={handleImageDelete}
         />
-        <SidebarRight 
+        <SidebarRight
+          selectedFrame={editorState.selectedFrame}
           selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}
           onTextInsert={handleTextInsert}
           onTextUpdate={handleTextUpdate}

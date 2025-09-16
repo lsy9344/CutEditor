@@ -1,7 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useFonts } from "../hooks/useFonts";
+import type { FrameType } from "../types/frame";
+import { FRAME_LAYOUTS } from "../types/frame";
 
 export type SidebarRightProps = {
+  selectedFrame?: FrameType | null;
   selectedText?: {
     id: string;
     text: string;
@@ -20,6 +23,8 @@ export type SidebarRightProps = {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    x: number;
+    y: number;
   }) => void;
   onTextUpdate?: (textId: string, updates: Partial<{
     text: string;
@@ -34,6 +39,7 @@ export type SidebarRightProps = {
 };
 
 export const SidebarRight: React.FC<SidebarRightProps> = ({
+  selectedFrame,
   selectedText,
   onTextInsert,
   onTextUpdate,
@@ -67,6 +73,35 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
 
+  // 프레임별 기본 텍스트 위치
+  const getDefaultTextPosition = (frameType: FrameType | null): { x: number; y: number } => {
+    switch (frameType) {
+      case "1l": // 1컷 레터링
+        return { x: 241.5, y: 100 };
+
+      case "1f": // 1컷 프레임
+        return { x: 241.5, y: 665 };
+
+      case "2h": // 2컷 가로
+        return { x: 620, y: 241.5 };
+
+      case "2v": // 2컷 세로
+        return { x: 241.5, y: 630 };
+
+      case "4v": // 4컷
+        return { x: 241.5, y: 630 };
+
+      case "6v": // 6컷
+        return { x: 241.5, y: 630 };
+
+      case "9v": // 9컷
+        return { x: 241.5, y: 630 };
+
+      default:
+        return { x: 10, y: 10 };
+    }
+  };
+
   // ESC 키로 모달 닫기
   useEffect(() => {
     if (!isFontPickerOpen) return;
@@ -98,7 +133,10 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       alert("텍스트를 입력해주세요.");
       return;
     }
-    
+
+    // 프레임별 위치 설정
+    const { x, y } = getDefaultTextPosition(selectedFrame ?? null);
+
     // 항상 새 텍스트 삽입
     onTextInsert?.({
       text: textInput,
@@ -107,6 +145,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       fontColor,
       isItalic,
       isVertical,
+      x,
+      y,
     });
   };
 

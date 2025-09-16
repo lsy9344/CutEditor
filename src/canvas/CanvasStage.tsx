@@ -94,6 +94,34 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const formatVerticalText = (text: string, isVertical: boolean): string => {
     return isVertical ? text.split('').join('\n') : text;
   };
+
+  // 텍스트 크기 계산 유틸리티 함수
+  const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isItalic: boolean, isVertical: boolean) => {
+    if (isVertical) {
+      // 세로 배치일 때
+      return {
+        width: fontSize * 0.6, // 한 글자 폭
+        height: text.length * fontSize // 글자 수 × 폰트 크기
+      };
+    } else {
+      // 가로 배치일 때 - 캔버스로 정확한 측정
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.font = `${isItalic ? 'italic ' : ''}${fontSize}px ${fontFamily}`;
+        const metrics = ctx.measureText(text);
+        return {
+          width: metrics.width,
+          height: fontSize
+        };
+      }
+      // 폴백: 근사치 계산
+      return {
+        width: text.length * fontSize * 0.6,
+        height: fontSize
+      };
+    }
+  };
   
   // 팔레트 미리보기 상태 (항상 동일 훅 순서 유지를 위해 상단으로 이동)
   const [palettePreview, setPalettePreview] = useState<{
@@ -1118,59 +1146,62 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               const isSelected = selection === textItem.id;
               return (
                 <Group key={textItem.id}>
-                  <Text
-                    x={textItem.x}
-                    y={textItem.y}
-                    text={formatVerticalText(textItem.text, textItem.isVertical)}
-                    fontSize={textItem.fontSize}
-                    fontFamily={textItem.fontFamily}
-                    fill={textItem.fontColor}
-                    fontStyle={textItem.isItalic ? 'italic' : 'normal'}
-                    lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
-                    draggable={true}
-                    onClick={() => onSelect?.(textItem.id)}
-                    onDragEnd={(e) => {
-                      const newX = e.target.x();
-                      const newY = e.target.y();
-                      onTextMove?.(textItem.id, newX, newY);
-                    }}
-                  />
+                  {(() => {
+                    // 텍스트 크기 계산
+                    const dimensions = getTextDimensions(
+                      textItem.text,
+                      textItem.fontSize,
+                      textItem.fontFamily,
+                      textItem.isItalic,
+                      textItem.isVertical
+                    );
+
+                    return (
+                      <Text
+                        x={textItem.x}
+                        y={textItem.y}
+                        offsetX={dimensions.width / 2}
+                        offsetY={dimensions.height / 2}
+                        text={formatVerticalText(textItem.text, textItem.isVertical)}
+                        fontSize={textItem.fontSize}
+                        fontFamily={textItem.fontFamily}
+                        fill={textItem.fontColor}
+                        fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                        lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
+                        draggable={true}
+                        onClick={() => onSelect?.(textItem.id)}
+                        onDragEnd={(e) => {
+                          const newX = e.target.x();
+                          const newY = e.target.y();
+                          onTextMove?.(textItem.id, newX, newY);
+                        }}
+                      />
+                    );
+                  })()}
                   {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
-                  {isSelected && !exportMode && (
-                    <Rect
-                      x={textItem.x - 2}
-                      y={textItem.y - 2}
-                      width={(() => {
-                        if (textItem.isVertical) {
-                          // 세로 배치일 때: 한 글자의 폭
-                          return textItem.fontSize * 0.6 + 4;
-                        } else {
-                          // 가로 배치일 때: 기존 로직 유지
-                          const canvas = document.createElement('canvas');
-                          const ctx = canvas.getContext('2d');
-                          if (ctx) {
-                            ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
-                            const metrics = ctx.measureText(textItem.text);
-                            return metrics.width + 4;
-                          }
-                          return (textItem.text.length * textItem.fontSize * 0.6) + 4;
-                        }
-                      })()}
-                      height={(() => {
-                        if (textItem.isVertical) {
-                          // 세로 배치일 때: 글자 수 × 폰트 크기
-                          return textItem.text.length * textItem.fontSize + 4;
-                        } else {
-                          // 가로 배치일 때: 기존 로직 유지
-                          return textItem.fontSize + 4;
-                        }
-                      })()}
-                      fill="transparent"
-                      stroke="#ff6b35"
-                      strokeWidth={2}
-                      listening={false}
-                    />
-                  )}
+                  {isSelected && !exportMode && (() => {
+                    // 테두리용 텍스트 크기 계산
+                    const borderDimensions = getTextDimensions(
+                      textItem.text,
+                      textItem.fontSize,
+                      textItem.fontFamily,
+                      textItem.isItalic,
+                      textItem.isVertical
+                    );
+
+                    return (
+                      <Rect
+                        x={textItem.x - borderDimensions.width / 2 - 2}
+                        y={textItem.y - borderDimensions.height / 2 - 2}
+                        width={borderDimensions.width + 4}
+                        height={borderDimensions.height + 4}
+                        fill="transparent"
+                        stroke="#ff6b35"
+                        strokeWidth={2}
+                        listening={false}
+                      />
+                    );
+                  })()}
                 </Group>
               );
             })}

@@ -1,8 +1,9 @@
 export type FrameType =
+  | "1l" | "1f"
   | "2" | "2h" | "2v"
-  | "4" | "4h" | "4v"
-  | "6" | "6h" | "6v"
-  | "9" | "9h" | "9v";
+  | "4" | "4v"
+  | "6" | "6v"
+  | "9" | "9v";
 
 export type SlotPosition = {
   x: number;
