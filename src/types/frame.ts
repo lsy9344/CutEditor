@@ -39,6 +39,32 @@ const HORIZONTAL = { width: 719, height: 483 }; // 가로
 const VERTICAL = { width: 483, height: 719 };   // 세로 (기본)
 
 export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
+
+  // 1컷
+  "1l": {
+    id: "1l",
+    name: "1컷 레터링",
+    imagePath: "/frame/1_l.png",
+    canvasWidth: VERTICAL.width,
+    canvasHeight: VERTICAL.height,
+    frameColor: "#ffffff",
+    slots: [
+      { id: "slot-1", x: 0, y: 0, width: 483, height: 725 }
+    ]
+  },
+  
+  "1f": {
+    id: "1f",
+    name: "1컷 프레임",
+    imagePath: "/frame/1_v.png",
+    canvasWidth: VERTICAL.width,
+    canvasHeight: VERTICAL.height,
+    frameColor: "#ffffff",
+    slots: [
+      { id: "slot-1", x: 30, y: 16, width: 420, height: 630 }
+    ]
+  },
+
   // 2컷
   "2h": {
     id: "2h",
@@ -101,10 +127,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 9, y: 46, width: 228, height: 276 },
-      { id: "slot-2", x: 247, y: 46, width: 228, height: 300 },
+      { id: "slot-1", x: 20, y: 20, width: 200, height: 300 },
+      { id: "slot-2", x: 262, y: 20, width: 200, height: 300 },
       { id: "slot-3", x: 9, y: 331, width: 228, height: 276 },
-      { id: "slot-4", x: 247, y: 331, width: 228, height: 276 }
+      { id: "slot-4", x: 262, y: 340, width: 200, height: 300 }
     ]
   },
   // 호환: "4"는 세로로 매핑 (가로/세로 미기재 시 세로 간주)

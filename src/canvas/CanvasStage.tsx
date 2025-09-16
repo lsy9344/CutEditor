@@ -860,7 +860,30 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             }
           }}
         >
-          {/* 사용자 이미지 레이어 (프레임 이미지 뒤에 배치) */}
+          {/* 프레임 이미지 레이어 (사용자 이미지 아래에 배치) */}
+          <Layer>
+            {/* 배경: 프레임 이미지가 있으면 먼저 그려서 보이도록 함 */}
+            {frameImage ? (
+              <KonvaImage
+                image={processedFrameCanvas ?? frameImage}
+                x={0}
+                y={0}
+                width={frameLayout.canvasWidth}
+                height={frameLayout.canvasHeight}
+                listening={false}
+              />
+            ) : (
+              <Rect
+                x={0}
+                y={0}
+                width={frameLayout.canvasWidth}
+                height={frameLayout.canvasHeight}
+                fill="white"
+              />
+            )}
+          </Layer>
+
+          {/* 사용자 이미지 레이어 (프레임 이미지 위에 배치) */}
           <Layer>
             {frameLayout.slots.map((slot) => {
               const userImage = userImages.find(img => img.slotId === slot.id);
@@ -965,29 +988,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             })}
           </Layer>
 
-          {/* 프레임 이미지 레이어 (사용자 이미지 위에 배치) */}
-          <Layer>
-            {/* 배경: 프레임 이미지가 있으면 먼저 그려서 보이도록 함 */}
-            {frameImage ? (
-              <KonvaImage
-                image={processedFrameCanvas ?? frameImage}
-                x={0}
-                y={0}
-                width={frameLayout.canvasWidth}
-                height={frameLayout.canvasHeight}
-                listening={false}
-              />
-            ) : (
-              <Rect
-                x={0}
-                y={0}
-                width={frameLayout.canvasWidth}
-                height={frameLayout.canvasHeight}
-                fill="white"
-              />
-            )}
-          </Layer>
-
           {/* 가이드라인 레이어 (프레임 위에 표시) */}
           {!exportMode && (
             <Layer>
@@ -1021,71 +1021,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             </Layer>
           )}
 
-          {/* 텍스트 레이어 (프레임 위에 표시) */}
-          <Layer>
-            {texts.map((textItem) => {
-              const isSelected = selection === textItem.id;
-              return (
-                <Group key={textItem.id}>
-                  <Text
-                    x={textItem.x}
-                    y={textItem.y}
-                    text={formatVerticalText(textItem.text, textItem.isVertical)}
-                    fontSize={textItem.fontSize}
-                    fontFamily={textItem.fontFamily}
-                    fill={textItem.fontColor}
-                    fontStyle={textItem.isItalic ? 'italic' : 'normal'}
-                    lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
-                    draggable={true}
-                    onClick={() => onSelect?.(textItem.id)}
-                    onDragEnd={(e) => {
-                      const newX = e.target.x();
-                      const newY = e.target.y();
-                      onTextMove?.(textItem.id, newX, newY);
-                    }}
-                  />
-                  {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
-                  {isSelected && !exportMode && (
-                    <Rect
-                      x={textItem.x - 2}
-                      y={textItem.y - 2}
-                      width={(() => {
-                        if (textItem.isVertical) {
-                          // 세로 배치일 때: 한 글자의 폭
-                          return textItem.fontSize * 0.6 + 4;
-                        } else {
-                          // 가로 배치일 때: 기존 로직 유지
-                          const canvas = document.createElement('canvas');
-                          const ctx = canvas.getContext('2d');
-                          if (ctx) {
-                            ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
-                            const metrics = ctx.measureText(textItem.text);
-                            return metrics.width + 4;
-                          }
-                          return (textItem.text.length * textItem.fontSize * 0.6) + 4;
-                        }
-                      })()}
-                      height={(() => {
-                        if (textItem.isVertical) {
-                          // 세로 배치일 때: 글자 수 × 폰트 크기
-                          return textItem.text.length * textItem.fontSize + 4;
-                        } else {
-                          // 가로 배치일 때: 기존 로직 유지
-                          return textItem.fontSize + 4;
-                        }
-                      })()}
-                      fill="transparent"
-                      stroke="#ff6b35"
-                      strokeWidth={2}
-                      listening={false}
-                    />
-                  )}
-                </Group>
-              );
-            })}
-          </Layer>
-
-          {/* 슬롯 인터랙션 레이어 (최상위) */}
+          {/* 슬롯 인터랙션 레이어 */}
           <Layer>
             {frameLayout.slots.map((slot) => {
               const userImage = userImages.find(img => img.slotId === slot.id);
@@ -1154,17 +1090,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       <Rect
                         x={slot.x + slot.width / 2 - 60}
                         y={slot.y + slot.height / 2 - 10}
-                        width={120}
-                        height={20}
+                        width={140}
+                        height={30}
                         fill="rgba(0, 0, 0, 0.7)"
                         cornerRadius={10}
                       />
                       <Text
                         x={slot.x + slot.width / 2 - 60}
-                        y={slot.y + slot.height / 2 - 6}
-                        width={120}
+                        y={slot.y + slot.height / 2 - 2}
+                        width={140}
                         text={labelText}
-                        fontSize={10}
+                        fontSize={14}
                         fill="white"
                         align="center"
                       />
@@ -1173,6 +1109,70 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 })()}
               </Group>
               )
+            })}
+          </Layer>
+
+          {/* 텍스트 레이어 (최상위에 표시) */}
+          <Layer>
+            {texts.map((textItem) => {
+              const isSelected = selection === textItem.id;
+              return (
+                <Group key={textItem.id}>
+                  <Text
+                    x={textItem.x}
+                    y={textItem.y}
+                    text={formatVerticalText(textItem.text, textItem.isVertical)}
+                    fontSize={textItem.fontSize}
+                    fontFamily={textItem.fontFamily}
+                    fill={textItem.fontColor}
+                    fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                    lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
+                    draggable={true}
+                    onClick={() => onSelect?.(textItem.id)}
+                    onDragEnd={(e) => {
+                      const newX = e.target.x();
+                      const newY = e.target.y();
+                      onTextMove?.(textItem.id, newX, newY);
+                    }}
+                  />
+                  {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
+                  {isSelected && !exportMode && (
+                    <Rect
+                      x={textItem.x - 2}
+                      y={textItem.y - 2}
+                      width={(() => {
+                        if (textItem.isVertical) {
+                          // 세로 배치일 때: 한 글자의 폭
+                          return textItem.fontSize * 0.6 + 4;
+                        } else {
+                          // 가로 배치일 때: 기존 로직 유지
+                          const canvas = document.createElement('canvas');
+                          const ctx = canvas.getContext('2d');
+                          if (ctx) {
+                            ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
+                            const metrics = ctx.measureText(textItem.text);
+                            return metrics.width + 4;
+                          }
+                          return (textItem.text.length * textItem.fontSize * 0.6) + 4;
+                        }
+                      })()}
+                      height={(() => {
+                        if (textItem.isVertical) {
+                          // 세로 배치일 때: 글자 수 × 폰트 크기
+                          return textItem.text.length * textItem.fontSize + 4;
+                        } else {
+                          // 가로 배치일 때: 기존 로직 유지
+                          return textItem.fontSize + 4;
+                        }
+                      })()}
+                      fill="transparent"
+                      stroke="#ff6b35"
+                      strokeWidth={2}
+                      listening={false}
+                    />
+                  )}
+                </Group>
+              );
             })}
           </Layer>
         </Stage>

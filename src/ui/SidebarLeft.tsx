@@ -27,6 +27,8 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   };
 
   const frameOptions: Array<{value: FrameType, label: string, image: string}> = [
+    { value: "1l", label: "1컷 레터링", image: "1l.png" },
+    { value: "1f", label: "1컷 프레임", image: "1f.png" },
     { value: "2h", label: "2컷 가로", image: "2h.png" },
     { value: "2v", label: "2컷 세로", image: "2v.png" },
     /*{ value: "4h", label: "4컷 가로", image: "4h.png" },*/
