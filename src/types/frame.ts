@@ -79,7 +79,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
   },
 
   // 4컷
-  "4h": {
+/*  "4h": {
     id: "4h",
     name: "4컷 가로",
     imagePath: "/frame/9_v.png",
@@ -92,39 +92,39 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
       { id: "slot-3", x: 50, y: 250, width: 200, height: 200 },
       { id: "slot-4", x: 350, y: 250, width: 200, height: 200 }
     ]
-  },
+  },*/
   "4v": {
     id: "4v",
     name: "4컷 세로",
-    imagePath: "/frame/9_v.png",
+    imagePath: "/frame/4_v.png",
     canvasWidth: VERTICAL.width,
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 50, y: 50, width: 200, height: 200 },
-      { id: "slot-2", x: 350, y: 50, width: 200, height: 200 },
-      { id: "slot-3", x: 50, y: 350, width: 200, height: 200 },
-      { id: "slot-4", x: 350, y: 350, width: 200, height: 200 }
+      { id: "slot-1", x: 9, y: 46, width: 228, height: 276 },
+      { id: "slot-2", x: 247, y: 46, width: 228, height: 300 },
+      { id: "slot-3", x: 9, y: 331, width: 228, height: 276 },
+      { id: "slot-4", x: 247, y: 331, width: 228, height: 276 }
     ]
   },
   // 호환: "4"는 세로로 매핑 (가로/세로 미기재 시 세로 간주)
   "4": {
     id: "4",
     name: "4컷",
-    imagePath: "/frame/9_v.png",
+    imagePath: "/frame/4_v.png",
     canvasWidth: VERTICAL.width,
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 50, y: 50, width: 200, height: 200 },
+      { id: "slot-1", x: 9, y: 46, width: 100, height: 200 },
       { id: "slot-2", x: 350, y: 50, width: 200, height: 200 },
-      { id: "slot-3", x: 50, y: 350, width: 200, height: 200 },
+      { id: "slot-3", x: 9, y: 331, width: 200, height: 200 },
       { id: "slot-4", x: 350, y: 350, width: 200, height: 200 }
     ]
   },
 
   // 6컷
-  "6h": {
+  /*"6h": {
     id: "6h",
     name: "6컷 가로",
     imagePath: "/frame/9_v.png",
@@ -139,11 +139,11 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
       { id: "slot-5", x: 50, y: 330, width: 200, height: 140 },
       { id: "slot-6", x: 350, y: 330, width: 200, height: 140 }
     ]
-  },
+  },*/
   "6v": {
     id: "6v",
     name: "6컷 세로",
-    imagePath: "/frame/9_v.png",
+    imagePath: "/frame/6_v.png",
     canvasWidth: VERTICAL.width,
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
@@ -175,7 +175,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
   },
 
   // 9컷
-  "9h": {
+  /*"9h": {
     id: "9h",
     name: "9컷 가로",
     imagePath: "/frame/9_v.png",
@@ -193,7 +193,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
       { id: "slot-8", x: 270, y: 300, width: 180, height: 120 },
       { id: "slot-9", x: 480, y: 300, width: 180, height: 120 }
     ]
-  },
+  },*/
   "9v": {
     id: "9v",
     name: "9컷 세로",

@@ -29,12 +29,12 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   const frameOptions: Array<{value: FrameType, label: string, image: string}> = [
     { value: "2h", label: "2컷 가로", image: "2h.png" },
     { value: "2v", label: "2컷 세로", image: "2v.png" },
-    { value: "4h", label: "4컷 가로", image: "9.png" },
-    { value: "4v", label: "4컷 세로", image: "9.png" },
-    { value: "6h", label: "6컷 가로", image: "2v.png" },
-    { value: "6v", label: "6컷 세로", image: "2v.png" },
-    { value: "9h", label: "9컷 가로", image: "9.png" },
-    { value: "9v", label: "9컷 세로", image: "9.png" },
+    /*{ value: "4h", label: "4컷 가로", image: "4h.png" },*/
+    { value: "4v", label: "4컷", image: "4v.png" },
+    /*{ value: "6h", label: "6컷 가로", image: "6h.png" },*/
+    { value: "6v", label: "6컷", image: "6v.png" },
+    /*{ value: "9h", label: "9컷 가로", image: "9h.png" },*/
+    { value: "9v", label: "9컷", image: "9v.png" },
   ];
 
   return (
