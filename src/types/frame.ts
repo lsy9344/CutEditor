@@ -229,15 +229,15 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 80, y: 80, width: 130, height: 130 },
-      { id: "slot-2", x: 235, y: 80, width: 130, height: 130 },
-      { id: "slot-3", x: 390, y: 80, width: 130, height: 130 },
-      { id: "slot-4", x: 80, y: 235, width: 130, height: 130 },
-      { id: "slot-5", x: 235, y: 235, width: 130, height: 130 },
-      { id: "slot-6", x: 390, y: 235, width: 130, height: 130 },
-      { id: "slot-7", x: 80, y: 390, width: 130, height: 130 },
-      { id: "slot-8", x: 235, y: 390, width: 130, height: 130 },
-      { id: "slot-9", x: 390, y: 390, width: 130, height: 130 }
+      { id: "slot-1", x: 20, y: 60, width: 140, height: 180 },
+      { id: "slot-2", x: 172, y: 60, width: 140, height: 180 },
+      { id: "slot-3", x: 324, y: 60, width: 140, height: 180 },
+      { id: "slot-4", x: 20, y: 252, width: 140, height: 180 },
+      { id: "slot-5", x: 172, y: 252, width: 140, height: 180 },
+      { id: "slot-6", x: 324, y: 252, width: 140, height: 180 },
+      { id: "slot-7", x: 20, y: 444, width: 140, height: 180 },
+      { id: "slot-8", x: 172, y: 444, width: 140, height: 180 },
+      { id: "slot-9", x: 324, y: 444, width: 140, height: 180 }
     ]
   },
   // 호환: "9"는 세로로 매핑

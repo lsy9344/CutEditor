@@ -101,7 +101,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         return { x: 241.5, y: 660 };
 
       case "9v": // 9컷
-        return { x: 241.5, y: 630 };
+        return { x: 241.5, y: 645 };
 
       default:
         return { x: 10, y: 10 };
