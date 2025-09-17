@@ -175,12 +175,12 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 30, y: 20, width: 205, height: 200 },
-      { id: "slot-2", x: 248, y: 20, width: 205, height: 200 },
-      { id: "slot-3", x: 30, y: 230, width: 205, height: 200 },
-      { id: "slot-4", x: 248, y: 230, width: 205, height: 200 },
-      { id: "slot-5", x: 30, y: 440, width: 205, height: 200 },
-      { id: "slot-6", x: 248, y: 440, width: 205, height: 200 }
+      { id: "slot-1", x: 10, y: 20, width: 224, height: 200 },
+      { id: "slot-2", x: 249, y: 20, width: 224, height: 200 },
+      { id: "slot-3", x: 10, y: 230, width: 224, height: 200 },
+      { id: "slot-4", x: 249, y: 230, width: 224, height: 200 },
+      { id: "slot-5", x: 10, y: 440, width: 224, height: 200 },
+      { id: "slot-6", x: 249, y: 440, width: 224, height: 200 }
     ]
   },
   // 호환: "6"는 세로로 매핑

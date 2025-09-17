@@ -144,3 +144,4 @@ dmypy.json
 
 # garbage
 *.png
+!public/**/*.png
