@@ -1019,11 +1019,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           {/* 가이드라인 레이어 (프레임 위에 표시) */}
           {!exportMode && (
             <Layer>
+              {/* 프레임 전체 중앙선 */}
               {(() => {
                 const isHorizontal = Boolean(selectedFrame && /v$/.test(selectedFrame));
                 const centerX = frameLayout.canvasWidth / 2;
                 const centerY = frameLayout.canvasHeight / 2;
-                
+
                 if (isHorizontal) {
                   // 가로 프레임: 가로 중앙에 세로선 그리기
                   return (
@@ -1046,6 +1047,28 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   );
                 }
               })()}
+
+              {/* 각 슬롯별 빨간색 십자선 */}
+              {frameLayout.slots.map((slot) => (
+                <Group key={`guide-${slot.id}`}>
+                  {/* 가로선 - 슬롯의 세로 중앙을 가로지름 */}
+                  <Line
+                    points={[slot.x, slot.y + slot.height / 2, slot.x + slot.width, slot.y + slot.height / 2]}
+                    stroke="red"
+                    strokeWidth={0.5}
+                    dash={[10, 20]}
+                    listening={false}
+                  />
+                  {/* 세로선 - 슬롯의 가로 중앙을 가로지름 */}
+                  <Line
+                    points={[slot.x + slot.width / 2, slot.y, slot.x + slot.width / 2, slot.y + slot.height]}
+                    stroke="red"
+                    strokeWidth={0.5}
+                    dash={[10, 20]}
+                    listening={false}
+                  />
+                </Group>
+              ))}
             </Layer>
           )}
 
