@@ -103,7 +103,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                     src={`/popover/${option.image}`}
                     alt={`${option.label} 프레임 미리보기`}
                     style={{
-                      width: "240px",
+                      width: "300px",
                       height: "auto",
                       display: "block",
                       borderRadius: "4px",

@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
-import { FRAME_LAYOUTS } from "../types/frame";
 
 export type SidebarRightProps = {
   selectedFrame?: FrameType | null;
@@ -48,7 +47,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
 }) => {
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
-  const [isItalic, setIsItalic] = useState(false);
+  const [isItalic, setIsItalic] = useState(true);
   const [isVertical, setIsVertical] = useState(false);
   const [fontFamily, setFontFamily] = useState("");
   const [isFontPickerOpen, setFontPickerOpen] = useState(false);
@@ -58,17 +57,24 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   // 동적 폰트 로딩
   const { fonts, isLoading: fontsLoading } = useFonts();
 
-  // 폰트 목록이 로딩되면, 선택된 텍스트가 없을 때 NanumSquareNeo-aLt을 기본값으로 설정
+  // 폰트 목록이 로딩되면, 선택된 텍스트가 없을 때 Aritaburi을 기본값으로 설정
   useEffect(() => {
     if (!fontsLoading && fonts.length > 0 && !selectedText) {
       const names = fonts.map(f => f.name);
       if (!names.includes(fontFamily)) {
-        // NanumSquareNeo-aLt이 있으면 기본값으로 사용, 없으면 첫 번째 폰트 사용
-        const defaultFont = names.includes('NanumSquareNeo-aLt') ? 'NanumSquareNeo-aLt' : names[0];
+        // Aritaburi이 있으면 기본값으로 사용, 없으면 첫 번째 폰트 사용
+        const defaultFont = names.includes('Aritaburi') ? 'Aritaburi' : names[0];
         setFontFamily(defaultFont);
       }
     }
   }, [fontsLoading, fonts, selectedText]);
+
+  // 선택된 텍스트가 변경될 때 입력창에 동기화
+  useEffect(() => {
+    if (selectedText) {
+      setTextInput(selectedText.text);
+    }
+  }, [selectedText]);
 
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
@@ -89,10 +95,10 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         return { x: 241.5, y: 630 };
 
       case "4v": // 4컷
-        return { x: 241.5, y: 630 };
+        return { x: 241.5, y: 660 };
 
       case "6v": // 6컷
-        return { x: 241.5, y: 630 };
+        return { x: 241.5, y: 660 };
 
       case "9v": // 9컷
         return { x: 241.5, y: 630 };
@@ -222,7 +228,15 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               }}
               placeholder="예) 너의 100일을 축하해 :)"
               value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
+              onChange={(e) => {
+                const newValue = e.target.value;
+                setTextInput(newValue);
+
+                // 선택된 텍스트가 있으면 실시간으로 캔버스에 반영
+                if (selectedText && onTextUpdate) {
+                  onTextUpdate(selectedText.id, { text: newValue });
+                }
+              }}
             />
           </label>
           

@@ -75,8 +75,8 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: HORIZONTAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 46, y: 34, width: 276, height: 414 },
-      { id: "slot-2", x: 331, y: 9, width: 276, height: 464 }
+      { id: "slot-1", x: 16, y: 16, width: 300, height: 452 },
+      { id: "slot-2", x: 331, y: 16, width: 300, height: 452 }
     ]
   },
   "2v": {
@@ -128,10 +128,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 20, y: 20, width: 200, height: 300 },
-      { id: "slot-2", x: 262, y: 20, width: 200, height: 300 },
-      { id: "slot-3", x: 9, y: 331, width: 228, height: 276 },
-      { id: "slot-4", x: 262, y: 340, width: 200, height: 300 }
+      { id: "slot-1", x: 30, y: 20, width: 200, height: 300 },
+      { id: "slot-2", x: 252, y: 20, width: 200, height: 300 },
+      { id: "slot-3", x: 30, y: 340, width: 200, height: 300 },
+      { id: "slot-4", x: 252, y: 340, width: 200, height: 300 }
     ]
   },
   // 호환: "4"는 세로로 매핑 (가로/세로 미기재 시 세로 간주)
@@ -175,12 +175,12 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 50, y: 50, width: 200, height: 200 },
-      { id: "slot-2", x: 350, y: 50, width: 200, height: 200 },
-      { id: "slot-3", x: 50, y: 300, width: 200, height: 200 },
-      { id: "slot-4", x: 350, y: 300, width: 200, height: 200 },
-      { id: "slot-5", x: 50, y: 550, width: 200, height: 200 },
-      { id: "slot-6", x: 350, y: 550, width: 200, height: 200 }
+      { id: "slot-1", x: 30, y: 20, width: 205, height: 200 },
+      { id: "slot-2", x: 248, y: 20, width: 205, height: 200 },
+      { id: "slot-3", x: 30, y: 230, width: 205, height: 200 },
+      { id: "slot-4", x: 248, y: 230, width: 205, height: 200 },
+      { id: "slot-5", x: 30, y: 440, width: 205, height: 200 },
+      { id: "slot-6", x: 248, y: 440, width: 205, height: 200 }
     ]
   },
   // 호환: "6"는 세로로 매핑

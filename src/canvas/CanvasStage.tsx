@@ -1105,7 +1105,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   )}
                 
                 {/* 슬롯 레이블 */}
-                {!hasImage && (() => {
+                {!hasImage && !exportMode && (() => {
                   let labelText = "클릭해서 이미지 추가";
                   if (userImage && loadedImages.get(userImage.id) === null) {
                     labelText = "이미지 로딩 실패";
