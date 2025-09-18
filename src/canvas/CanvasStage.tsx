@@ -719,100 +719,102 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           borderRadius: '8px',
           zIndex: 10
         }}>
-          <div>
-            <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>프레임 색상</label>
-              <button
-                ref={customPickButtonRef}
-                type="button"
-                className="linear-button linear-button--secondary"
-                style={{ height: 24, padding: '0 8px', fontSize: 12 }}
-                onClick={() => setShowCustomPalette((v) => !v)}
-                aria-expanded={showCustomPalette}
-                aria-haspopup="dialog"
-              >
-                직접 선택
-              </button>
-              {showCustomPalette && (
-                <div
-                  className="linear-card"
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 'calc(100% + 6px)',
-                    padding: 8,
-                    border: '1px solid var(--linear-neutral-500)',
-                    borderRadius: '8px',
-                    background: 'var(--linear-neutral-700)',
-                    zIndex: 20,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.35)'
-                  }}
-                  role="dialog"
-                  aria-label="원형 색상 팔레트"
+          {selectedFrame !== "1l" && (
+            <div>
+              <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>프레임 색상</label>
+                <button
+                  ref={customPickButtonRef}
+                  type="button"
+                  className="linear-button linear-button--secondary"
+                  style={{ height: 24, padding: '0 8px', fontSize: 12 }}
+                  onClick={() => setShowCustomPalette((v) => !v)}
+                  aria-expanded={showCustomPalette}
+                  aria-haspopup="dialog"
                 >
-                  <div style={{ position: 'relative' }}>
-                    <canvas
-                      ref={paletteCanvasRef}
-                      onClick={handlePalettePick}
-                      onMouseMove={handlePaletteMove}
-                      onMouseLeave={handlePaletteLeave}
-                      style={{
-                        display: 'block',
-                        width: 160,
-                        height: 160,
-                        cursor: 'crosshair',
-                        borderRadius: '50%',
-                      }}
-                    />
-                    {palettePreview.visible && (
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: palettePreview.x - 16,
-                          top: palettePreview.y - 16,
-                          width: 32,
-                          height: 32,
-                          borderRadius: '50%',
-                          background: palettePreview.color,
-                          border: '2px solid var(--linear-neutral-900)',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
-                          pointerEvents: 'none',
-                        }}
-                        aria-hidden
-                        title={palettePreview.color}
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* 쉬운 팔레트: 외부 설정 기반 스와치 */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-              {presetColors.map((color) => {
-                const isSelected = color.toLowerCase() === frameColor.toLowerCase();
-                return (
-                  <button
-                    key={color}
-                    type="button"
-                    aria-label={`색상 ${color}`}
-                    className="linear-button linear-button--secondary"
-                    onClick={() => onFrameColorChange?.(color)}
+                  직접 선택
+                </button>
+                {showCustomPalette && (
+                  <div
+                    className="linear-card"
                     style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: '50%',
-                      padding: 0,
-                      backgroundColor: color,
-                      border: isSelected ? '2px solid var(--linear-primary-500)' : '1px solid var(--linear-neutral-500)',
-                      boxShadow: color.toLowerCase() === '#ffffff' ? 'inset 0 0 0 1px var(--linear-neutral-500)' : undefined,
+                      position: 'absolute',
+                      right: 0,
+                      top: 'calc(100% + 6px)',
+                      padding: 8,
+                      border: '1px solid var(--linear-neutral-500)',
+                      borderRadius: '8px',
+                      background: 'var(--linear-neutral-700)',
+                      zIndex: 20,
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.35)'
                     }}
-                    title={color}
-                  />
-                );
-              })}
+                    role="dialog"
+                    aria-label="원형 색상 팔레트"
+                  >
+                    <div style={{ position: 'relative' }}>
+                      <canvas
+                        ref={paletteCanvasRef}
+                        onClick={handlePalettePick}
+                        onMouseMove={handlePaletteMove}
+                        onMouseLeave={handlePaletteLeave}
+                        style={{
+                          display: 'block',
+                          width: 160,
+                          height: 160,
+                          cursor: 'crosshair',
+                          borderRadius: '50%',
+                        }}
+                      />
+                      {palettePreview.visible && (
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: palettePreview.x - 16,
+                            top: palettePreview.y - 16,
+                            width: 32,
+                            height: 32,
+                            borderRadius: '50%',
+                            background: palettePreview.color,
+                            border: '2px solid var(--linear-neutral-900)',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+                            pointerEvents: 'none',
+                          }}
+                          aria-hidden
+                          title={palettePreview.color}
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* 쉬운 팔레트: 외부 설정 기반 스와치 */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {presetColors.map((color) => {
+                  const isSelected = color.toLowerCase() === frameColor.toLowerCase();
+                  return (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={`색상 ${color}`}
+                      className="linear-button linear-button--secondary"
+                      onClick={() => onFrameColorChange?.(color)}
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: '50%',
+                        padding: 0,
+                        backgroundColor: color,
+                        border: isSelected ? '2px solid var(--linear-primary-500)' : '1px solid var(--linear-neutral-500)',
+                        boxShadow: color.toLowerCase() === '#ffffff' ? 'inset 0 0 0 1px var(--linear-neutral-500)' : undefined,
+                      }}
+                      title={color}
+                    />
+                  );
+                })}
+              </div>
+              {/* 기본 컬러 인풋 제거: 커스텀 원형 팔레트 사용 */}
             </div>
-            {/* 기본 컬러 인풋 제거: 커스텀 원형 팔레트 사용 */}
-          </div>
+          )}
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>줌:</label>
