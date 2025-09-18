@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
@@ -23,6 +23,13 @@ function App() {
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
   const stageRef = useRef<Konva.Stage | null>(null);
+  const mobileFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const isMobile = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+  }, []);
 
   const handleSelect = (id: string | null) => {
     setEditorState(prev => ({ ...prev, selection: id }))
@@ -86,6 +93,25 @@ function App() {
       };
     });
   }
+
+  // 모바일 전용 업로드 트리거
+  const handleMobileUploadClick = () => {
+    const slotId = editorState.selectedSlot;
+    if (!slotId) {
+      alert('이미지를 넣을 슬롯을 먼저 탭하여 선택하세요.');
+      return;
+    }
+    mobileFileInputRef.current?.click();
+  };
+
+  const handleMobileFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const slotId = editorState.selectedSlot;
+    const file = e.target.files?.[0];
+    if (file && slotId) {
+      handleImageUpload(file, slotId);
+    }
+    if (mobileFileInputRef.current) mobileFileInputRef.current.value = '';
+  };
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
     console.log('[App] onImageTransform', { imageId, transform });
@@ -265,7 +291,44 @@ function App() {
           onExport={handleExport}
         />
       </div>
-      
+      {/* 모바일 전용: 하단 업로드 버튼 및 파일 입력 */}
+      {isMobile && (
+        <>
+          <input
+            ref={mobileFileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            onChange={handleMobileFileChange}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              bottom: 12,
+              display: 'flex',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <button
+              className="linear-button linear-button--primary"
+              style={{
+                pointerEvents: 'auto',
+                boxShadow: 'var(--shadow)',
+                borderRadius: '999px',
+                padding: '0 20px',
+                height: 44,
+              }}
+              onClick={handleMobileUploadClick}
+            >
+              사진 추가
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

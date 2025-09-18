@@ -271,6 +271,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     setDraggedSlotId(slotId);
     currentSlotIdRef.current = slotId; // ref에도 저장
     console.log('🔥 currentSlotIdRef.current set to:', currentSlotIdRef.current);
+    // 모바일/Safari에서도 사용자 제스처 내에서 동작하도록 즉시 트리거
     fileInputRef.current?.click();
     console.log('🔥 fileInputRef.current.click() executed');
   };
@@ -966,6 +967,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         onSelect?.(userImage.id);
                         onSlotSelect?.(slot.id);
                       }}
+                      onTap={() => {
+                        // 모바일 탭에서도 동일 동작
+                        onSelect?.(userImage.id);
+                        onSlotSelect?.(slot.id);
+                      }}
                     />
                     {console.log('[render] image', { id: userImage.id, slot: slot.id, sx: uScaleX, sy: uScaleY, x: centerX, y: centerY })}
                     <KonvaImage
@@ -1113,6 +1119,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         handleSlotClick(slot.id);
                       }
                     }}
+                    onTap={() => {
+                      if (!hasImage) {
+                        // 모바일 탭 시 파일 선택 실행
+                        handleSlotClick(slot.id);
+                      }
+                    }}
+                    onTouchStart={() => {
+                      if (!hasImage) {
+                        // 일부 브라우저(구형 iOS) 호환을 위한 폴백
+                        currentSlotIdRef.current = slot.id;
+                      }
+                    }}
                   />
                   
                   {/* 이미지가 있는 슬롯의 선택 표시 */}
@@ -1239,6 +1257,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        // 모바일에서 카메라/앨범 선택을 자연스럽게 유도
+        capture="environment"
         style={{ display: 'none' }}
         onChange={handleFileSelect}
       />
