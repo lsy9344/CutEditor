@@ -61,6 +61,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onFrameColorChange,
   onTextMove,
   onTextUpdate, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onZoomChange,
   onImageDelete
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
