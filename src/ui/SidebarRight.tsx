@@ -550,9 +550,6 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             내보내기
           </button>
         </div>
-        <div style={{ marginTop: '8px', color: 'var(--linear-secondary-400)', fontSize: '12px', textAlign: 'center' }}>
-          모바일에서는 새 탭으로 열려 저장할 수 있어요.
-        </div>
       </aside>
     </div>
   );
