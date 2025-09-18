@@ -24,6 +24,11 @@ function App() {
   const [exportMode, setExportMode] = useState<boolean>(false);
   const stageRef = useRef<Konva.Stage | null>(null);
   const mobileFileInputRef = useRef<HTMLInputElement | null>(null);
+  // 모바일 내보내기 오버레이 상태
+  const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
+  const [exportBlob, setExportBlob] = useState<Blob | null>(null);
+  const [exportObjectUrl, setExportObjectUrl] = useState<string | null>(null);
+  const [exportFilename, setExportFilename] = useState<string>("");
 
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -242,42 +247,13 @@ function App() {
       const filename = `cut_export_${frameType}_${ts}.png`;
 
       if (isMobile) {
-        // 1) 모바일 우선: Web Share API로 네이티브 저장/공유 유도 (iOS/안드로이드)
-        try {
-          const file = new File([blob], filename, { type: 'image/png' });
-          const canShareFiles = typeof navigator !== 'undefined' && 'canShare' in navigator && (navigator as any).canShare?.({ files: [file] });
-          if (canShareFiles && 'share' in navigator) {
-            await (navigator as any).share({ files: [file], title: '컷 내보내기' });
-            return; // 공유 완료 시 종료
-          }
-        } catch (err) {
-          console.warn('Web Share API 실패 또는 미지원, 다운로드로 폴백:', err);
-        }
-
-        // 2) 폴백: a[download] 시도 (안드로이드 크롬 등)
-        try {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 2000);
-          return;
-        } catch (err) {
-          console.warn('모바일 다운로드 폴백 실패, 최종 폴백으로 열기:', err);
-        }
-
-        // 3) 최종 폴백: 같은 탭 열기 → 사용자가 "이미지 저장" 수행
-        try {
-          const url = URL.createObjectURL(blob);
-          window.location.href = url;
-          // revoke는 페이지 이탈로 불가할 수 있음
-        } catch (err) {
-          // 데이터 URL 직접 열기 (마지막 수단)
-          window.location.href = dataUrl;
-        }
+        // iOS 등에서 사용자가 명시적으로 '사진에 저장'을 누를 수 있도록 오버레이 표시
+        const url = URL.createObjectURL(blob);
+        setExportBlob(blob);
+        setExportObjectUrl(url);
+        setExportFilename(filename);
+        setExportOverlayOpen(true);
+        return; // 오버레이에서 후속 액션 수행
       } else {
         // 데스크톱: 파일 다운로드
         const a = document.createElement('a');
@@ -295,6 +271,57 @@ function App() {
       setExportMode(false);
     }
   }
+
+  // 모바일: '사진에 저장' 버튼 핸들러 (사용자 제스처 컨텍스트 내)
+  const handleMobileSaveToPhotos = async () => {
+    if (!exportBlob) return;
+    try {
+      const file = new File([exportBlob], exportFilename || 'cut_export.png', { type: 'image/png' });
+      const canShareFiles = typeof navigator !== 'undefined' && 'canShare' in navigator && (navigator as any).canShare?.({ files: [file] });
+      if (canShareFiles && 'share' in navigator) {
+        await (navigator as any).share({ files: [file], title: '컷 내보내기' });
+        // 공유 완료 후 오버레이 닫기
+        handleCloseExportOverlay();
+        return;
+      }
+    } catch (err) {
+      console.warn('Web Share API 실패 또는 미지원:', err);
+    }
+
+    // 폴백 1: 다운로드 시도
+    try {
+      const url = exportObjectUrl || URL.createObjectURL(exportBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = exportFilename || 'cut_export.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    } catch (err) {
+      console.warn('모바일 다운로드 폴백 실패:', err);
+    }
+
+    // 폴백 2: 같은 탭에서 이미지 열기 → 사용자 공유/저장 유도
+    try {
+      const url = exportObjectUrl || (exportBlob ? URL.createObjectURL(exportBlob) : undefined);
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (err) {
+      console.warn('이미지 열기 폴백 실패');
+    }
+  };
+
+  const handleCloseExportOverlay = () => {
+    setExportOverlayOpen(false);
+    if (exportObjectUrl) {
+      try { URL.revokeObjectURL(exportObjectUrl); } catch {}
+    }
+    setExportBlob(null);
+    setExportObjectUrl(null);
+    setExportFilename("");
+  };
 
   return (
     <div className="app-container">
@@ -371,6 +398,70 @@ function App() {
             </button>
           </div>
         </>
+      )}
+
+      {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
+      {isMobile && exportOverlayOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'var(--linear-backdrop)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 9999,
+          }}
+          className="linear-fade-in"
+        >
+          <div
+            className="linear-card"
+            style={{ maxWidth: 520, width: '100%', boxShadow: 'var(--shadow-lg)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3>내보내기 완료</h3>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={handleCloseExportOverlay}
+              >
+                닫기
+              </button>
+            </div>
+            <p style={{ marginBottom: 12 }}>사진 앱에 저장하려면 아래 버튼을 눌러 주세요.</p>
+            {exportObjectUrl && (
+              <img
+                src={exportObjectUrl}
+                alt="내보낸 이미지 미리보기"
+                style={{ width: '100%', height: 'auto', borderRadius: 8, marginBottom: 12 }}
+              />
+            )}
+            <div className="linear-flex" style={{ justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => {
+                  // 이미지 열기(폴백): 같은 탭에서 열고, 사용자가 공유/저장 선택
+                  if (exportObjectUrl) {
+                    window.location.href = exportObjectUrl;
+                  }
+                }}
+              >
+                이미지 열기
+              </button>
+              <button
+                type="button"
+                className="linear-button linear-button--primary"
+                onClick={handleMobileSaveToPhotos}
+              >
+                사진에 저장
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
