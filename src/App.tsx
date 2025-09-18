@@ -219,9 +219,6 @@ function App() {
     const cmToPx = (cm: number) => Math.round((cm * targetDpi) / 2.54);
     const targetWidthPx = cmToPx(isHorizontal ? 15 : 10);
 
-    // 모바일: 팝업 차단 방지 위해 선오픈 탭 확보
-    const preOpenedTab = isMobile ? window.open('', '_blank') : null;
-
     // Stage 준비 및 오버레이 제거
     setExportMode(true);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -237,37 +234,59 @@ function App() {
       const maxMobileRatio = 3; // 안전한 최대 배수 (디바이스에 따라 조정 가능)
       const pixelRatio = isMobile ? Math.min(ratioX, maxMobileRatio) : ratioX;
 
-      // PNG DataURL 생성
+      // PNG DataURL 생성 후 Blob으로 변환 (모바일 메모리/호환성 고려)
       const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
+      const blob = await fetch(dataUrl).then(r => r.blob());
+
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `cut_export_${frameType}_${ts}.png`;
 
       if (isMobile) {
-        const tab = preOpenedTab || window.open('', '_blank');
-        if (tab) {
-          tab.document.title = '이미지 내보내는 중…';
-          tab.document.body.style.margin = '0';
-          const img = new Image();
-          img.src = dataUrl;
-          img.style.maxWidth = '100vw';
-          img.style.maxHeight = '100vh';
-          img.onload = () => {
-            tab.document.body.innerHTML = '';
-            tab.document.body.appendChild(img);
-          };
-          img.onerror = () => {
-            tab.location.href = dataUrl; // 폴백
-          };
-        } else {
+        // 1) 모바일 우선: Web Share API로 네이티브 저장/공유 유도 (iOS/안드로이드)
+        try {
+          const file = new File([blob], filename, { type: 'image/png' });
+          const canShareFiles = typeof navigator !== 'undefined' && 'canShare' in navigator && (navigator as any).canShare?.({ files: [file] });
+          if (canShareFiles && 'share' in navigator) {
+            await (navigator as any).share({ files: [file], title: '컷 내보내기' });
+            return; // 공유 완료 시 종료
+          }
+        } catch (err) {
+          console.warn('Web Share API 실패 또는 미지원, 다운로드로 폴백:', err);
+        }
+
+        // 2) 폴백: a[download] 시도 (안드로이드 크롬 등)
+        try {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          return;
+        } catch (err) {
+          console.warn('모바일 다운로드 폴백 실패, 최종 폴백으로 열기:', err);
+        }
+
+        // 3) 최종 폴백: 같은 탭 열기 → 사용자가 "이미지 저장" 수행
+        try {
+          const url = URL.createObjectURL(blob);
+          window.location.href = url;
+          // revoke는 페이지 이탈로 불가할 수 있음
+        } catch (err) {
+          // 데이터 URL 직접 열기 (마지막 수단)
           window.location.href = dataUrl;
         }
       } else {
         // 데스크톱: 파일 다운로드
         const a = document.createElement('a');
-        const ts = new Date().toISOString().replace(/[:.]/g, '-');
-        a.href = dataUrl;
-        a.download = `cut_export_${frameType}_${ts}.png`;
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       }
     } catch (e) {
       console.error('Export 실패:', e);
