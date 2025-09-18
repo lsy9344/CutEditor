@@ -447,6 +447,99 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     console.log('[wheel] applied');
   };
 
+  // ===== 모바일 핀치 줌 지원 =====
+  const pinchRef = useRef<{
+    imageId: string | null;
+    initDistance: number;
+    initScale: number;
+    slot?: { x: number; y: number; width: number; height: number };
+    displayWidth?: number;
+    displayHeight?: number;
+  } | null>(null);
+
+  const getTouchDistance = (evt: TouchEvent) => {
+    if (evt.touches.length < 2) return 0;
+    const [t1, t2] = [evt.touches[0], evt.touches[1]];
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleImageTouchStart = (
+    e: Konva.KonvaEventObject<TouchEvent>,
+    imageId: string,
+    slot?: { x: number; y: number; width: number; height: number },
+    displayWidth?: number,
+    displayHeight?: number
+  ) => {
+    if (e.evt.touches.length >= 2) {
+      e.evt.preventDefault();
+      const node = e.target as unknown as Konva.Node;
+      const nodeScale = Number.isFinite((node as Konva.Node).scaleX()) ? (node as Konva.Node).scaleX() : 1;
+      pinchRef.current = {
+        imageId,
+        initDistance: getTouchDistance(e.evt),
+        initScale: nodeScale,
+        slot,
+        displayWidth,
+        displayHeight,
+      };
+      // 선택 동기화
+      const userImage = userImages.find(img => img.id === imageId);
+      if (userImage) {
+        onSelect?.(userImage.id);
+        onSlotSelect?.(userImage.slotId);
+      }
+    }
+  };
+
+  const handleImageTouchMove = (
+    e: Konva.KonvaEventObject<TouchEvent>,
+    imageId: string
+  ) => {
+    const state = pinchRef.current;
+    if (!state || state.imageId !== imageId) return;
+    if (e.evt.touches.length < 2) return;
+    e.evt.preventDefault();
+
+    const newDist = getTouchDistance(e.evt);
+    if (!newDist || !state.initDistance) return;
+    const scaleBy = newDist / state.initDistance;
+    let nextScale = state.initScale * scaleBy;
+    const minScale = Math.max(0.2, 1e-3);
+    const maxScale = 10;
+    nextScale = Math.max(minScale, Math.min(maxScale, nextScale));
+
+    const transform: Partial<UserImage> = { scaleX: nextScale, scaleY: nextScale };
+
+    // 슬롯 경계 보정 (이미지 위치는 유지하되 범위를 벗어나지 않도록 클램프)
+    if (state.slot && state.displayWidth && state.displayHeight) {
+      const node = e.target as unknown as Konva.Node;
+      const imgX = Number.isFinite(node.x()) ? node.x() : state.slot.x;
+      const imgY = Number.isFinite(node.y()) ? node.y() : state.slot.y;
+      const scaledW = state.displayWidth * nextScale;
+      const scaledH = state.displayHeight * nextScale;
+      const minX = state.slot.x - scaledW;
+      const maxX = state.slot.x + state.slot.width;
+      const minY = state.slot.y - scaledH;
+      const maxY = state.slot.y + state.slot.height;
+      const clampedX = Math.max(minX, Math.min(maxX, imgX));
+      const clampedY = Math.max(minY, Math.min(maxY, imgY));
+      const relX = clampedX - state.slot.x - (state.slot.width - state.displayWidth) / 2;
+      const relY = clampedY - state.slot.y - (state.slot.height - state.displayHeight) / 2;
+      if (!isNaN(relX)) transform.x = relX;
+      if (!isNaN(relY)) transform.y = relY;
+    }
+
+    handleImageTransform(imageId, transform);
+  };
+
+  const handleImageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
+    if (e.evt.touches.length < 2) {
+      pinchRef.current = null;
+    }
+  };
+
   // 이미지 드래그 이동 제한 핸들러
   const handleImageDragMove = (e: Konva.KonvaEventObject<DragEvent>, imageId: string, slot: { x: number; y: number; width: number; height: number }, displayWidth: number, displayHeight: number) => {
     const userImage = userImages.find(img => img.id === imageId);
@@ -972,6 +1065,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         onSelect?.(userImage.id);
                         onSlotSelect?.(slot.id);
                       }}
+                      onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
+                      onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
+                      onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
                     />
                     {console.log('[render] image', { id: userImage.id, slot: slot.id, sx: uScaleX, sy: uScaleY, x: centerX, y: centerY })}
                     <KonvaImage
@@ -990,6 +1086,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         onSlotSelect?.(slot.id);
                       }}
                       onWheel={(e) => handleImageWheel(e, userImage.id, slot, displayWidth, displayHeight)}
+                      onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
+                      onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
+                      onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
                       onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
                       onDragEnd={(e) => {
                         // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
@@ -1257,8 +1356,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        // 모바일에서 카메라/앨범 선택을 자연스럽게 유도
-        capture="environment"
         style={{ display: 'none' }}
         onChange={handleFileSelect}
       />

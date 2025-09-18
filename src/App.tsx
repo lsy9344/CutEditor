@@ -219,6 +219,9 @@ function App() {
     const cmToPx = (cm: number) => Math.round((cm * targetDpi) / 2.54);
     const targetWidthPx = cmToPx(isHorizontal ? 15 : 10);
 
+    // 모바일: 팝업 차단 방지 위해 선오픈 탭 확보
+    const preOpenedTab = isMobile ? window.open('', '_blank') : null;
+
     // Stage 준비 및 오버레이 제거
     setExportMode(true);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
@@ -230,20 +233,42 @@ function App() {
       // 현재 Stage 크기 기준으로 pixelRatio 계산
       const stageW = stage.width();
       const ratioX = targetWidthPx / stageW;
-      // 비율 차이가 있을 경우 평균치가 아닌 X 기준으로 맞추고 높이는 자연스레 스케일됨
-      const pixelRatio = ratioX;
+      // 모바일 메모리 한계 고려: 과도한 픽셀 비율을 제한
+      const maxMobileRatio = 3; // 안전한 최대 배수 (디바이스에 따라 조정 가능)
+      const pixelRatio = isMobile ? Math.min(ratioX, maxMobileRatio) : ratioX;
 
-      // 고해상도 PNG 추출 (lossless)
+      // PNG DataURL 생성
       const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
 
-      // 다운로드 트리거
-      const a = document.createElement('a');
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      a.href = dataUrl;
-      a.download = `cut_export_${frameType}_${ts}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      if (isMobile) {
+        const tab = preOpenedTab || window.open('', '_blank');
+        if (tab) {
+          tab.document.title = '이미지 내보내는 중…';
+          tab.document.body.style.margin = '0';
+          const img = new Image();
+          img.src = dataUrl;
+          img.style.maxWidth = '100vw';
+          img.style.maxHeight = '100vh';
+          img.onload = () => {
+            tab.document.body.innerHTML = '';
+            tab.document.body.appendChild(img);
+          };
+          img.onerror = () => {
+            tab.location.href = dataUrl; // 폴백
+          };
+        } else {
+          window.location.href = dataUrl;
+        }
+      } else {
+        // 데스크톱: 파일 다운로드
+        const a = document.createElement('a');
+        const ts = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = dataUrl;
+        a.download = `cut_export_${frameType}_${ts}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     } catch (e) {
       console.error('Export 실패:', e);
       alert('내보내기에 실패했습니다. 다시 시도해주세요.');
@@ -298,7 +323,6 @@ function App() {
             ref={mobileFileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             style={{ display: 'none' }}
             onChange={handleMobileFileChange}
           />
