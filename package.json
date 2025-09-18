@@ -13,6 +13,7 @@
     "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint"
   },
   "dependencies": {
+    "@vercel/analytics": "1.5.0",
     "konva": "^9.3.22",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
