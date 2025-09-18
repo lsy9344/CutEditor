@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import type { FrameType } from "../types/frame";
 
 export type SidebarLeftProps = {
@@ -13,9 +13,28 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   onFrameSelect,
 }) => {
   const [hoveredFrame, setHoveredFrame] = useState<FrameType | null>(null);
+  const autoHideTimerRef = useRef<number | null>(null);
+
+  const isMobile = (() => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    // 터치 기반/모바일 환경 감지
+    return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || (navigator as any).maxTouchPoints > 0;
+  })();
 
   const handleFrameSelect = (frame: FrameType) => {
     onFrameSelect(frame);
+    // 모바일에서는 팝오버 자동 닫힘 처리
+    if (isMobile) {
+      setHoveredFrame(frame);
+      if (autoHideTimerRef.current) {
+        window.clearTimeout(autoHideTimerRef.current);
+      }
+      autoHideTimerRef.current = window.setTimeout(() => {
+        setHoveredFrame(null);
+        autoHideTimerRef.current = null;
+      }, 1000); // 1초 뒤 자동 닫기
+    }
   };
 
   const handleMouseEnter = (frame: FrameType) => {
@@ -67,8 +86,10 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                     : "linear-button--secondary"
                 }`}
                 onClick={() => handleFrameSelect(option.value)}
-                onMouseEnter={() => handleMouseEnter(option.value)}
-                onMouseLeave={handleMouseLeave}
+                {...(!isMobile ? {
+                  onMouseEnter: () => handleMouseEnter(option.value),
+                  onMouseLeave: handleMouseLeave,
+                } : {})}
                 style={{
                   width: "100%",
                   height: "48px",
