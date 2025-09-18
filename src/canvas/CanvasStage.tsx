@@ -1311,7 +1311,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         fontStyle={textItem.isItalic ? 'italic' : 'normal'}
                         lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
                         draggable={true}
+                        // 데스크톱: 클릭 시 선택
                         onClick={() => onSelect?.(textItem.id)}
+                        // 모바일: 탭/터치 시 선택 (iOS Safari 대응)
+                        onTap={() => onSelect?.(textItem.id)}
+                        onTouchStart={() => onSelect?.(textItem.id)}
                         onDragEnd={(e) => {
                           const newX = e.target.x();
                           const newY = e.target.y();

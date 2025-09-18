@@ -23,7 +23,6 @@ function App() {
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
   const stageRef = useRef<Konva.Stage | null>(null);
-  const mobileFileInputRef = useRef<HTMLInputElement | null>(null);
   // 모바일 내보내기 오버레이 상태
   const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
@@ -99,24 +98,6 @@ function App() {
     });
   }
 
-  // 모바일 전용 업로드 트리거
-  const handleMobileUploadClick = () => {
-    const slotId = editorState.selectedSlot;
-    if (!slotId) {
-      alert('이미지를 넣을 슬롯을 먼저 탭하여 선택하세요.');
-      return;
-    }
-    mobileFileInputRef.current?.click();
-  };
-
-  const handleMobileFileChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const slotId = editorState.selectedSlot;
-    const file = e.target.files?.[0];
-    if (file && slotId) {
-      handleImageUpload(file, slotId);
-    }
-    if (mobileFileInputRef.current) mobileFileInputRef.current.value = '';
-  };
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
     console.log('[App] onImageTransform', { imageId, transform });
@@ -277,15 +258,16 @@ function App() {
     if (!exportBlob) return;
     try {
       const file = new File([exportBlob], exportFilename || 'cut_export.png', { type: 'image/png' });
-      const canShareFiles = typeof navigator !== 'undefined' && 'canShare' in navigator && (navigator as any).canShare?.({ files: [file] });
+      const nav = navigator as unknown as { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title: string }) => Promise<void> };
+      const canShareFiles = typeof navigator !== 'undefined' && 'canShare' in navigator && nav.canShare?.({ files: [file] });
       if (canShareFiles && 'share' in navigator) {
-        await (navigator as any).share({ files: [file], title: '컷 내보내기' });
+        await nav.share?.({ files: [file], title: '컷 내보내기' });
         // 공유 완료 후 오버레이 닫기
         handleCloseExportOverlay();
         return;
       }
-    } catch (err) {
-      console.warn('Web Share API 실패 또는 미지원:', err);
+    } catch {
+      console.warn('Web Share API 실패 또는 미지원');
     }
 
     // 폴백 1: 다운로드 시도
@@ -298,8 +280,8 @@ function App() {
       a.click();
       document.body.removeChild(a);
       return;
-    } catch (err) {
-      console.warn('모바일 다운로드 폴백 실패:', err);
+    } catch {
+      console.warn('모바일 다운로드 폴백 실패');
     }
 
     // 폴백 2: 같은 탭에서 이미지 열기 → 사용자 공유/저장 유도
@@ -308,7 +290,7 @@ function App() {
       if (url) {
         window.location.href = url;
       }
-    } catch (err) {
+    } catch {
       console.warn('이미지 열기 폴백 실패');
     }
   };
@@ -316,7 +298,11 @@ function App() {
   const handleCloseExportOverlay = () => {
     setExportOverlayOpen(false);
     if (exportObjectUrl) {
-      try { URL.revokeObjectURL(exportObjectUrl); } catch {}
+      try {
+        URL.revokeObjectURL(exportObjectUrl);
+      } catch {
+        // 무시
+      }
     }
     setExportBlob(null);
     setExportObjectUrl(null);
@@ -362,43 +348,6 @@ function App() {
           onExport={handleExport}
         />
       </div>
-      {/* 모바일 전용: 하단 업로드 버튼 및 파일 입력 */}
-      {isMobile && (
-        <>
-          <input
-            ref={mobileFileInputRef}
-            type="file"
-            accept="image/*"
-            style={{ display: 'none' }}
-            onChange={handleMobileFileChange}
-          />
-          <div
-            style={{
-              position: 'fixed',
-              left: 0,
-              right: 0,
-              bottom: 12,
-              display: 'flex',
-              justifyContent: 'center',
-              pointerEvents: 'none',
-            }}
-          >
-            <button
-              className="linear-button linear-button--primary"
-              style={{
-                pointerEvents: 'auto',
-                boxShadow: 'var(--shadow)',
-                borderRadius: '999px',
-                padding: '0 20px',
-                height: 44,
-              }}
-              onClick={handleMobileUploadClick}
-            >
-              사진 추가
-            </button>
-          </div>
-        </>
-      )}
 
       {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
       {isMobile && exportOverlayOpen && (
