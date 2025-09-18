@@ -65,6 +65,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 커스텀 컬러 팔레트 관련
   const [showCustomPalette, setShowCustomPalette] = useState(false);
@@ -680,6 +681,38 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     };
   }, [showCustomPalette]);
 
+  useEffect(() => {
+    if (!frameLayout || !onZoomChange) return;
+    const node = containerRef.current;
+    if (!node) return;
+
+    const applyAutoFit = () => {
+      const containerWidth = node.clientWidth;
+      if (!containerWidth) return;
+      const baseWidth = frameLayout.canvasWidth;
+      if (!baseWidth) return;
+      const ratio = containerWidth / baseWidth;
+      if (!Number.isFinite(ratio) || ratio <= 0) return;
+      const clamped = Math.max(0.1, Math.min(1, Number(ratio.toFixed(4))));
+      if (Math.abs(clamped - zoom) > 0.005) {
+        onZoomChange(clamped);
+      }
+    };
+
+    applyAutoFit();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => applyAutoFit());
+      observer.observe(node);
+      return () => observer.disconnect();
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', applyAutoFit);
+      return () => window.removeEventListener('resize', applyAutoFit);
+    }
+  }, [frameLayout, onZoomChange, zoom]);
+
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
     return (
@@ -706,6 +739,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const isHorizontal = Boolean(selectedFrame && /h$/.test(selectedFrame));
   const wrapperTargetHeight = isHorizontal ? Math.max(frameLayout.canvasWidth, frameLayout.canvasHeight) * zoom : undefined;
+
+  const containerStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: '100%',
+  };
+
+  if (wrapperTargetHeight) {
+    containerStyle.height = wrapperTargetHeight;
+  }
 
   // HSV -> RGB 변환
   const hsvToRgb = (h: number, s: number, v: number) => {
@@ -782,19 +828,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   return (
     <div className="linear-card linear-fade-in">
       <div
-        style={{
-          display: isHorizontal ? 'flex' : undefined,
-          flexDirection: isHorizontal ? 'column' : undefined,
-          justifyContent: isHorizontal ? 'center' : undefined,
-          height: wrapperTargetHeight,
-        }}
+        ref={containerRef}
+        style={containerStyle}
       >
         <div 
           style={{ 
             border: '2px dashed var(--linear-neutral-500)', 
             borderRadius: '0px',
             overflow: 'hidden',
-            position: 'relative'
+            position: 'relative',
+            maxWidth: '100%'
           }}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
