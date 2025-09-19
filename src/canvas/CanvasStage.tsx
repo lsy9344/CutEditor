@@ -773,7 +773,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     display: 'flex',
     flexDirection: 'column',
     gap: '12px',
-    minWidth: '220px',
+    minWidth: '100px',
     padding: '16px',
     borderRadius: '12px',
     background: 'rgba(0, 0, 0, 0.8)',
