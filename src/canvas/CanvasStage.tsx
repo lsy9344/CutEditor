@@ -82,12 +82,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const [presetColors, setPresetColors] = useState<string[]>([
     '#FFFFFF', // White
     '#000000', // Black
-    '#E5E7EB', // Light Gray
-    '#8D6E63', // Brown
-    '#F4D03F', // Gold
-    '#C8F7DC', // Mint
-    '#CDE9FF', // Light Blue
-    '#FAD2E1', // Light Pink
+    '#DCDCDC', // Light Gray.
+    '#fe9fb3', // Deep Pink.
+    '#ffe4c4', // Gold
+    '#C8F7DC', // Mint.
+    '#C6E2FF', // Light Blue.
+    '#ffc1cc', // Rose Pink.
   ]);
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
