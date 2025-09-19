@@ -29,6 +29,7 @@ type SaveFilePickerOptions = {
   suggestedName?: string;
   types?: SaveFilePickerAcceptType[];
   excludeAcceptAllOption?: boolean;
+  startIn?: FileSystemFileHandle | 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
 };
 
 declare global {
@@ -58,7 +59,6 @@ function App() {
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
   const [exportObjectUrl, setExportObjectUrl] = useState<string | null>(null);
   const [exportFilename, setExportFilename] = useState<string>("");
-  const [desktopFileHandle, setDesktopFileHandle] = useState<FileSystemFileHandle | null>(null);
 
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
@@ -278,53 +278,28 @@ function App() {
       }
 
       if (supportsFilePicker && window.showSaveFilePicker) {
-        const ensurePermission = async (handle: FileSystemFileHandle | null) => {
-          if (!handle) return null;
-          if (!handle.queryPermission) return handle;
-          try {
-            const status = await handle.queryPermission({ mode: 'readwrite' });
-            if (status === 'granted') return handle;
-            if (status === 'prompt' && handle.requestPermission) {
-              const next = await handle.requestPermission({ mode: 'readwrite' });
-              if (next === 'granted') return handle;
-            }
-          } catch (error) {
-            console.warn('파일 권한 확인 실패', error);
-          }
-          return null;
-        };
-
-        let writableHandle = await ensurePermission(desktopFileHandle);
-
-        if (!writableHandle) {
-          try {
-            writableHandle = await window.showSaveFilePicker({
-              suggestedName: filename,
-              excludeAcceptAllOption: true,
-              types: [
-                {
-                  description: 'PNG 이미지',
-                  accept: { 'image/png': ['.png'] },
-                },
-              ],
-            });
-            if (writableHandle) {
-              setDesktopFileHandle(writableHandle);
-            }
-          } catch (error) {
-            const isAbort = error instanceof DOMException && error.name === 'AbortError';
-            if (!isAbort) {
-              console.warn('파일 저장 위치 선택 실패', error);
-              alert('파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.');
-            }
-          }
-        }
-
-        if (writableHandle) {
-          const writable = await writableHandle.createWritable();
+        try {
+          const fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            excludeAcceptAllOption: true,
+            startIn: 'desktop',
+            types: [
+              {
+                description: 'PNG 이미지',
+                accept: { 'image/png': ['.png'] },
+              },
+            ],
+          });
+          const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
           return;
+        } catch (error) {
+          const isAbort = error instanceof DOMException && error.name === 'AbortError';
+          if (!isAbort) {
+            console.warn('파일 저장 위치 선택 실패', error);
+            alert('파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.');
+          }
         }
       }
 
