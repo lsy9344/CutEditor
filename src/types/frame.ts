@@ -87,8 +87,8 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 9, y: 46, width: 465, height: 276 },
-      { id: "slot-2", x: 9, y: 331, width: 465, height: 276 }
+      { id: "slot-1", x: 24, y: 46, width: 435, height: 276 },
+      { id: "slot-2", x: 24, y: 331, width: 435, height: 276 }
     ]
   },
   // 호환: 키워드 미기재 시 세로로 간주
@@ -128,10 +128,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 30, y: 20, width: 200, height: 300 },
-      { id: "slot-2", x: 252, y: 20, width: 200, height: 300 },
-      { id: "slot-3", x: 30, y: 340, width: 200, height: 300 },
-      { id: "slot-4", x: 252, y: 340, width: 200, height: 300 }
+      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
+      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
+      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
+      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
     ]
   },
   // 호환: "4"는 세로로 매핑 (가로/세로 미기재 시 세로 간주)
