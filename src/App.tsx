@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useMemo, useRef, useState, useCallback } from 'react'
 import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
@@ -6,6 +6,36 @@ import { SidebarRight } from './ui/SidebarRight'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import type { FrameType, UserImage } from './types/frame'
+
+type FileSystemWritableFileStream = {
+  write: (data: Blob | BufferSource | string) => Promise<void>;
+  close: () => Promise<void>;
+};
+
+type FileSystemFileHandle = {
+  kind: 'file';
+  name: string;
+  createWritable: () => Promise<FileSystemWritableFileStream>;
+  queryPermission?: (options: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>;
+  requestPermission?: (options: { mode: 'read' | 'readwrite' }) => Promise<PermissionState>;
+};
+
+type SaveFilePickerAcceptType = {
+  description?: string;
+  accept: Record<string, string[]>;
+};
+
+type SaveFilePickerOptions = {
+  suggestedName?: string;
+  types?: SaveFilePickerAcceptType[];
+  excludeAcceptAllOption?: boolean;
+};
+
+declare global {
+  interface Window {
+    showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
+  }
+}
 
 function App() {
   const [editorState, setEditorState] = useState<EditorState>(createInitialState())
@@ -28,12 +58,17 @@ function App() {
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
   const [exportObjectUrl, setExportObjectUrl] = useState<string | null>(null);
   const [exportFilename, setExportFilename] = useState<string>("");
+  const [desktopFileHandle, setDesktopFileHandle] = useState<FileSystemFileHandle | null>(null);
 
   const isMobile = useMemo(() => {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent || '';
     return /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
   }, []);
+
+  const supportsFilePicker = useMemo(() => (
+    typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function'
+  ), []);
 
   const handleSelect = (id: string | null) => {
     setEditorState(prev => ({ ...prev, selection: id }))
@@ -112,6 +147,12 @@ function App() {
   const handleFrameColorChange = (color: string) => {
     setEditorState(prev => ({ ...prev, frameColor: color }))
   }
+
+  const makeSuggestedFilename = useCallback(() => {
+    const frameType = editorState.selectedFrame ?? 'preview';
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    return `cut_export_${frameType}_${ts}.png`;
+  }, [editorState.selectedFrame]);
 
   const handleZoomChange = (zoom: number) => {
     setEditorState(prev => ({ ...prev, zoom }))
@@ -224,8 +265,7 @@ function App() {
       const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
       const blob = await fetch(dataUrl).then(r => r.blob());
 
-      const ts = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `cut_export_${frameType}_${ts}.png`;
+      const filename = makeSuggestedFilename();
 
       if (isMobile) {
         // iOS 등에서 사용자가 명시적으로 '사진에 저장'을 누를 수 있도록 오버레이 표시
@@ -235,16 +275,68 @@ function App() {
         setExportFilename(filename);
         setExportOverlayOpen(true);
         return; // 오버레이에서 후속 액션 수행
-      } else {
-        // 데스크톱: 파일 다운로드
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       }
+
+      if (supportsFilePicker && window.showSaveFilePicker) {
+        const ensurePermission = async (handle: FileSystemFileHandle | null) => {
+          if (!handle) return null;
+          if (!handle.queryPermission) return handle;
+          try {
+            const status = await handle.queryPermission({ mode: 'readwrite' });
+            if (status === 'granted') return handle;
+            if (status === 'prompt' && handle.requestPermission) {
+              const next = await handle.requestPermission({ mode: 'readwrite' });
+              if (next === 'granted') return handle;
+            }
+          } catch (error) {
+            console.warn('파일 권한 확인 실패', error);
+          }
+          return null;
+        };
+
+        let writableHandle = await ensurePermission(desktopFileHandle);
+
+        if (!writableHandle) {
+          try {
+            writableHandle = await window.showSaveFilePicker({
+              suggestedName: filename,
+              excludeAcceptAllOption: true,
+              types: [
+                {
+                  description: 'PNG 이미지',
+                  accept: { 'image/png': ['.png'] },
+                },
+              ],
+            });
+            if (writableHandle) {
+              setDesktopFileHandle(writableHandle);
+            }
+          } catch (error) {
+            const isAbort = error instanceof DOMException && error.name === 'AbortError';
+            if (!isAbort) {
+              console.warn('파일 저장 위치 선택 실패', error);
+              alert('파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.');
+            }
+          }
+        }
+
+        if (writableHandle) {
+          const writable = await writableHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        }
+      }
+
+      // 파일 시스템 접근 API 미지원 또는 취소 시 기본 다운로드로 폴백
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
     } catch (e) {
       console.error('Export 실패:', e);
       alert('내보내기에 실패했습니다. 다시 시도해주세요.');

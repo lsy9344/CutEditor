@@ -741,18 +741,44 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const isHorizontal = Boolean(selectedFrame && /h$/.test(selectedFrame));
   const wrapperTargetHeight = isHorizontal ? Math.max(frameLayout.canvasWidth, frameLayout.canvasHeight) * zoom : undefined;
 
-  const containerStyle: React.CSSProperties = {
+  const layoutStyle: React.CSSProperties = {
     display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     width: '100%',
+    maxWidth: '100%',
+    gap: '24px',
+  };
+
+  const stageAreaStyle: React.CSSProperties = {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
+  };
+
+  const stageWrapperStyle: React.CSSProperties = {
+    border: '2px dashed var(--linear-neutral-500)',
+    borderRadius: '0px',
+    overflow: 'hidden',
+    position: 'relative',
     maxWidth: '100%',
   };
 
   if (wrapperTargetHeight) {
-    containerStyle.height = wrapperTargetHeight;
+    stageWrapperStyle.height = wrapperTargetHeight;
   }
+
+  const controlPanelStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    minWidth: '220px',
+    padding: '16px',
+    borderRadius: '12px',
+    background: 'rgba(0, 0, 0, 0.8)',
+    border: '1px solid var(--linear-neutral-500)',
+  };
 
   // HSV -> RGB 변환
   const hsvToRgb = (h: number, s: number, v: number) => {
@@ -828,35 +854,408 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   return (
     <div className="linear-card linear-fade-in">
-      <div
-        ref={containerRef}
-        style={containerStyle}
-      >
-        <div 
-          style={{ 
-            border: '2px dashed var(--linear-neutral-500)', 
-            borderRadius: '0px',
-            overflow: 'hidden',
-            position: 'relative',
-            maxWidth: '100%'
-          }}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+      <div style={layoutStyle}>
+        <div
+          ref={containerRef}
+          style={stageAreaStyle}
         >
-        {/* 컨트롤 패널을 캔버스 우측 중앙에 오버레이 */}
-        <div style={{
-          position: 'absolute',
-          right: '16px',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          background: 'rgba(0, 0, 0, 0.8)',
-          padding: '12px',
-          borderRadius: '8px',
-          zIndex: 10
-        }}>
+          <div
+            style={stageWrapperStyle}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <Stage
+              ref={(node) => {
+                stageRef.current = node;
+                if (stageRefExternal) {
+                  // 외부에서도 동일 참조를 사용할 수 있게 전달
+                  (stageRefExternal as React.MutableRefObject<Konva.Stage | null>).current = node;
+                }
+              }}
+              width={frameLayout.canvasWidth * zoom}
+              height={frameLayout.canvasHeight * zoom}
+              scaleX={zoom}
+              scaleY={zoom}
+              onClick={(e) => {
+                if (e.target === e.target.getStage()) {
+                  onSelect?.(null);
+                  onSlotSelect?.(null);  // 슬롯 선택도 해제
+                }
+              }}
+            >
+              {/* 프레임 이미지 레이어 (사용자 이미지 아래에 배치) */}
+              <Layer>
+                {/* 배경: 프레임 이미지가 있으면 먼저 그려서 보이도록 함 */}
+                {frameImage ? (
+                  <KonvaImage
+                    image={processedFrameCanvas ?? frameImage}
+                    x={0}
+                    y={0}
+                    width={frameLayout.canvasWidth}
+                    height={frameLayout.canvasHeight}
+                    listening={false}
+                  />
+                ) : (
+                  <Rect
+                    x={0}
+                    y={0}
+                    width={frameLayout.canvasWidth}
+                    height={frameLayout.canvasHeight}
+                    fill="white"
+                  />
+                )}
+              </Layer>
+
+              {/* 사용자 이미지 레이어 (프레임 이미지 위에 배치) */}
+              <Layer>
+                {frameLayout.slots.map((slot) => {
+                  const userImage = userImages.find(img => img.slotId === slot.id);
+                  const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
+                  
+                  if (userImage && loadedImg && loadedImg !== null) {
+                    // 이미지를 슬롯 중앙에 배치하기 위한 계산
+                    const imageAspectRatio = loadedImg.width / loadedImg.height;
+                    const slotAspectRatio = slot.width / slot.height;
+                    
+                    let displayWidth = slot.width;
+                    let displayHeight = slot.height;
+                    
+                    // 비율을 유지하면서 슬롯에 맞추기 (contain)
+                    if (imageAspectRatio > slotAspectRatio) {
+                      displayHeight = slot.width / imageAspectRatio;
+                    } else {
+                      displayWidth = slot.height * imageAspectRatio;
+                    }
+                    
+                    // NaN 방어: 사용자 변형 값 보정
+                    const uX = Number.isFinite(userImage.x) ? userImage.x : 0;
+                    const uY = Number.isFinite(userImage.y) ? userImage.y : 0;
+                    const uScaleX = Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1;
+                    const uScaleY = Number.isFinite(userImage.scaleY) ? userImage.scaleY : 1;
+                    const uRotation = Number.isFinite(userImage.rotation) ? userImage.rotation : 0;
+
+                    // 중앙 정렬을 위한 오프셋 계산 (top-left 좌표)
+                    const centerX = slot.x + (slot.width - displayWidth) / 2 + uX;
+                    const centerY = slot.y + (slot.height - displayHeight) / 2 + uY;
+                    
+                    return (
+                      <Group
+                        key={slot.id}
+                        clipFunc={(ctx) => {
+                          // 슬롯 영역으로 클리핑
+                          ctx.rect(slot.x, slot.y, slot.width, slot.height);
+                        }}
+                      >
+                        {/* 슬롯 내부 빈 영역의 휠/클릭 처리를 위한 백그라운드 캡처 (이미지 아래 배치) */}
+                        <Rect
+                          x={slot.x}
+                          y={slot.y}
+                          width={slot.width}
+                          height={slot.height}
+                          fill={'transparent'}
+                          listening={true}
+                          onWheel={(e) => handleImageWheel(e as unknown as Konva.KonvaEventObject<WheelEvent>, userImage.id, slot, displayWidth, displayHeight)}
+                          onClick={() => {
+                            onSelect?.(userImage.id);
+                            onSlotSelect?.(slot.id);
+                          }}
+                          onTap={() => {
+                            // 모바일 탭에서도 동일 동작
+                            onSelect?.(userImage.id);
+                            onSlotSelect?.(slot.id);
+                          }}
+                          onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
+                          onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
+                          onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
+                        />
+                        {console.log('[render] image', { id: userImage.id, slot: slot.id, sx: uScaleX, sy: uScaleY, x: centerX, y: centerY })}
+                        <KonvaImage
+                          key={userImage.id}
+                          image={loadedImg}
+                          x={centerX}
+                          y={centerY}
+                          width={displayWidth}
+                          height={displayHeight}
+                          scaleX={uScaleX}
+                          scaleY={uScaleY}
+                          rotation={uRotation}
+                          draggable={true}
+                          onClick={() => {
+                            onSelect?.(userImage.id);
+                            onSlotSelect?.(slot.id);
+                          }}
+                          onWheel={(e) => handleImageWheel(e, userImage.id, slot, displayWidth, displayHeight)}
+                          onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
+                          onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
+                          onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
+                          onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
+                          onDragEnd={(e) => {
+                            // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
+                            const finalX = e.target.x();
+                            const finalY = e.target.y();
+                            
+                            // NaN 체크
+                            if (isNaN(finalX) || isNaN(finalY)) return;
+                            
+                            const newX = finalX - slot.x - (slot.width - displayWidth) / 2;
+                            const newY = finalY - slot.y - (slot.height - displayHeight) / 2;
+                            
+                            // 최종 NaN 체크
+                            if (!isNaN(newX) && !isNaN(newY)) {
+                              handleImageTransform(userImage.id, { x: newX, y: newY });
+                            }
+                          }}
+                          onTransformEnd={(e) => {
+                            const node = e.target;
+                            handleImageTransform(userImage.id, {
+                              scaleX: node.scaleX(),
+                              scaleY: node.scaleY(),
+                              rotation: node.rotation()
+                            });
+                          }}
+                        />
+                      </Group>
+                    );
+                  }
+                  
+                  return null;
+                })}
+              </Layer>
+
+              {/* 가이드라인 레이어 (프레임 위에 표시) */}
+              {!exportMode && (
+                <Layer>
+                  {/* 프레임 전체 중앙선 */}
+                  {(() => {
+                    const isHorizontal = Boolean(selectedFrame && /v$/.test(selectedFrame));
+                    const centerX = frameLayout.canvasWidth / 2;
+                    const centerY = frameLayout.canvasHeight / 2;
+
+                    if (isHorizontal) {
+                      // 가로 프레임: 가로 중앙에 세로선 그리기
+                      return (
+                        <Line
+                          points={[centerX, 0, centerX, frameLayout.canvasHeight]}
+                          stroke="rgba(128, 128, 128, 0.5)"
+                          strokeWidth={1}
+                          listening={false}
+                        />
+                      );
+                    } else {
+                      // 세로 프레임: 세로 중앙에 가로선 그리기
+                      return (
+                        <Line
+                          points={[0, centerY, frameLayout.canvasWidth, centerY]}
+                          stroke="rgba(128, 128, 128, 0.5)"
+                          strokeWidth={1}
+                          listening={false}
+                        />
+                      );
+                    }
+                  })()}
+
+                  {/* 각 슬롯별 빨간색 십자선 */}
+                  {frameLayout.slots.map((slot) => (
+                    <Group key={`guide-${slot.id}`}>
+                      {/* 가로선 - 슬롯의 세로 중앙을 가로지름 */}
+                      <Line
+                        points={[slot.x, slot.y + slot.height / 2, slot.x + slot.width, slot.y + slot.height / 2]}
+                        stroke="red"
+                        strokeWidth={0.5}
+                        dash={[10, 20]}
+                        listening={false}
+                      />
+                      {/* 세로선 - 슬롯의 가로 중앙을 가로지름 */}
+                      <Line
+                        points={[slot.x + slot.width / 2, slot.y, slot.x + slot.width / 2, slot.y + slot.height]}
+                        stroke="red"
+                        strokeWidth={0.5}
+                        dash={[10, 20]}
+                        listening={false}
+                      />
+                    </Group>
+                  ))}
+                </Layer>
+              )}
+
+              {/* 슬롯 인터랙션 레이어 */}
+              <Layer>
+                {frameLayout.slots.map((slot) => {
+                  const userImage = userImages.find(img => img.slotId === slot.id);
+                  const hasImage = userImage && loadedImages.get(userImage.id);
+                  const isSelected = selectedSlot === slot.id;
+                  
+                  return (
+                    <Group key={slot.id}>
+                      {/* 슬롯 배경 (드롭 존) - 이미지가 있을 때는 투명하게 */}
+                      <Rect
+                        x={slot.x}
+                        y={slot.y}
+                        width={slot.width}
+                        height={slot.height}
+                        fill={exportMode ? 'transparent' : (hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)'))}
+                        stroke={exportMode ? 'transparent' : (hasImage ? 'transparent' : (isSelected ? '#ff6b35' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')))}
+                        strokeWidth={exportMode ? 0 : (isSelected ? 3 : 2)}
+                        listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
+                        onMouseEnter={() => {
+                          if (!hasImage) {
+                            console.log('🔥 Slot mouse enter:', slot.id);
+                            setDraggedSlotId(slot.id);
+                            currentSlotIdRef.current = slot.id;
+                          }
+                        }}
+                        onMouseLeave={() => {
+                          if (!hasImage) {
+                            console.log('🔥 Slot mouse leave:', slot.id);
+                            setDraggedSlotId(null);
+                          }
+                        }}
+                        onClick={(e) => {
+                          if (!hasImage) {
+                            console.log('🔥 Slot clicked!!! slot.id:', slot.id);
+                            console.log('🔥 Click event:', e);
+                            handleSlotClick(slot.id);
+                          }
+                        }}
+                        onTap={() => {
+                          if (!hasImage) {
+                            // 모바일 탭 시 파일 선택 실행
+                            handleSlotClick(slot.id);
+                          }
+                        }}
+                        onTouchStart={() => {
+                          if (!hasImage) {
+                            // 일부 브라우저(구형 iOS) 호환을 위한 폴백
+                            currentSlotIdRef.current = slot.id;
+                          }
+                        }}
+                      />
+                      
+                      {/* 이미지가 있는 슬롯의 선택 표시 */}
+                      {hasImage && (
+                        <Rect
+                          x={slot.x}
+                          y={slot.y}
+                          width={slot.width}
+                          height={slot.height}
+                          fill="transparent"
+                          stroke={!exportMode && isSelected ? "#ff6b35" : "transparent"}
+                          strokeWidth={3}
+                          listening={false}
+                        />
+                      )}
+                    
+                    {/* 슬롯 레이블 */}
+                    {!hasImage && !exportMode && (() => {
+                      let labelText = "클릭해서 이미지 추가";
+                      if (userImage && loadedImages.get(userImage.id) === null) {
+                        labelText = "이미지 로딩 실패";
+                      } else if (userImage && !loadedImages.get(userImage.id)) {
+                        labelText = "이미지 로딩 중...";
+                      }
+                      
+                      return (
+                        <Group>
+                          <Rect
+                            x={slot.x + slot.width / 2 - 60}
+                            y={slot.y + slot.height / 2 - 10}
+                            width={140}
+                            height={30}
+                            fill="rgba(0, 0, 0, 0.7)"
+                            cornerRadius={10}
+                          />
+                          <Text
+                            x={slot.x + slot.width / 2 - 60}
+                            y={slot.y + slot.height / 2 - 2}
+                            width={140}
+                            text={labelText}
+                            fontSize={14}
+                            fill="white"
+                            align="center"
+                          />
+                        </Group>
+                      );
+                    })()}
+                  </Group>
+                  )
+                })}
+              </Layer>
+
+              {/* 텍스트 레이어 (최상위에 표시) */}
+              <Layer>
+                {texts.map((textItem) => {
+                  const isSelected = selection === textItem.id;
+                  return (
+                    <Group key={textItem.id}>
+                      {(() => {
+                        // 텍스트 크기 계산
+                        const dimensions = getTextDimensions(
+                          textItem.text,
+                          textItem.fontSize,
+                          textItem.fontFamily,
+                          textItem.isItalic,
+                          textItem.isVertical
+                        );
+
+                        return (
+                          <Text
+                            x={textItem.x}
+                            y={textItem.y}
+                            offsetX={dimensions.width / 2}
+                            offsetY={dimensions.height / 2}
+                            text={formatVerticalText(textItem.text, textItem.isVertical)}
+                            fontSize={textItem.fontSize}
+                            fontFamily={textItem.fontFamily}
+                            fill={textItem.fontColor}
+                            fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                            lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
+                            draggable={true}
+                            // 데스크톱: 클릭 시 선택
+                            onClick={() => onSelect?.(textItem.id)}
+                            // 모바일: 탭/터치 시 선택 (iOS Safari 대응)
+                            onTap={() => onSelect?.(textItem.id)}
+                            onTouchStart={() => onSelect?.(textItem.id)}
+                            onDragEnd={(e) => {
+                              const newX = e.target.x();
+                              const newY = e.target.y();
+                              onTextMove?.(textItem.id, newX, newY);
+                            }}
+                          />
+                        );
+                      })()}
+                      {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
+                      {isSelected && !exportMode && (() => {
+                        // 테두리용 텍스트 크기 계산
+                        const borderDimensions = getTextDimensions(
+                          textItem.text,
+                          textItem.fontSize,
+                          textItem.fontFamily,
+                          textItem.isItalic,
+                          textItem.isVertical
+                        );
+
+                        return (
+                          <Rect
+                            x={textItem.x - borderDimensions.width / 2 - 2}
+                            y={textItem.y - borderDimensions.height / 2 - 2}
+                            width={borderDimensions.width + 4}
+                            height={borderDimensions.height + 4}
+                            fill="transparent"
+                            stroke="#ff6b35"
+                            strokeWidth={2}
+                            listening={false}
+                          />
+                        );
+                      })()}
+                    </Group>
+                  );
+                })}
+              </Layer>
+            </Stage>
+          </div>
+        </div>
+
+        <div style={controlPanelStyle}>
           {selectedFrame !== "1l" && (
             <div>
               <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -953,7 +1352,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               {/* 기본 컬러 인풋 제거: 커스텀 원형 팔레트 사용 */}
             </div>
           )}
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>줌:</label>
             {(() => {
@@ -983,7 +1382,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               );
             })()}
           </div>
-          
+
           {/* 선택된 이미지 삭제 버튼 */}
           {(() => {
             const selectedImage = selectedSlot ? userImages.find(img => img.slotId === selectedSlot) : null;
@@ -1009,395 +1408,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             );
           })()}
         </div>
-        <Stage
-          ref={(node) => {
-            stageRef.current = node;
-            if (stageRefExternal) {
-              // 외부에서도 동일 참조를 사용할 수 있게 전달
-              (stageRefExternal as React.MutableRefObject<Konva.Stage | null>).current = node;
-            }
-          }}
-          width={frameLayout.canvasWidth * zoom}
-          height={frameLayout.canvasHeight * zoom}
-          scaleX={zoom}
-          scaleY={zoom}
-          onClick={(e) => {
-            if (e.target === e.target.getStage()) {
-              onSelect?.(null);
-              onSlotSelect?.(null);  // 슬롯 선택도 해제
-            }
-          }}
-        >
-          {/* 프레임 이미지 레이어 (사용자 이미지 아래에 배치) */}
-          <Layer>
-            {/* 배경: 프레임 이미지가 있으면 먼저 그려서 보이도록 함 */}
-            {frameImage ? (
-              <KonvaImage
-                image={processedFrameCanvas ?? frameImage}
-                x={0}
-                y={0}
-                width={frameLayout.canvasWidth}
-                height={frameLayout.canvasHeight}
-                listening={false}
-              />
-            ) : (
-              <Rect
-                x={0}
-                y={0}
-                width={frameLayout.canvasWidth}
-                height={frameLayout.canvasHeight}
-                fill="white"
-              />
-            )}
-          </Layer>
-
-          {/* 사용자 이미지 레이어 (프레임 이미지 위에 배치) */}
-          <Layer>
-            {frameLayout.slots.map((slot) => {
-              const userImage = userImages.find(img => img.slotId === slot.id);
-              const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
-              
-              if (userImage && loadedImg && loadedImg !== null) {
-                // 이미지를 슬롯 중앙에 배치하기 위한 계산
-                const imageAspectRatio = loadedImg.width / loadedImg.height;
-                const slotAspectRatio = slot.width / slot.height;
-                
-                let displayWidth = slot.width;
-                let displayHeight = slot.height;
-                
-                // 비율을 유지하면서 슬롯에 맞추기 (contain)
-                if (imageAspectRatio > slotAspectRatio) {
-                  displayHeight = slot.width / imageAspectRatio;
-                } else {
-                  displayWidth = slot.height * imageAspectRatio;
-                }
-                
-                // NaN 방어: 사용자 변형 값 보정
-                const uX = Number.isFinite(userImage.x) ? userImage.x : 0;
-                const uY = Number.isFinite(userImage.y) ? userImage.y : 0;
-                const uScaleX = Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1;
-                const uScaleY = Number.isFinite(userImage.scaleY) ? userImage.scaleY : 1;
-                const uRotation = Number.isFinite(userImage.rotation) ? userImage.rotation : 0;
-
-                // 중앙 정렬을 위한 오프셋 계산 (top-left 좌표)
-                const centerX = slot.x + (slot.width - displayWidth) / 2 + uX;
-                const centerY = slot.y + (slot.height - displayHeight) / 2 + uY;
-                
-                return (
-                  <Group
-                    key={slot.id}
-                    clipFunc={(ctx) => {
-                      // 슬롯 영역으로 클리핑
-                      ctx.rect(slot.x, slot.y, slot.width, slot.height);
-                    }}
-                  >
-                    {/* 슬롯 내부 빈 영역의 휠/클릭 처리를 위한 백그라운드 캡처 (이미지 아래 배치) */}
-                    <Rect
-                      x={slot.x}
-                      y={slot.y}
-                      width={slot.width}
-                      height={slot.height}
-                      fill={'transparent'}
-                      listening={true}
-                      onWheel={(e) => handleImageWheel(e as unknown as Konva.KonvaEventObject<WheelEvent>, userImage.id, slot, displayWidth, displayHeight)}
-                      onClick={() => {
-                        onSelect?.(userImage.id);
-                        onSlotSelect?.(slot.id);
-                      }}
-                      onTap={() => {
-                        // 모바일 탭에서도 동일 동작
-                        onSelect?.(userImage.id);
-                        onSlotSelect?.(slot.id);
-                      }}
-                      onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
-                      onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
-                      onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
-                    />
-                    {console.log('[render] image', { id: userImage.id, slot: slot.id, sx: uScaleX, sy: uScaleY, x: centerX, y: centerY })}
-                    <KonvaImage
-                      key={userImage.id}
-                      image={loadedImg}
-                      x={centerX}
-                      y={centerY}
-                      width={displayWidth}
-                      height={displayHeight}
-                      scaleX={uScaleX}
-                      scaleY={uScaleY}
-                      rotation={uRotation}
-                      draggable={true}
-                      onClick={() => {
-                        onSelect?.(userImage.id);
-                        onSlotSelect?.(slot.id);
-                      }}
-                      onWheel={(e) => handleImageWheel(e, userImage.id, slot, displayWidth, displayHeight)}
-                      onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
-                      onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
-                      onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
-                      onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
-                      onDragEnd={(e) => {
-                        // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
-                        const finalX = e.target.x();
-                        const finalY = e.target.y();
-                        
-                        // NaN 체크
-                        if (isNaN(finalX) || isNaN(finalY)) return;
-                        
-                        const newX = finalX - slot.x - (slot.width - displayWidth) / 2;
-                        const newY = finalY - slot.y - (slot.height - displayHeight) / 2;
-                        
-                        // 최종 NaN 체크
-                        if (!isNaN(newX) && !isNaN(newY)) {
-                          handleImageTransform(userImage.id, { x: newX, y: newY });
-                        }
-                      }}
-                      onTransformEnd={(e) => {
-                        const node = e.target;
-                        handleImageTransform(userImage.id, {
-                          scaleX: node.scaleX(),
-                          scaleY: node.scaleY(),
-                          rotation: node.rotation()
-                        });
-                      }}
-                    />
-                  </Group>
-                );
-              }
-              
-              return null;
-            })}
-          </Layer>
-
-          {/* 가이드라인 레이어 (프레임 위에 표시) */}
-          {!exportMode && (
-            <Layer>
-              {/* 프레임 전체 중앙선 */}
-              {(() => {
-                const isHorizontal = Boolean(selectedFrame && /v$/.test(selectedFrame));
-                const centerX = frameLayout.canvasWidth / 2;
-                const centerY = frameLayout.canvasHeight / 2;
-
-                if (isHorizontal) {
-                  // 가로 프레임: 가로 중앙에 세로선 그리기
-                  return (
-                    <Line
-                      points={[centerX, 0, centerX, frameLayout.canvasHeight]}
-                      stroke="rgba(128, 128, 128, 0.5)"
-                      strokeWidth={1}
-                      listening={false}
-                    />
-                  );
-                } else {
-                  // 세로 프레임: 세로 중앙에 가로선 그리기
-                  return (
-                    <Line
-                      points={[0, centerY, frameLayout.canvasWidth, centerY]}
-                      stroke="rgba(128, 128, 128, 0.5)"
-                      strokeWidth={1}
-                      listening={false}
-                    />
-                  );
-                }
-              })()}
-
-              {/* 각 슬롯별 빨간색 십자선 */}
-              {frameLayout.slots.map((slot) => (
-                <Group key={`guide-${slot.id}`}>
-                  {/* 가로선 - 슬롯의 세로 중앙을 가로지름 */}
-                  <Line
-                    points={[slot.x, slot.y + slot.height / 2, slot.x + slot.width, slot.y + slot.height / 2]}
-                    stroke="red"
-                    strokeWidth={0.5}
-                    dash={[10, 20]}
-                    listening={false}
-                  />
-                  {/* 세로선 - 슬롯의 가로 중앙을 가로지름 */}
-                  <Line
-                    points={[slot.x + slot.width / 2, slot.y, slot.x + slot.width / 2, slot.y + slot.height]}
-                    stroke="red"
-                    strokeWidth={0.5}
-                    dash={[10, 20]}
-                    listening={false}
-                  />
-                </Group>
-              ))}
-            </Layer>
-          )}
-
-          {/* 슬롯 인터랙션 레이어 */}
-          <Layer>
-            {frameLayout.slots.map((slot) => {
-              const userImage = userImages.find(img => img.slotId === slot.id);
-              const hasImage = userImage && loadedImages.get(userImage.id);
-              const isSelected = selectedSlot === slot.id;
-              
-              return (
-                <Group key={slot.id}>
-                  {/* 슬롯 배경 (드롭 존) - 이미지가 있을 때는 투명하게 */}
-                  <Rect
-                    x={slot.x}
-                    y={slot.y}
-                    width={slot.width}
-                    height={slot.height}
-                    fill={exportMode ? 'transparent' : (hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)'))}
-                    stroke={exportMode ? 'transparent' : (hasImage ? 'transparent' : (isSelected ? '#ff6b35' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')))}
-                    strokeWidth={exportMode ? 0 : (isSelected ? 3 : 2)}
-                    listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
-                    onMouseEnter={() => {
-                      if (!hasImage) {
-                        console.log('🔥 Slot mouse enter:', slot.id);
-                        setDraggedSlotId(slot.id);
-                        currentSlotIdRef.current = slot.id;
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      if (!hasImage) {
-                        console.log('🔥 Slot mouse leave:', slot.id);
-                        setDraggedSlotId(null);
-                      }
-                    }}
-                    onClick={(e) => {
-                      if (!hasImage) {
-                        console.log('🔥 Slot clicked!!! slot.id:', slot.id);
-                        console.log('🔥 Click event:', e);
-                        handleSlotClick(slot.id);
-                      }
-                    }}
-                    onTap={() => {
-                      if (!hasImage) {
-                        // 모바일 탭 시 파일 선택 실행
-                        handleSlotClick(slot.id);
-                      }
-                    }}
-                    onTouchStart={() => {
-                      if (!hasImage) {
-                        // 일부 브라우저(구형 iOS) 호환을 위한 폴백
-                        currentSlotIdRef.current = slot.id;
-                      }
-                    }}
-                  />
-                  
-                  {/* 이미지가 있는 슬롯의 선택 표시 */}
-                  {hasImage && (
-                    <Rect
-                      x={slot.x}
-                      y={slot.y}
-                      width={slot.width}
-                      height={slot.height}
-                      fill="transparent"
-                      stroke={!exportMode && isSelected ? "#ff6b35" : "transparent"}
-                      strokeWidth={3}
-                      listening={false}
-                    />
-                  )}
-                
-                {/* 슬롯 레이블 */}
-                {!hasImage && !exportMode && (() => {
-                  let labelText = "클릭해서 이미지 추가";
-                  if (userImage && loadedImages.get(userImage.id) === null) {
-                    labelText = "이미지 로딩 실패";
-                  } else if (userImage && !loadedImages.get(userImage.id)) {
-                    labelText = "이미지 로딩 중...";
-                  }
-                  
-                  return (
-                    <Group>
-                      <Rect
-                        x={slot.x + slot.width / 2 - 60}
-                        y={slot.y + slot.height / 2 - 10}
-                        width={140}
-                        height={30}
-                        fill="rgba(0, 0, 0, 0.7)"
-                        cornerRadius={10}
-                      />
-                      <Text
-                        x={slot.x + slot.width / 2 - 60}
-                        y={slot.y + slot.height / 2 - 2}
-                        width={140}
-                        text={labelText}
-                        fontSize={14}
-                        fill="white"
-                        align="center"
-                      />
-                    </Group>
-                  );
-                })()}
-              </Group>
-              )
-            })}
-          </Layer>
-
-          {/* 텍스트 레이어 (최상위에 표시) */}
-          <Layer>
-            {texts.map((textItem) => {
-              const isSelected = selection === textItem.id;
-              return (
-                <Group key={textItem.id}>
-                  {(() => {
-                    // 텍스트 크기 계산
-                    const dimensions = getTextDimensions(
-                      textItem.text,
-                      textItem.fontSize,
-                      textItem.fontFamily,
-                      textItem.isItalic,
-                      textItem.isVertical
-                    );
-
-                    return (
-                      <Text
-                        x={textItem.x}
-                        y={textItem.y}
-                        offsetX={dimensions.width / 2}
-                        offsetY={dimensions.height / 2}
-                        text={formatVerticalText(textItem.text, textItem.isVertical)}
-                        fontSize={textItem.fontSize}
-                        fontFamily={textItem.fontFamily}
-                        fill={textItem.fontColor}
-                        fontStyle={textItem.isItalic ? 'italic' : 'normal'}
-                        lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
-                        draggable={true}
-                        // 데스크톱: 클릭 시 선택
-                        onClick={() => onSelect?.(textItem.id)}
-                        // 모바일: 탭/터치 시 선택 (iOS Safari 대응)
-                        onTap={() => onSelect?.(textItem.id)}
-                        onTouchStart={() => onSelect?.(textItem.id)}
-                        onDragEnd={(e) => {
-                          const newX = e.target.x();
-                          const newY = e.target.y();
-                          onTextMove?.(textItem.id, newX, newY);
-                        }}
-                      />
-                    );
-                  })()}
-                  {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
-                  {isSelected && !exportMode && (() => {
-                    // 테두리용 텍스트 크기 계산
-                    const borderDimensions = getTextDimensions(
-                      textItem.text,
-                      textItem.fontSize,
-                      textItem.fontFamily,
-                      textItem.isItalic,
-                      textItem.isVertical
-                    );
-
-                    return (
-                      <Rect
-                        x={textItem.x - borderDimensions.width / 2 - 2}
-                        y={textItem.y - borderDimensions.height / 2 - 2}
-                        width={borderDimensions.width + 4}
-                        height={borderDimensions.height + 4}
-                        fill="transparent"
-                        stroke="#ff6b35"
-                        strokeWidth={2}
-                        listening={false}
-                      />
-                    );
-                  })()}
-                </Group>
-              );
-            })}
-          </Layer>
-        </Stage>
-      </div>
       </div>
 
       <input
