@@ -1259,7 +1259,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           {selectedFrame !== "1l" && (
             <div>
               <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>프레임 색상</label>
+                <label style={{ color: 'var(--linear-neutral-50)', fontSize: '14px' }}>프레임 색상</label>
                 <button
                   ref={customPickButtonRef}
                   type="button"
@@ -1354,7 +1354,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           )}
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ color: 'var(--linear-neutral-50)', fontSize: '12px' }}>줌:</label>
+            <label style={{ color: 'var(--linear-neutral-50)', fontSize: '18px' }}>줌:</label>
             {(() => {
               const selectedImage = selectedSlot ? userImages.find(img => img.slotId === selectedSlot) : null;
               const currentScale = selectedImage && Number.isFinite(selectedImage.scaleX) ? (selectedImage.scaleX as number) : 1;
