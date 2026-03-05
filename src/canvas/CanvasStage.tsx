@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line, Transformer } from "react-konva";
 import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
@@ -25,6 +25,18 @@ export type CanvasStageProps = {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: "left" | "center" | "right";
+  }>;
+  stickers?: Array<{
+    id: string;
+    src: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
   }>;
   onSelect?: (id: string | null) => void;
   onSlotSelect?: (slotId: string | null) => void;
@@ -40,13 +52,23 @@ export type CanvasStageProps = {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: "left" | "center" | "right";
   }>) => void;
   onImageDelete?: (imageId: string) => void;
+  onStickerUpdate?: (stickerId: string, updates: Partial<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
+  }>) => void;
 };
 
-export const CanvasStage: React.FC<CanvasStageProps> = ({ 
+export const CanvasStage: React.FC<CanvasStageProps> = ({
   selection,
-  zoom, 
+  zoom,
   selectedFrame,
   selectedSlot,
   userImages,
@@ -54,6 +76,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   exportMode = false,
   stageRefExternal,
   texts = [],
+  stickers = [],
   onSelect,
   onSlotSelect,
   onImageUpload,
@@ -62,12 +85,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onTextMove,
   onTextUpdate, // eslint-disable-line @typescript-eslint/no-unused-vars
   onZoomChange,
-  onImageDelete
+  onImageDelete,
+  onStickerUpdate
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 컨테이너 측정 크기 (피드백 루프 방지용)
+  const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   // 커스텀 컬러 팔레트 관련
   const [showCustomPalette, setShowCustomPalette] = useState(false);
   const paletteCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -91,7 +117,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   ]);
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
-  
+
   // 텍스트 세로 배치 유틸리티 함수
   const formatVerticalText = (text: string, isVertical: boolean): string => {
     return isVertical ? text.split('').join('\n') : text;
@@ -101,30 +127,35 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isItalic: boolean, isVertical: boolean) => {
     if (isVertical) {
       // 세로 배치일 때
+      const lines = text.split('\\n');
+      const maxLength = Math.max(1, ...lines.map(line => line.length));
       return {
         width: fontSize * 0.6, // 한 글자 폭
-        height: text.length * fontSize // 글자 수 × 폰트 크기
+        height: Math.max(text.length, maxLength) * fontSize // 글자 수 × 폰트 크기
       };
     } else {
       // 가로 배치일 때 - 캔버스로 정확한 측정
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
+      const lines = text.split('\\n');
+
       if (ctx) {
         ctx.font = `${isItalic ? 'italic ' : ''}${fontSize}px ${fontFamily}`;
-        const metrics = ctx.measureText(text);
+        const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
         return {
-          width: metrics.width,
-          height: fontSize
+          width: maxWidth,
+          height: fontSize * lines.length
         };
       }
       // 폴백: 근사치 계산
+      const maxLength = Math.max(...lines.map(line => line.length));
       return {
-        width: text.length * fontSize * 0.6,
-        height: fontSize
+        width: maxLength * fontSize * 0.6,
+        height: fontSize * lines.length
       };
     }
   };
-  
+
   // 팔레트 미리보기 상태 (항상 동일 훅 순서 유지를 위해 상단으로 이동)
   const [palettePreview, setPalettePreview] = useState<{
     visible: boolean;
@@ -132,7 +163,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     y: number;
     color: string;
   }>({ visible: false, x: 0, y: 0, color: '#FFFFFF' });
-  
+
   // 프레임 이미지 로드 (캐시 우회 및 오류 처리)
   useEffect(() => {
     if (selectedFrame && frameLayout) {
@@ -248,17 +279,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    
+
     if (!onImageUpload) return;
-    
+
     const files = Array.from(e.dataTransfer.files);
     const imageFile = files.find(file => file.type.startsWith('image/'));
     const slotId = currentSlotIdRef.current;
-    
+
     if (imageFile && slotId) {
       onImageUpload(imageFile, slotId);
     }
-    
+
     setDraggedSlotId(null);
     currentSlotIdRef.current = null;
   }, [onImageUpload]);
@@ -266,10 +297,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // 슬롯 클릭 핸들러 (선택 상태 변경 및 파일 선택)
   const handleSlotClick = (slotId: string) => {
     console.log('🔥 handleSlotClick called with slotId:', slotId);
-    
+
     // 슬롯 선택 상태 업데이트
     onSlotSelect?.(slotId);
-    
+
     setDraggedSlotId(slotId);
     currentSlotIdRef.current = slotId; // ref에도 저장
     console.log('🔥 currentSlotIdRef.current set to:', currentSlotIdRef.current);
@@ -285,16 +316,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     console.log('🔥 draggedSlotId:', draggedSlotId);
     console.log('🔥 currentSlotIdRef.current:', currentSlotIdRef.current);
     console.log('🔥 onImageUpload function:', onImageUpload);
-    
+
     const slotId = currentSlotIdRef.current; // ref에서 가져오기
-    
+
     if (file && slotId && onImageUpload) {
       console.log('🔥 calling onImageUpload with:', file.name, slotId);
       onImageUpload(file, slotId);
     } else {
       console.log('🔥 onImageUpload not called. file:', !!file, 'slotId:', !!slotId, 'onImageUpload:', !!onImageUpload);
     }
-    
+
     setDraggedSlotId(null);
     currentSlotIdRef.current = null; // ref 초기화
     if (fileInputRef.current) {
@@ -346,19 +377,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     let oldScale = Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1;
     const deltaY = e.evt.deltaY;
     console.log('[wheel] scales', { oldScale, deltaY });
-    
+
     // deltaY NaN 체크
     if (isNaN(deltaY)) return;
-    
+
     const newScale = deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
 
     // 스케일 제한 상한 제거 (하한만 유지하여 0 이하 방지)
     const clampedScale = Math.max(0.1, newScale);
     console.log('[wheel] newScale', { newScale, clampedScale });
-    
+
     // 최종 NaN 체크
     if (isNaN(clampedScale)) return;
-    
+
     // 스케일 적용 + 포인터 기준 위치 보정
     const nextTransform: Partial<UserImage> = { scaleX: clampedScale, scaleY: clampedScale };
 
@@ -424,11 +455,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       // 슬롯 경계로 위치 클램프 - X축과 Y축 모두 자유롭게 이동 허용
       const scaledW = displayWidth * clampedScale;
       const scaledH = displayHeight * clampedScale;
-      
+
       // X축: 이미지가 슬롯 밖으로도 자유롭게 이동 허용
       const minX = slot.x - scaledW;
       const maxX = slot.x + slot.width;
-      
+
       // Y축: X축과 동일하게 이미지가 슬롯 밖으로도 자유롭게 이동 허용
       const minY = slot.y - scaledH;
       const maxY = slot.y + slot.height;
@@ -550,36 +581,36 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     const node = e.target;
     const currentX = node.x();
     const currentY = node.y();
-    
+
     // NaN 체크
     if (isNaN(currentX) || isNaN(currentY)) return;
-    
+
     // 즉시 갱신된 Konva 노드의 실제 스케일을 우선 사용 (휠 줌 직후 상태 반영 지연에 의한 튐 방지)
     const nodeScaleX = Number.isFinite((node as Konva.Node).scaleX()) ? (node as Konva.Node).scaleX() : (Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1);
     const nodeScaleY = Number.isFinite((node as Konva.Node).scaleY()) ? (node as Konva.Node).scaleY() : (Number.isFinite(userImage.scaleY) ? userImage.scaleY : 1);
     const scaledWidth = displayWidth * nodeScaleX;
     const scaledHeight = displayHeight * nodeScaleY;
-    
+
     // NaN 체크
     if (isNaN(scaledWidth) || isNaN(scaledHeight)) return;
-    
+
     // 슬롯 밖으로 자유롭게 이미지 이동 허용 (X축과 Y축 동일하게)
-    
+
     // X축: 이미지가 슬롯 밖으로도 자유롭게 이동 가능
     const minX = slot.x - scaledWidth;
     const maxX = slot.x + slot.width;
-    
+
     // Y축: X축과 동일하게 이미지가 슬롯 밖으로도 자유롭게 이동 가능
     const minY = slot.y - scaledHeight;
     const maxY = slot.y + slot.height;
-    
+
     // NaN 체크
     if (isNaN(minX) || isNaN(maxX) || isNaN(minY) || isNaN(maxY)) return;
-    
+
     // 경계 제한 적용
     const clampedX = Math.max(minX, Math.min(maxX, currentX));
     const clampedY = Math.max(minY, Math.min(maxY, currentY));
-    
+
     // 최종 NaN 체크
     if (!isNaN(clampedX)) {
       node.x(clampedX);
@@ -682,37 +713,78 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     };
   }, [showCustomPalette]);
 
+  // 컨테이너 크기 측정 (Stage 콘텐츠 크기와 독립적으로 동작)
   useEffect(() => {
-    if (!frameLayout || !onZoomChange) return;
     const node = containerRef.current;
     if (!node) return;
 
-    const applyAutoFit = () => {
-      const containerWidth = node.clientWidth;
-      if (!containerWidth) return;
-      const baseWidth = frameLayout.canvasWidth;
-      if (!baseWidth) return;
-      const ratio = containerWidth / baseWidth;
-      if (!Number.isFinite(ratio) || ratio <= 0) return;
-      const clamped = Math.max(0.1, Math.min(1, Number(ratio.toFixed(4))));
-      if (Math.abs(clamped - zoom) > 0.005) {
-        onZoomChange(clamped);
+    const measureContainer = () => {
+      // 뷰포트 기반 측정으로 Stage 콘텐츠에 의한 피드백 루프 완전 방지
+      // 너비: 뷰포트에서 양쪽 사이드바, 갭, 패딩을 빼서 중앙 영역 계산
+      // app-main: grid-template-columns: 320px 1fr 320px, gap: 24px, padding: 24px
+      const sidebarW = 320;
+      const gap = 24;
+      const mainPad = 24;
+      const cardPadH = 48;
+      const border = 6;
+      const measuredWidth = window.innerWidth
+        - (sidebarW * 2) - (gap * 2) - (mainPad * 2) - cardPadH - border;
+
+      // 높이: 뷰포트 기반
+      const mainPadV = 48;
+      const cardPadV = 48;
+      const measuredHeight = window.innerHeight - mainPadV - cardPadV;
+
+      if (measuredWidth > 100 && measuredHeight > 100) {
+        setContainerSize({ width: measuredWidth, height: measuredHeight });
       }
     };
 
-    applyAutoFit();
+    measureContainer();
 
+    // ResizeObserver로 너비 변화 감지 (사이드바 크기 변경 등)
     if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => applyAutoFit());
+      const observer = new ResizeObserver(() => measureContainer());
       observer.observe(node);
+      // 부모도 관찰하여 레이아웃 변화 감지
+      const parent = node.parentElement;
+      if (parent) observer.observe(parent);
       return () => observer.disconnect();
     }
 
     if (typeof window !== 'undefined') {
-      window.addEventListener('resize', applyAutoFit);
-      return () => window.removeEventListener('resize', applyAutoFit);
+      window.addEventListener('resize', measureContainer);
+      return () => window.removeEventListener('resize', measureContainer);
     }
-  }, [frameLayout, onZoomChange, zoom]);
+  }, []);
+
+  // 측정된 컨테이너 크기 기반으로 zoom 자동 조정
+  useEffect(() => {
+    if (!frameLayout || !onZoomChange) return;
+    if (!containerSize.width || !containerSize.height) return;
+
+    const baseWidth = frameLayout.canvasWidth;
+    const baseHeight = frameLayout.canvasHeight;
+    if (!baseWidth || !baseHeight) return;
+
+    // 여백(패딩, 보더) 고려
+    const padding = 48; // 양쪽 패딩 합계
+    const availableWidth = Math.max(100, containerSize.width - padding);
+    const availableHeight = Math.max(100, containerSize.height - padding);
+
+    const ratioX = availableWidth / baseWidth;
+    const ratioY = availableHeight / baseHeight;
+
+    // 너비와 높이 중 더 제한적인 비율을 사용하여 프레임이 컨테이너를 넘지 않도록 함
+    const ratio = Math.min(ratioX, ratioY);
+
+    if (!Number.isFinite(ratio) || ratio <= 0) return;
+    // 줌의 최대치를 0.1 ~ 2 사이로 제한
+    const clamped = Math.max(0.1, Math.min(2, Number(ratio.toFixed(4))));
+    if (Math.abs(clamped - zoom) > 0.005) {
+      onZoomChange(clamped);
+    }
+  }, [frameLayout, containerSize, onZoomChange, zoom]);
 
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
@@ -726,8 +798,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }}>
         <div>
           <h3 style={{ marginBottom: '16px' }}></h3>
-          <p style={{ 
-            color: 'var(--linear-secondary-400)', 
+          <p style={{
+            color: 'var(--linear-secondary-400)',
             fontSize: 'var(--linear-text-lg)',
             fontWeight: 'var(--linear-font-medium)'
           }}>
@@ -738,46 +810,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     );
   }
 
-  const isHorizontal = Boolean(selectedFrame && /h$/.test(selectedFrame));
-  const wrapperTargetHeight = isHorizontal ? Math.max(frameLayout.canvasWidth, frameLayout.canvasHeight) * zoom : undefined;
-
-  const layoutStyle: React.CSSProperties = {
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    width: '100%',
-    maxWidth: '100%',
-    gap: '24px',
-  };
-
-  const stageAreaStyle: React.CSSProperties = {
-    flex: 1,
-    display: 'flex',
-    alignItems: 'flex-start',
-    justifyContent: 'flex-start',
-  };
-
+  // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
+  const stageWidth = frameLayout.canvasWidth * zoom;
+  const stageHeight = frameLayout.canvasHeight * zoom;
   const stageWrapperStyle: React.CSSProperties = {
-    border: '2px dashed var(--linear-neutral-500)',
+    border: 'var(--border-width) dashed var(--linear-neutral-500)',
     borderRadius: '0px',
     overflow: 'hidden',
     position: 'relative',
+    width: `${stageWidth}px`,
+    height: `${stageHeight}px`,
     maxWidth: '100%',
-  };
-
-  if (wrapperTargetHeight) {
-    stageWrapperStyle.height = wrapperTargetHeight;
-  }
-
-  const controlPanelStyle: React.CSSProperties = {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '12px',
-    minWidth: '100px',
-    padding: '16px',
-    borderRadius: '12px',
-    background: 'rgba(0, 0, 0, 0.8)',
-    border: '1px solid var(--linear-neutral-500)',
+    flexShrink: 0,
   };
 
   // HSV -> RGB 변환
@@ -854,10 +898,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   return (
     <div className="linear-card linear-fade-in">
-      <div style={layoutStyle}>
+      <div className="canvas-stage-layout">
         <div
           ref={containerRef}
-          style={stageAreaStyle}
+          className="canvas-stage-area"
         >
           <div
             style={stageWrapperStyle}
@@ -911,22 +955,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 {frameLayout.slots.map((slot) => {
                   const userImage = userImages.find(img => img.slotId === slot.id);
                   const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
-                  
+
                   if (userImage && loadedImg && loadedImg !== null) {
                     // 이미지를 슬롯 중앙에 배치하기 위한 계산
                     const imageAspectRatio = loadedImg.width / loadedImg.height;
                     const slotAspectRatio = slot.width / slot.height;
-                    
+
                     let displayWidth = slot.width;
                     let displayHeight = slot.height;
-                    
+
                     // 비율을 유지하면서 슬롯에 맞추기 (contain)
                     if (imageAspectRatio > slotAspectRatio) {
                       displayHeight = slot.width / imageAspectRatio;
                     } else {
                       displayWidth = slot.height * imageAspectRatio;
                     }
-                    
+
                     // NaN 방어: 사용자 변형 값 보정
                     const uX = Number.isFinite(userImage.x) ? userImage.x : 0;
                     const uY = Number.isFinite(userImage.y) ? userImage.y : 0;
@@ -937,7 +981,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     // 중앙 정렬을 위한 오프셋 계산 (top-left 좌표)
                     const centerX = slot.x + (slot.width - displayWidth) / 2 + uX;
                     const centerY = slot.y + (slot.height - displayHeight) / 2 + uY;
-                    
+
                     return (
                       <Group
                         key={slot.id}
@@ -993,13 +1037,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
                             const finalX = e.target.x();
                             const finalY = e.target.y();
-                            
+
                             // NaN 체크
                             if (isNaN(finalX) || isNaN(finalY)) return;
-                            
+
                             const newX = finalX - slot.x - (slot.width - displayWidth) / 2;
                             const newY = finalY - slot.y - (slot.height - displayHeight) / 2;
-                            
+
                             // 최종 NaN 체크
                             if (!isNaN(newX) && !isNaN(newY)) {
                               handleImageTransform(userImage.id, { x: newX, y: newY });
@@ -1017,7 +1061,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       </Group>
                     );
                   }
-                  
+
                   return null;
                 })}
               </Layer>
@@ -1084,7 +1128,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const userImage = userImages.find(img => img.slotId === slot.id);
                   const hasImage = userImage && loadedImages.get(userImage.id);
                   const isSelected = selectedSlot === slot.id;
-                  
+
                   return (
                     <Group key={slot.id}>
                       {/* 슬롯 배경 (드롭 존) - 이미지가 있을 때는 투명하게 */}
@@ -1130,7 +1174,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           }
                         }}
                       />
-                      
+
                       {/* 이미지가 있는 슬롯의 선택 표시 */}
                       {hasImage && (
                         <Rect
@@ -1144,40 +1188,125 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           listening={false}
                         />
                       )}
-                    
-                    {/* 슬롯 레이블 */}
-                    {!hasImage && !exportMode && (() => {
-                      let labelText = "클릭해서 이미지 추가";
-                      if (userImage && loadedImages.get(userImage.id) === null) {
-                        labelText = "이미지 로딩 실패";
-                      } else if (userImage && !loadedImages.get(userImage.id)) {
-                        labelText = "이미지 로딩 중...";
-                      }
-                      
-                      return (
-                        <Group>
-                          <Rect
-                            x={slot.x + slot.width / 2 - 60}
-                            y={slot.y + slot.height / 2 - 10}
-                            width={140}
-                            height={30}
-                            fill="rgba(0, 0, 0, 0.7)"
-                            cornerRadius={10}
-                          />
-                          <Text
-                            x={slot.x + slot.width / 2 - 60}
-                            y={slot.y + slot.height / 2 - 2}
-                            width={140}
-                            text={labelText}
-                            fontSize={14}
-                            fill="white"
-                            align="center"
-                          />
-                        </Group>
-                      );
-                    })()}
-                  </Group>
+
+                      {/* 슬롯 레이블 */}
+                      {!hasImage && !exportMode && (() => {
+                        let labelText = "클릭해서 이미지 추가";
+                        if (userImage && loadedImages.get(userImage.id) === null) {
+                          labelText = "이미지 로딩 실패";
+                        } else if (userImage && !loadedImages.get(userImage.id)) {
+                          labelText = "이미지 로딩 중...";
+                        }
+
+                        return (
+                          <Group>
+                            <Rect
+                              x={slot.x + slot.width / 2 - 60}
+                              y={slot.y + slot.height / 2 - 10}
+                              width={140}
+                              height={30}
+                              fill="rgba(0, 0, 0, 0.7)"
+                              cornerRadius={10}
+                            />
+                            <Text
+                              x={slot.x + slot.width / 2 - 60}
+                              y={slot.y + slot.height / 2 - 2}
+                              width={140}
+                              text={labelText}
+                              fontSize={14}
+                              fill="white"
+                              align="center"
+                            />
+                          </Group>
+                        );
+                      })()}
+                    </Group>
                   )
+                })}
+              </Layer>
+
+              {/* 스티커 레이어 (텍스트 레이어 직전에 표시) */}
+              <Layer>
+                {stickers.map((sticker) => {
+                  const isSelected = selection === sticker.id;
+
+                  // 스티커 이미지를 비동기로 로드하기 위한 인라인 컴포넌트 패턴 구현
+                  const StickerNode = () => {
+                    const [image, setImage] = useState<HTMLImageElement | null>(null);
+                    const imageRef = useRef<Konva.Image | null>(null);
+
+                    useEffect(() => {
+                      const img = new window.Image();
+                      img.crossOrigin = 'anonymous';
+                      img.onload = () => setImage(img);
+                      img.src = sticker.src;
+                    }, [sticker.src]);
+
+                    // Update transformer when selected
+                    useEffect(() => {
+                      if (isSelected && imageRef.current) {
+                        const tr = imageRef.current.getStage()?.findOne(`#transformer-${sticker.id}`);
+                        if (tr) {
+                          (tr as Konva.Transformer).nodes([imageRef.current]);
+                          tr.getLayer()?.batchDraw();
+                        }
+                      }
+                    }, [isSelected, image]);
+
+                    return (
+                      <Group key={sticker.id}>
+                        {image && (
+                          <KonvaImage
+                            ref={imageRef}
+                            image={image}
+                            x={sticker.x}
+                            y={sticker.y}
+                            width={sticker.width}
+                            height={sticker.height}
+                            scaleX={sticker.scaleX}
+                            scaleY={sticker.scaleY}
+                            rotation={sticker.rotation}
+                            draggable={!exportMode}
+                            onClick={() => onSelect?.(sticker.id)}
+                            onTap={() => onSelect?.(sticker.id)}
+                            onTouchStart={() => onSelect?.(sticker.id)}
+                            onDragEnd={(e) => {
+                              onStickerUpdate?.(sticker.id, {
+                                x: e.target.x(),
+                                y: e.target.y()
+                              });
+                            }}
+                            onTransformEnd={(e) => {
+                              const node = imageRef.current;
+                              if (node) {
+                                onStickerUpdate?.(sticker.id, {
+                                  x: node.x(),
+                                  y: node.y(),
+                                  scaleX: node.scaleX(),
+                                  scaleY: node.scaleY(),
+                                  rotation: node.rotation()
+                                });
+                              }
+                            }}
+                          />
+                        )}
+                        {isSelected && !exportMode && (
+                          <Transformer
+                            id={`transformer-${sticker.id}`}
+                            boundBoxFunc={(oldBox: any, newBox: any) => {
+                              // 최소 크기 제한
+                              if (newBox.width < 10 || newBox.height < 10) {
+                                return oldBox;
+                              }
+                              return newBox;
+                            }}
+                          />
+                        )}
+                      </Group>
+                    );
+                  };
+
+                  return <StickerNode key={sticker.id} />;
                 })}
               </Layer>
 
@@ -1208,6 +1337,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             fontFamily={textItem.fontFamily}
                             fill={textItem.fontColor}
                             fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                            align={textItem.textAlign}
                             lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
                             draggable={true}
                             // 데스크톱: 클릭 시 선택
@@ -1255,7 +1385,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           </div>
         </div>
 
-        <div style={controlPanelStyle}>
+        <div className="canvas-control-panel">
           {selectedFrame !== "1l" && (
             <div>
               <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -1279,11 +1409,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       right: 0,
                       top: 'calc(100% + 6px)',
                       padding: 8,
-                      border: '1px solid var(--linear-neutral-500)',
-                      borderRadius: '8px',
-                      background: 'var(--linear-neutral-700)',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      borderRadius: '0',
+                      background: 'var(--linear-neutral-600)',
                       zIndex: 20,
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.35)'
+                      boxShadow: 'var(--shadow-lg)'
                     }}
                     role="dialog"
                     aria-label="원형 색상 팔레트"
@@ -1310,10 +1440,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             top: palettePreview.y - 16,
                             width: 32,
                             height: 32,
-                            borderRadius: '50%',
+                            borderRadius: '0',
                             background: palettePreview.color,
-                            border: '2px solid var(--linear-neutral-900)',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+                            border: 'var(--border-width) solid var(--linear-neutral-500)',
+                            boxShadow: 'var(--shadow-sm)',
                             pointerEvents: 'none',
                           }}
                           aria-hidden
@@ -1338,11 +1468,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       style={{
                         width: 28,
                         height: 28,
-                        borderRadius: '50%',
+                        borderRadius: '0',
                         padding: 0,
                         backgroundColor: color,
-                        border: isSelected ? '2px solid var(--linear-primary-500)' : '1px solid var(--linear-neutral-500)',
-                        boxShadow: color.toLowerCase() === '#ffffff' ? 'inset 0 0 0 1px var(--linear-neutral-500)' : undefined,
+                        border: isSelected ? 'var(--border-width) solid var(--linear-primary-500)' : 'var(--border-width) solid var(--linear-neutral-500)',
+                        boxShadow: color.toLowerCase() === '#ffffff' ? 'var(--shadow-sm)' : 'var(--shadow-sm)',
                       }}
                       title={color}
                     />
@@ -1392,13 +1522,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   type="button"
                   className="linear-button linear-button--secondary"
                   onClick={() => onImageDelete?.(selectedImage.id)}
-                  style={{ 
-                    height: '24px', 
-                    padding: '0 12px', 
+                  style={{
+                    height: '24px',
+                    padding: '0 12px',
                     fontSize: '12px',
                     backgroundColor: 'var(--linear-accent-error)',
                     color: 'var(--linear-accent-white)',
-                    border: '1px solid var(--linear-accent-error)'
+                    border: 'var(--border-width) solid var(--linear-neutral-500)'
                   }}
                   title="선택된 슬롯의 이미지를 삭제합니다"
                 >

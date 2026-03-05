@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 
+type TextAlign = "left" | "center" | "right";
+
 export type SidebarRightProps = {
   selectedFrame?: FrameType | null;
   selectedText?: {
@@ -14,6 +16,18 @@ export type SidebarRightProps = {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: TextAlign;
+  };
+  selectedSticker?: {
+    id: string;
+    src: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
   };
   onTextInsert?: (textData: {
     text: string;
@@ -22,6 +36,7 @@ export type SidebarRightProps = {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: TextAlign;
     x: number;
     y: number;
   }) => void;
@@ -32,19 +47,28 @@ export type SidebarRightProps = {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: TextAlign;
   }>) => void;
   onTextDelete?: (textId: string) => void;
+  onStickerInsert?: (src: string) => void;
+  onStickerDelete?: (stickerId: string) => void;
   onExport?: () => void;
 };
 
 export const SidebarRight: React.FC<SidebarRightProps> = ({
   selectedFrame,
   selectedText,
+  selectedSticker,
   onTextInsert,
   onTextUpdate,
   onTextDelete,
+  onStickerInsert,
+  onStickerDelete,
   onExport
 }) => {
+  const [activeTab, setActiveTab] = useState<"text" | "sticker">("text");
+
+  // Text State
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
   const [isItalic, setIsItalic] = useState(true);
@@ -52,8 +76,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   const [fontFamily, setFontFamily] = useState("");
   const [isFontPickerOpen, setFontPickerOpen] = useState(false);
   const [fontColor, setFontColor] = useState("#000000");
+  const [textAlign, setTextAlign] = useState<TextAlign>("center");
   const textInputRef = useRef<HTMLTextAreaElement>(null);
-  
+
   // 동적 폰트 로딩
   const { fonts, isLoading: fontsLoading } = useFonts();
 
@@ -73,8 +98,15 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   useEffect(() => {
     if (selectedText) {
       setTextInput(selectedText.text);
+      setActiveTab("text");
     }
   }, [selectedText]);
+
+  useEffect(() => {
+    if (selectedSticker) {
+      setActiveTab("sticker");
+    }
+  }, [selectedSticker]);
 
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
@@ -124,6 +156,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   const displayedFontColor = selectedText?.fontColor ?? fontColor;
   const displayedIsItalic = selectedText?.isItalic ?? isItalic;
   const displayedIsVertical = selectedText?.isVertical ?? isVertical;
+  const displayedTextAlign = selectedText?.textAlign ?? textAlign;
 
 
   const handleDescriptionSelect = (value: string) => {
@@ -151,6 +184,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       fontColor,
       isItalic,
       isVertical,
+      textAlign: displayedTextAlign,
       x,
       y,
     });
@@ -198,230 +232,298 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       alert("삭제할 텍스트를 먼저 선택해주세요.");
       return;
     }
-    
+
     if (confirm(`"${selectedText.text}" 텍스트를 삭제하시겠습니까?`)) {
       onTextDelete?.(selectedText.id);
     }
   };
 
+  const handleTextAlignChange = (newAlign: TextAlign) => {
+    setTextAlign(newAlign);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { textAlign: newAlign });
+    }
+  };
+
+  const STICKER_LIST = [
+    "/stickers/heart.svg",
+    "/stickers/star.svg",
+    "/stickers/face-smile.svg"
+  ];
+
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
-      {/* 첫 번째 카드: 텍스트 입력 및 추천 */}
-      <aside className="linear-card">
-        <h3>사진에 글씨 새기기</h3>
-        <div className="linear-grid linear-mt-4" style={{ gridTemplateColumns: "1fr" }}>
-          {/* 텍스트 입력 영역 */}
-          <label>
-            <p style={{ fontSize: "var(--linear-text-xs)" }}>
-              텍스트를 입력하세요.
-            </p>
-            <textarea
-              ref={textInputRef as React.RefObject<HTMLTextAreaElement>}
-              className="linear-input"
-              style={{ 
-                width: '90%', 
-                borderColor: 'var(--linear-neutral-300)',
-                minHeight: '100px',
-                resize: 'vertical',
-                marginTop: 'var(--linear-space-1)'
-              }}
-              placeholder="예) 너의 100일을 축하해 :)"
-              value={textInput}
-              onChange={(e) => {
-                const newValue = e.target.value;
-                setTextInput(newValue);
+    <aside className="linear-card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
+      {/* 탭 네비게이션 */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--linear-neutral-500)', marginBottom: '16px' }}>
+        <button
+          onClick={() => setActiveTab('text')}
+          style={{
+            flex: 1, padding: '12px', background: 'none', border: 'none',
+            borderBottom: activeTab === 'text' ? '2px solid var(--linear-primary-500)' : '2px solid transparent',
+            color: activeTab === 'text' ? 'var(--linear-neutral-50)' : 'var(--linear-secondary-400)',
+            cursor: 'pointer', fontSize: '14px', fontWeight: activeTab === 'text' ? '600' : '400'
+          }}
+        >
+          글씨
+        </button>
+        <button
+          onClick={() => setActiveTab('sticker')}
+          style={{
+            flex: 1, padding: '12px', background: 'none', border: 'none',
+            borderBottom: activeTab === 'sticker' ? '2px solid var(--linear-primary-500)' : '2px solid transparent',
+            color: activeTab === 'sticker' ? 'var(--linear-neutral-50)' : 'var(--linear-secondary-400)',
+            cursor: 'pointer', fontSize: '14px', fontWeight: activeTab === 'sticker' ? '600' : '400'
+          }}
+        >
+          스티커
+        </button>
+      </div>
 
-                // 선택된 텍스트가 있으면 실시간으로 캔버스에 반영
-                if (selectedText && onTextUpdate) {
-                  onTextUpdate(selectedText.id, { text: newValue });
-                }
-              }}
-            />
-          </label>
-          
-          <label>
-            <p style={{ fontSize: "var(--linear-text-xs)" }}>
-              레터링을 추천해 드릴게요 :)
-            </p>
-            <select 
-              className="linear-select"
-              style={{ 
-                borderColor: 'var(--linear-neutral-300)',
-                marginTop: 'var(--linear-space-1)'
-              }}
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleDescriptionSelect(e.target.value);
-                  e.target.value = "";
-                }
-              }}
-            >
-              <option value="" disabled>클릭해서 추천받기</option>
-              <option value="다비야, 너의 1000일을 축하해 :)">다비야, 너의 1000일을 축하해 :)</option>
-              <option value="평생 함께 해♥">평생 함께 해♥</option>
-              <option value="내 세상은 네가 있어 더 아름다워">내 세상은 네가 있어 더 아름다워</option>
-              <option value="우리집 둘 째">우리집 둘 째</option>
-              <option value="우리 곧, 결혼해요.">우리 곧, 결혼해요.</option>
-              <option value="우리 셋의 세 번째 크리스마스">우리 셋의 세 번째 크리스마스</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-              <option value="9">9</option>
-              <option value="10">10</option>
-            </select>
-          </label>
-          
-          <div className="linear-flex linear-mt-4">
+      {activeTab === 'text' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
+          {/* 텍스트 내용 작성 파트 */}
+          <div>
+            <h3>사진에 글씨 새기기</h3>
+            <div className="linear-grid linear-mt-4" style={{ gridTemplateColumns: "1fr" }}>
+              <label>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>텍스트를 입력하세요.</p>
+                <textarea
+                  ref={textInputRef as React.RefObject<HTMLTextAreaElement>}
+                  className="linear-input"
+                  style={{
+                    width: '100%', borderColor: 'var(--linear-neutral-300)',
+                    minHeight: '100px', resize: 'vertical', marginTop: 'var(--linear-space-1)'
+                  }}
+                  placeholder="예) 너의 100일을 축하해 :)"
+                  value={textInput}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setTextInput(newValue);
+                    if (selectedText && onTextUpdate) {
+                      onTextUpdate(selectedText.id, { text: newValue });
+                    }
+                  }}
+                />
+              </label>
+
+              <label>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>레터링을 추천해 드릴게요 :)</p>
+                <select
+                  className="linear-select"
+                  style={{ borderColor: 'var(--linear-neutral-300)', marginTop: 'var(--linear-space-1)' }}
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleDescriptionSelect(e.target.value);
+                      e.target.value = "";
+                    }
+                  }}
+                >
+                  <option value="" disabled>클릭해서 추천받기</option>
+                  <option value="다비야, 너의 1000일을 축하해 :)">다비야, 너의 1000일을 축하해 :)</option>
+                  <option value="평생 함께 해♥">평생 함께 해♥</option>
+                  <option value="내 세상은 네가 있어 더 아름다워">내 세상은 네가 있어 더 아름다워</option>
+                  <option value="우리집 둘 째">우리집 둘 째</option>
+                  <option value="우리 곧, 결혼해요.">우리 곧, 결혼해요.</option>
+                  <option value="우리 셋의 세 번째 크리스마스">우리 셋의 세 번째 크리스마스</option>
+                </select>
+              </label>
+
+              <div className="linear-flex linear-mt-4">
+                <button
+                  className="linear-button linear-button--secondary"
+                  onClick={handleTextDelete}
+                  disabled={!selectedText}
+                  style={{
+                    opacity: selectedText ? 1 : 0.5, cursor: selectedText ? 'pointer' : 'not-allowed',
+                    fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', width: '100%'
+                  }}
+                >
+                  삭제
+                </button>
+                <button
+                  className="linear-button linear-button--primary"
+                  onClick={handleTextInsert}
+                  style={{
+                    fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', width: '100%'
+                  }}
+                >
+                  삽입
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <hr style={{ border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: 'var(--linear-space-2) 0' }} />
+
+          {/* 텍스트 스타일 설정 파트 */}
+          <div>
+            <div className="linear-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "var(--linear-space-2)" }}>
+              {/* 글자 크기 */}
+              <label>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 크기</p>
+                <input
+                  type="number"
+                  className="linear-input"
+                  style={{ borderColor: 'var(--linear-neutral-300)', width: '100%', marginTop: 'var(--linear-space-1)' }}
+                  value={displayedTextSize}
+                  onChange={(e) => handleTextSizeChange(Number(e.target.value))}
+                  min="1" max="99" placeholder="16"
+                />
+              </label>
+
+              {/* 폰트 선택 */}
+              <label>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 선택</p>
+                <div className="linear-flex" style={{ alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => !fontsLoading && setFontPickerOpen(true)}
+                    disabled={fontsLoading}
+                    title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
+                    style={{
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      padding: '6px 10px', fontSize: '14px', fontFamily: displayedFontFamily || 'var(--linear-font-family)',
+                      width: '100%', marginTop: 'var(--linear-space-1)'
+                    }}
+                  >
+                    {fontsLoading ? '로딩 중…' : (displayedFontFamily || '선택')}
+                  </button>
+                </div>
+              </label>
+
+              {/* 폰트 색상 */}
+              <label>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 색상</p>
+                <input
+                  type="color"
+                  className="linear-input"
+                  style={{ borderColor: 'var(--linear-neutral-300)', width: '100%', height: '36px', padding: '2px', marginTop: 'var(--linear-space-1)' }}
+                  value={displayedFontColor}
+                  onChange={(e) => handleFontColorChange(e.target.value)}
+                />
+              </label>
+
+              {/* 폰트 스타일 (기울임 / 세로) */}
+              <label>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 스타일</p>
+                <div style={{ display: 'flex', gap: '6px', marginTop: 'var(--linear-space-1)' }}>
+                  <button
+                    className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                    onClick={handleItalicToggle}
+                    style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                  >
+                    기울임
+                  </button>
+                  <button
+                    className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                    onClick={handleVerticalToggle}
+                    style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                  >
+                    세로쓰기
+                  </button>
+                </div>
+              </label>
+
+              {/* 텍스트 정렬 */}
+              <label style={{ gridColumn: "1 / -1" }}>
+                <p style={{ fontSize: "var(--linear-text-sm)" }}>텍스트 정렬</p>
+                <div style={{ display: "flex", gap: "6px", marginTop: "var(--linear-space-1)" }}>
+                  {["left", "center", "right"].map((align) => (
+                    <button
+                      key={align}
+                      type="button"
+                      className={`linear-button ${displayedTextAlign === align ? "linear-button--primary" : "linear-button--secondary"}`}
+                      onClick={() => handleTextAlignChange(align as TextAlign)}
+                      disabled={!selectedText}
+                      style={{
+                        width: "100%", height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
+                        opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed"
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        {align === 'left' && (
+                          <>
+                            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                            <line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="2" />
+                            <line x1="4" y1="18" x2="18" y2="18" stroke="currentColor" strokeWidth="2" />
+                          </>
+                        )}
+                        {align === 'center' && (
+                          <>
+                            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                            <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" />
+                            <line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" strokeWidth="2" />
+                          </>
+                        )}
+                        {align === 'right' && (
+                          <>
+                            <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                            <line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
+                            <line x1="6" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2" />
+                          </>
+                        )}
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'sticker' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
+          <h3>스티커 붙이기</h3>
+          <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)', marginBottom: '8px' }}>
+            클릭하여 스티커를 캔버스에 추가하세요.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+            {STICKER_LIST.map(src => (
+              <button
+                key={src}
+                className="linear-button linear-button--secondary"
+                onClick={() => onStickerInsert?.(src)}
+                style={{
+                  height: '60px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '8px',
+                  backgroundColor: 'var(--linear-neutral-600)'
+                }}
+              >
+                <img src={src} alt="sticker" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              </button>
+            ))}
+          </div>
+
+          <div className="linear-mt-4">
             <button
               className="linear-button linear-button--secondary"
-              onClick={handleTextDelete}
-              disabled={!selectedText}
+              onClick={() => {
+                if (selectedSticker && onStickerDelete) {
+                  onStickerDelete(selectedSticker.id);
+                } else if (!selectedSticker) {
+                  alert("삭제할 스티커를 선택해주세요.");
+                }
+              }}
+              disabled={!selectedSticker}
               style={{
-                opacity: selectedText ? 1 : 0.5,
-                cursor: selectedText ? 'pointer' : 'not-allowed',
-                fontSize: '14px',
-                height: '48px',
-                border: '1px solid var(--linear-neutral-500)',
-                width: '100%'
+                width: '100%',
+                opacity: selectedSticker ? 1 : 0.5,
+                borderColor: selectedSticker ? 'var(--linear-accent-error)' : 'var(--linear-neutral-500)',
+                color: selectedSticker ? 'var(--linear-accent-error)' : 'inherit'
               }}
             >
-              삭제
-            </button>
-            <button
-              className="linear-button linear-button--primary"
-              onClick={handleTextInsert}
-              style={{
-                fontSize: '14px',
-                height: '48px',
-                border: '1px solid var(--linear-neutral-500)',
-                width: '100%'
-              }}
-            >
-              삽입
+              선택한 스티커 삭제
             </button>
           </div>
         </div>
-      </aside>
-
-      {/* 두 번째 카드: 텍스트 스타일 설정 */}
-      <aside className="linear-card">
-        <div className="linear-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "var(--linear-space-2)" }}>
-          {/* 상단 왼쪽: 글자 크기 */}
-          <label>
-            <p style={{ fontSize: "var(--linear-text-xs)" }}>
-              폰트 크기
-            </p>
-            <input 
-              type="number"
-              className="linear-input"
-              style={{ 
-                borderColor: 'var(--linear-neutral-300)', 
-                width: '40px',
-                marginTop: 'var(--linear-space-1)'
-              }}
-              value={displayedTextSize}
-              onChange={(e) => handleTextSizeChange(Number(e.target.value))}
-              min="1"
-              max="99"
-              placeholder="16"
-            />
-          </label>
-          
-          {/* 상단 오른쪽: 폰트 (모달 트리거) */}
-          <label>
-            <p style={{ fontSize: "var(--linear-text-xs)" }}>
-              폰트 선택
-            </p>
-            <div className="linear-flex" style={{ alignItems: 'center' }}>
-              <button
-                type="button"
-                className="linear-button linear-button--secondary"
-                onClick={() => !fontsLoading && setFontPickerOpen(true)}
-                disabled={fontsLoading}
-                title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
-                style={{
-                  border: '1px solid var(--linear-neutral-400)',
-                  padding: '6px 10px',
-                  fontSize: '14px',
-                  fontFamily: displayedFontFamily || 'var(--linear-font-family)',
-                  width: '100%',
-                  marginTop: 'var(--linear-space-1)'
-                }}
-              >
-                {fontsLoading ? '폰트 로딩 중…' : (displayedFontFamily || '폰트 선택')}
-              </button>
-            </div>
-          </label>
-        
-          {/* 하단 왼쪽: 폰트색상 */}
-          <label>
-            <p style={{ fontSize: "var(--linear-text-xs)" }}>
-              폰트 색상
-            </p>
-            <input 
-              type="color"
-              className="linear-input"
-              style={{ 
-                borderColor: 'var(--linear-neutral-300)',
-                width: '60px',
-                height: '36px',
-                padding: '2px',
-                marginTop: 'var(--linear-space-1)'
-              }}
-              value={displayedFontColor}
-              onChange={(e) => handleFontColorChange(e.target.value)}
-            />
-          </label>
-          
-          {/* 하단 오른쪽: 기울임 + 세로 정렬 */}
-          <label>
-            <p style={{ fontSize: "var(--linear-text-xs)" }}>
-              폰트 스타일
-            </p>
-            <div style={{ display: 'flex', gap: '6px', marginTop: 'var(--linear-space-1)' }}>
-              <button
-                className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                onClick={handleItalicToggle}
-                title="기울임"
-                style={{
-                  width: '100%',
-                  height: '36px',
-                  border: displayedIsItalic 
-                    ? '1px solid var(--linear-primary-500)' 
-                    : '1px solid var(--linear-neutral-500)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '14px',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                기울임
-              </button>
-              <button
-                className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                onClick={handleVerticalToggle}
-                title="세로쓰기"
-                style={{
-                  width: '100%',
-                  height: '36px',
-                  border: displayedIsVertical 
-                    ? '1px solid var(--linear-primary-500)' 
-                    : '1px solid var(--linear-neutral-500)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '14px',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                세로쓰기
-              </button>
-            </div>
-          </label>
-        </div>
-      </aside>
+      )}
 
       {/* 폰트 선택 모달 */}
       {isFontPickerOpen && (
@@ -446,7 +548,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               width: 'min(720px, 90vw)',
               maxHeight: '80vh',
               overflow: 'hidden',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.4)'
+              boxShadow: 'var(--shadow-lg)',
+              borderRadius: '0',
+              border: 'var(--border-width) solid var(--linear-neutral-500)'
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -473,8 +577,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                 marginTop: '12px',
                 maxHeight: '60vh',
                 overflowY: 'auto',
-                border: '1px solid var(--linear-neutral-500)',
-                borderRadius: 'var(--linear-radius-sm)'
+                border: 'var(--border-width) solid var(--linear-neutral-500)',
+                borderRadius: '0'
               }}
             >
               {fonts.map((font) => (
@@ -487,7 +591,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                     width: '100%',
                     justifyContent: 'flex-start',
                     padding: '10px 12px',
-                    borderBottom: '1px solid var(--linear-neutral-500)',
+                    borderBottom: 'var(--border-width) solid var(--linear-neutral-500)',
                     fontSize: '14px',
                     background: font.name === displayedFontFamily ? 'var(--linear-overlay-light)' : 'transparent'
                   }}
@@ -533,24 +637,25 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         </div>
       )}
 
-      {/* 세 번째 카드: 내보내기 */}
-      <aside className="linear-card">
+      {/* 세 번째 섹션: 내보내기 */}
+      <hr style={{ border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: 'var(--linear-space-2) 0' }} />
+      <div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button
             className="linear-button linear-button--primary"
             onClick={onExport}
-            onTouchStart={() => {/* 모바일에서 터치 제스처 인식 보조 */}}
+            onTouchStart={() => {/* 모바일에서 터치 제스처 인식 보조 */ }}
             style={{
               fontSize: '14px',
               height: '48px',
-              border: '1px solid var(--linear-neutral-500)',
+              border: 'var(--border-width) solid var(--linear-neutral-500)',
               width: '100%'
             }}
           >
-            내보내기
+            수정한 사진 저장
           </button>
         </div>
-      </aside>
-    </div>
+      </div>
+    </aside>
   );
 };

@@ -3,9 +3,11 @@ import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
 import { SidebarRight } from './ui/SidebarRight'
+import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
-import type { FrameType, UserImage } from './types/frame'
+import { FRAME_LAYOUTS, type FrameType, type UserImage } from './types/frame'
+import { FRAME_OPTIONS_BY_CATEGORY } from './ui/SidebarLeft'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -32,6 +34,36 @@ type SaveFilePickerOptions = {
   startIn?: FileSystemFileHandle | 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
 };
 
+type TextAlign = 'left' | 'center' | 'right';
+
+type CanvasText = {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  fontFamily: string;
+  fontColor: string;
+  isItalic: boolean;
+  isVertical: boolean;
+  textAlign: TextAlign;
+};
+
+type CanvasSticker = {
+  id: string;
+  src: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scaleX: number;
+  scaleY: number;
+  rotation: number;
+};
+
+const DEFAULT_CANVAS_WIDTH = 483;
+const TEXT_ALIGN_PADDING = 24;
+
 declare global {
   interface Window {
     showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
@@ -40,18 +72,12 @@ declare global {
 
 function App() {
   const [editorState, setEditorState] = useState<EditorState>(createInitialState())
-  const [texts, setTexts] = useState<Array<{
-    id: string;
-    text: string;
-    x: number;
-    y: number;
-    fontSize: number;
-    fontFamily: string;
-    fontColor: string;
-    isItalic: boolean;
-    isVertical: boolean;
-  }>>([]);
+  const [canvasMode, setCanvasMode] = useState<'gallery' | 'editor'>('gallery')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [texts, setTexts] = useState<CanvasText[]>([]);
+  const [stickers, setStickers] = useState<CanvasSticker[]>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
   const stageRef = useRef<Konva.Stage | null>(null);
   // 모바일 내보내기 오버레이 상태
@@ -72,12 +98,17 @@ function App() {
 
   const handleSelect = (id: string | null) => {
     setEditorState(prev => ({ ...prev, selection: id }))
-    
-    // 텍스트 선택 상태 업데이트
+
+    // 텍스트/스티커 선택 상태 업데이트
     if (id && texts.some(text => text.id === id)) {
-      setSelectedTextId(id)
+      setSelectedTextId(id);
+      setSelectedStickerId(null);
+    } else if (id && stickers.some(sticker => sticker.id === id)) {
+      setSelectedStickerId(id);
+      setSelectedTextId(null);
     } else {
-      setSelectedTextId(null)
+      setSelectedTextId(null);
+      setSelectedStickerId(null);
     }
   }
 
@@ -85,21 +116,46 @@ function App() {
     setEditorState(prev => ({ ...prev, selectedSlot: slotId }))
   }
 
-  const handleFrameSelect = (frameType: FrameType | null) => {
+  const handleFrameSelect = (rawFrameType: string | null) => {
+    if (!rawFrameType) return;
+
+    // 호환성 방어 로직
+    const legacyMap: Record<string, FrameType> = {
+      "2": "2v",
+      "4": "4v",
+      "6": "6v",
+      "9": "9v"
+    };
+    const frameType = (legacyMap[rawFrameType] || rawFrameType) as FrameType;
+
+    // 동일한 프레임이면 모드만 에디터로 변경
+    if (editorState.selectedFrame === frameType) {
+      setCanvasMode('editor');
+      return;
+    }
+
+    // 편집 내용 존재 시 리셋 경고창
+    const hasContent = texts.length > 0 || stickers.length > 0 || editorState.userImages.some(img => img !== null);
+    if (editorState.selectedFrame && hasContent) {
+      const confirmReset = window.confirm("프레임을 변경하면 디자인 캔버스의 모든 편집 내용이 초기화됩니다. 변경하시겠습니까?");
+      if (!confirmReset) return;
+    }
+
     setEditorState(prev => {
-      const changed = frameType !== prev.selectedFrame;
       return {
         ...prev,
         selectedFrame: frameType,
-        // 다른 프레임 버튼 클릭 시 슬롯 이미지 초기화 및 선택 해제
-        userImages: changed ? [] : prev.userImages,
-        selectedSlot: changed ? null : prev.selectedSlot,
-        selection: changed ? null : prev.selection,
+        userImages: [],
+        selectedSlot: null,
+        selection: null,
       };
     })
-    // 텍스트 및 텍스트 선택 상태 초기화
+    // 텍스트 및 스티커 선택 상태 초기화
     setTexts([]);
+    setStickers([]);
     setSelectedTextId(null);
+    setSelectedStickerId(null);
+    setCanvasMode('editor');
   }
 
   const handleImageUpload = (file: File, slotId: string) => {
@@ -107,7 +163,7 @@ function App() {
     const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const url = URL.createObjectURL(file);
     console.log('🔥 Created image URL:', url);
-    
+
     const newImage: UserImage = {
       id: imageId,
       file,
@@ -121,7 +177,7 @@ function App() {
     };
 
     console.log('🔥 Created newImage:', newImage);
-    
+
     setEditorState(prev => {
       const filteredImages = prev.userImages.filter(img => img.slotId !== slotId);
       const newUserImages = [...filteredImages, newImage];
@@ -158,6 +214,66 @@ function App() {
     setEditorState(prev => ({ ...prev, zoom }))
   }
 
+  const getCanvasWidth = useCallback(() => {
+    if (!editorState.selectedFrame) {
+      return DEFAULT_CANVAS_WIDTH;
+    }
+    return FRAME_LAYOUTS[editorState.selectedFrame].canvasWidth;
+  }, [editorState.selectedFrame]);
+
+  const getTextWidth = useCallback((textItem: CanvasText) => {
+    if (textItem.isVertical) {
+      return Math.max(textItem.fontSize * 0.6, 1);
+    }
+
+    if (typeof document === 'undefined') {
+      const lines = textItem.text.split('\\n');
+      const maxLen = Math.max(...lines.map(l => l.length));
+      return Math.max(maxLen * textItem.fontSize * 0.6, 1);
+    }
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      const lines = textItem.text.split('\\n');
+      const maxLen = Math.max(...lines.map(l => l.length));
+      return Math.max(maxLen * textItem.fontSize * 0.6, 1);
+    }
+
+    ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
+    const lines = textItem.text.split('\\n');
+    let maxWidth = 1;
+    lines.forEach(line => {
+      const text = line.length > 0 ? line : ' ';
+      const width = ctx.measureText(text).width;
+      if (width > maxWidth) maxWidth = width;
+    });
+
+    return maxWidth;
+  }, []);
+
+  const getAlignedTextX = useCallback((textItem: CanvasText, align: TextAlign) => {
+    const canvasWidth = getCanvasWidth();
+    const textWidth = getTextWidth(textItem);
+    const halfWidth = textWidth / 2;
+
+    let targetX = textItem.x;
+    if (align === 'left') {
+      targetX = TEXT_ALIGN_PADDING + halfWidth;
+    } else if (align === 'center') {
+      targetX = canvasWidth / 2;
+    } else {
+      targetX = canvasWidth - TEXT_ALIGN_PADDING - halfWidth;
+    }
+
+    const minX = halfWidth;
+    const maxX = canvasWidth - halfWidth;
+    if (minX > maxX) {
+      return canvasWidth / 2;
+    }
+    return Math.min(maxX, Math.max(minX, targetX));
+  }, [getCanvasWidth, getTextWidth]);
+
   const handleTextInsert = (textData: {
     text: string;
     fontSize: number;
@@ -165,13 +281,15 @@ function App() {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: TextAlign;
     x: number;
     y: number;
   }) => {
-    const newText = {
+    const newText: CanvasText = {
       id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       ...textData,
     };
+    newText.x = getAlignedTextX(newText, newText.textAlign);
 
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
@@ -179,8 +297,8 @@ function App() {
 
 
   const handleTextMove = (textId: string, x: number, y: number) => {
-    setTexts(prev => 
-      prev.map(text => 
+    setTexts(prev =>
+      prev.map(text =>
         text.id === textId ? { ...text, x, y } : text
       )
     );
@@ -193,20 +311,83 @@ function App() {
     fontColor: string;
     isItalic: boolean;
     isVertical: boolean;
+    textAlign: TextAlign;
   }>) => {
-    setTexts(prev => 
-      prev.map(text => 
-        text.id === textId ? { ...text, ...updates } : text
-      )
+    setTexts(prev =>
+      prev.map(text => {
+        if (text.id !== textId) {
+          return text;
+        }
+
+        const updatedText: CanvasText = { ...text, ...updates };
+        const widthRelatedUpdated =
+          updates.text !== undefined ||
+          updates.fontSize !== undefined ||
+          updates.fontFamily !== undefined ||
+          updates.isItalic !== undefined ||
+          updates.isVertical !== undefined;
+
+        const shouldRealign =
+          updates.textAlign !== undefined ||
+          (updatedText.textAlign !== 'center' && widthRelatedUpdated);
+
+        if (shouldRealign) {
+          updatedText.x = getAlignedTextX(updatedText, updatedText.textAlign);
+        }
+
+        return updatedText;
+      })
     );
   }
 
   const handleTextDelete = (textId: string) => {
     setTexts(prev => prev.filter(text => text.id !== textId));
-    
+
     // 삭제된 텍스트가 선택된 상태였다면 선택 해제
     if (selectedTextId === textId) {
       setSelectedTextId(null);
+      setEditorState(prev => ({ ...prev, selection: null }));
+    }
+  }
+
+  const handleStickerInsert = (src: string) => {
+    // 프레임 중앙 위치 계산 (임시)
+    const { x, y } = { x: 241.5, y: 360 }; // TODO: Use better default position or center based on selectedFrame 
+
+    const newSticker: CanvasSticker = {
+      id: `sticker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      src,
+      x,
+      y,
+      width: 100,  // 기본 크기
+      height: 100, // 기본 크기
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0
+    };
+
+    setStickers(prev => [...prev, newSticker]);
+    setSelectedStickerId(newSticker.id);
+    setSelectedTextId(null); // Text 선택 해제
+    setEditorState(prev => ({ ...prev, selection: newSticker.id }));
+  }
+
+  const handleStickerUpdate = (stickerId: string, updates: Partial<CanvasSticker>) => {
+    setStickers(prev =>
+      prev.map(sticker => {
+        if (sticker.id === stickerId) {
+          return { ...sticker, ...updates };
+        }
+        return sticker;
+      })
+    );
+  }
+
+  const handleStickerDelete = (stickerId: string) => {
+    setStickers(prev => prev.filter(sticker => sticker.id !== stickerId));
+
+    if (selectedStickerId === stickerId) {
+      setSelectedStickerId(null);
       setEditorState(prev => ({ ...prev, selection: null }));
     }
   }
@@ -215,15 +396,15 @@ function App() {
     setEditorState(prev => {
       // 삭제할 이미지 찾기
       const imageToDelete = prev.userImages.find(img => img.id === imageId);
-      
+
       // Blob URL 메모리 해제
       if (imageToDelete?.url) {
         URL.revokeObjectURL(imageToDelete.url);
       }
-      
+
       // userImages 배열에서 해당 이미지 제거
       const filteredImages = prev.userImages.filter(img => img.id !== imageId);
-      
+
       return {
         ...prev,
         userImages: filteredImages,
@@ -376,42 +557,65 @@ function App() {
     setExportFilename("");
   };
 
+  const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
+    FRAME_OPTIONS_BY_CATEGORY[cat].some(opt => opt.value === editorState.selectedFrame)
+  ) || null;
+
+  const availableOptions = activeCategory ? FRAME_OPTIONS_BY_CATEGORY[activeCategory] : [];
+
   return (
     <div className="app-container">
       <div className="app-main">
-        <SidebarLeft 
+        <SidebarLeft
           selectedFrame={editorState.selectedFrame}
           onFrameSelect={handleFrameSelect}
           frameColor={editorState.frameColor}
           onFrameColorChange={handleFrameColorChange}
+          canvasMode={canvasMode}
+          onCanvasModeChange={setCanvasMode}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
         />
-        <CanvasStage 
-          template={editorState.template}
-          selection={selectedTextId}
-          selectedSlot={editorState.selectedSlot}
-          zoom={editorState.zoom}
-          selectedFrame={editorState.selectedFrame}
-          userImages={editorState.userImages}
-          frameColor={editorState.frameColor}
-          exportMode={exportMode}
-          stageRefExternal={stageRef}
-          texts={texts}
-          onSelect={handleSelect}
-          onSlotSelect={handleSlotSelect}
-          onZoomChange={handleZoomChange}
-          onImageUpload={handleImageUpload}
-          onImageTransform={handleImageTransform}
-          onFrameColorChange={handleFrameColorChange}
-          onTextMove={handleTextMove}
-          onTextUpdate={handleTextUpdate}
-          onImageDelete={handleImageDelete}
-        />
+        {canvasMode === 'gallery' ? (
+          <FrameGallery
+            selectedCategory={activeCategory}
+            options={availableOptions}
+            onSelectFrame={handleFrameSelect}
+          />
+        ) : (
+          <CanvasStage
+            template={editorState.template}
+            selection={selectedTextId || selectedStickerId}
+            selectedSlot={editorState.selectedSlot}
+            zoom={editorState.zoom}
+            selectedFrame={editorState.selectedFrame}
+            userImages={editorState.userImages}
+            frameColor={editorState.frameColor}
+            exportMode={exportMode}
+            stageRefExternal={stageRef}
+            texts={texts}
+            stickers={stickers}
+            onSelect={handleSelect}
+            onSlotSelect={handleSlotSelect}
+            onZoomChange={handleZoomChange}
+            onImageUpload={handleImageUpload}
+            onImageTransform={handleImageTransform}
+            onFrameColorChange={handleFrameColorChange}
+            onTextMove={handleTextMove}
+            onTextUpdate={handleTextUpdate}
+            onImageDelete={handleImageDelete}
+            onStickerUpdate={handleStickerUpdate}
+          />
+        )}
         <SidebarRight
           selectedFrame={editorState.selectedFrame}
           selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}
+          selectedSticker={selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined}
           onTextInsert={handleTextInsert}
           onTextUpdate={handleTextUpdate}
           onTextDelete={handleTextDelete}
+          onStickerInsert={handleStickerInsert}
+          onStickerDelete={handleStickerDelete}
           onExport={handleExport}
         />
       </div>

@@ -5,6 +5,14 @@ export type FrameType =
   | "6" | "6v"
   | "9" | "9v";
 
+export type FrameOption = {
+  value: FrameType;
+  label: string;
+  image: string; // 기존 팝오버용 이미지 파일명 (갤러리에서도 재활용)
+  orientation?: 'vertical' | 'horizontal'; // 방향성 아이콘 노출용
+  description?: string; // 부가 설명 텍스트
+};
+
 export type SlotPosition = {
   x: number;
   y: number;
@@ -53,7 +61,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
       { id: "slot-1", x: 0, y: 0, width: 483, height: 725 }
     ]
   },
-  
+
   "1f": {
     id: "1f",
     name: "1컷 프레임",
@@ -106,20 +114,20 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
   },
 
   // 4컷
-/*  "4h": {
-    id: "4h",
-    name: "4컷 가로",
-    imagePath: "/frame/9_v.png",
-    canvasWidth: HORIZONTAL.width,
-    canvasHeight: HORIZONTAL.height,
-    frameColor: "#ffffff",
-    slots: [
-      { id: "slot-1", x: 50, y: 50, width: 200, height: 200 },
-      { id: "slot-2", x: 350, y: 50, width: 200, height: 200 },
-      { id: "slot-3", x: 50, y: 250, width: 200, height: 200 },
-      { id: "slot-4", x: 350, y: 250, width: 200, height: 200 }
-    ]
-  },*/
+  /*  "4h": {
+      id: "4h",
+      name: "4컷 가로",
+      imagePath: "/frame/9_v.png",
+      canvasWidth: HORIZONTAL.width,
+      canvasHeight: HORIZONTAL.height,
+      frameColor: "#ffffff",
+      slots: [
+        { id: "slot-1", x: 50, y: 50, width: 200, height: 200 },
+        { id: "slot-2", x: 350, y: 50, width: 200, height: 200 },
+        { id: "slot-3", x: 50, y: 250, width: 200, height: 200 },
+        { id: "slot-4", x: 350, y: 250, width: 200, height: 200 }
+      ]
+    },*/
   "4v": {
     id: "4v",
     name: "4컷 세로",
