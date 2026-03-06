@@ -54,6 +54,12 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   selectedCategory,
   onCategoryChange,
 }) => {
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+
+  const handleImageLoad = (value: string) => {
+    setLoadedImages((prev) => ({ ...prev, [value]: true }));
+  };
+
   const isMobile = (() => {
     if (typeof navigator === 'undefined') return false;
     const ua = navigator.userAgent || '';
@@ -84,8 +90,8 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   ) || null;
 
   return (
-    <aside className="linear-card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ textAlign: "center" }}>
+    <aside className="linear-card" style={{ display: 'flex', flexDirection: 'column', gap: '24px', height: '100%', overflow: 'hidden' }}>
+      <div style={{ flexShrink: 0, textAlign: "center" }}>
         <h2 style={{ margin: "0", fontSize: "var(--linear-text-lg)", fontWeight: "var(--linear-font-medium)" }}>
           다비스튜디오 컷편집기
         </h2>
@@ -94,11 +100,11 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
         </p>
       </div>
 
-      <hr style={{ border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: '0' }} />
+      <hr style={{ flexShrink: 0, border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: '0' }} />
 
-      <div>
-        <h3 style={{ marginBottom: "12px" }}>프레임 컷 수 선택</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "16px" }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <h3 style={{ flexShrink: 0, marginBottom: "12px" }}>프레임 컷 수 선택</h3>
+        <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "16px" }}>
           {Object.keys(FRAME_OPTIONS_BY_CATEGORY).map((category) => (
             <button
               key={category}
@@ -126,12 +132,12 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
         </div>
 
         {activeCategory && (
-          <div className="linear-fade-in" style={{ backgroundColor: "var(--linear-neutral-600)", borderRadius: "var(--radius-base)", border: "var(--border-width) solid var(--linear-neutral-500)", padding: "16px" }}>
-            <p style={{ marginBottom: "12px", color: "var(--linear-secondary-400)", fontSize: "var(--linear-text-sm)", textAlign: "center" }}>
+          <div className="linear-fade-in" style={{ backgroundColor: "var(--linear-neutral-600)", borderRadius: "var(--radius-base)", border: "var(--border-width) solid var(--linear-neutral-500)", padding: "16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+            <p style={{ flexShrink: 0, marginBottom: "12px", color: "var(--linear-secondary-400)", fontSize: "var(--linear-text-sm)", textAlign: "center" }}>
               {activeCategory} 상세 스타일을 선택하세요.
             </p>
 
-            <div style={{ marginBottom: '16px' }}>
+            <div style={{ flexShrink: 0, marginBottom: '16px' }}>
               <button
                 className="linear-button linear-button--secondary"
                 onClick={() => onCanvasModeChange('gallery')}
@@ -141,54 +147,41 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               </button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, alignContent: "start", paddingRight: "4px" }}>
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
-                <div key={option.value} style={{ position: "relative" }}>
-                  <button
-                    className={`linear-button ${selectedFrame === option.value
-                      ? "linear-button--primary"
-                      : "linear-button--secondary"
-                      }`}
-                    onClick={() => handleFrameSelect(option.value)}
-                    style={{
-                      width: "100%",
-                      height: "48px",
-                      border: selectedFrame === option.value
-                        ? "var(--border-width) solid var(--linear-neutral-500)"
-                        : "var(--border-width) solid var(--linear-neutral-400)",
-                      backgroundColor: selectedFrame === option.value
-                        ? "var(--linear-primary-500)"
-                        : "var(--linear-neutral-700)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "0 16px",
-                      fontSize: "14px",
-                    }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div
+                  key={option.value}
+                  className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''}`}
+                  onClick={() => handleFrameSelect(option.value)}
+                  style={{
+                    borderColor: selectedFrame === option.value ? 'var(--linear-neutral-500)' : 'var(--linear-neutral-400)',
+                    backgroundColor: selectedFrame === option.value ? 'var(--linear-primary-500)' : 'var(--linear-neutral-700)',
+                  }}
+                >
+                  <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`} style={{ borderBottomColor: selectedFrame === option.value ? 'var(--linear-neutral-500)' : 'var(--linear-neutral-400)' }}>
+                    <img
+                      src={`/popover/${option.image}`}
+                      alt={option.label}
+                      loading="lazy"
+                      onLoad={() => handleImageLoad(option.value)}
+                    />
+                  </div>
+                  <div className="frame-gallery-label" style={{ padding: '8px' }}>
+                    <span className="label-text" style={{ fontSize: '11px', color: selectedFrame === option.value ? 'var(--linear-neutral-900)' : 'var(--linear-neutral-50)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
                       {option.label}
                       {canvasMode === 'editor' && selectedFrame === option.value && (
                         <span style={{
                           backgroundColor: 'var(--linear-neutral-900)',
                           color: 'var(--linear-primary-500)',
-                          fontSize: '11px',
-                          padding: '2px 6px',
-                          border: '1px solid var(--linear-primary-500)'
+                          fontSize: '9px',
+                          padding: '2px 4px',
+                          border: '1px solid var(--linear-neutral-500)',
                         }}>
                           ✏️ 편집 중
                         </span>
                       )}
                     </span>
-                    <span style={{ fontSize: '16px', opacity: 0.7 }}>
-                      {option.orientation === 'horizontal' ? '↔️' : '↕️'}
-                    </span>
-                  </button>
-                  {option.description && (
-                    <div style={{ fontSize: '12px', color: 'var(--linear-secondary-400)', marginTop: '4px', textAlign: 'center' }}>
-                      {option.description}
-                    </div>
-                  )}
+                  </div>
                 </div>
               ))}
             </div>

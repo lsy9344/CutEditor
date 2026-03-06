@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
+import { buildStickerSlots } from "./stickerCatalog";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -67,6 +68,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   onExport
 }) => {
   const [activeTab, setActiveTab] = useState<"text" | "sticker">("text");
+  const [stickerPreviewIndexes, setStickerPreviewIndexes] = useState<Record<string, number>>({});
 
   // Text State
   const [textInput, setTextInput] = useState("");
@@ -244,12 +246,22 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       onTextUpdate(selectedText.id, { textAlign: newAlign });
     }
   };
+  const stickerSlots = buildStickerSlots();
 
-  const STICKER_LIST = [
-    "/stickers/heart.svg",
-    "/stickers/star.svg",
-    "/stickers/face-smile.svg"
-  ];
+  const handleStickerPreviewError = (slotKey: string, candidateCount: number) => {
+    setStickerPreviewIndexes((prev) => {
+      const currentIndex = prev[slotKey] ?? 0;
+
+      if (currentIndex >= candidateCount) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [slotKey]: currentIndex + 1,
+      };
+    });
+  };
 
 
   return (
@@ -482,23 +494,51 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             클릭하여 스티커를 캔버스에 추가하세요.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-            {STICKER_LIST.map(src => (
-              <button
-                key={src}
-                className="linear-button linear-button--secondary"
-                onClick={() => onStickerInsert?.(src)}
-                style={{
-                  height: '60px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '8px',
-                  backgroundColor: 'var(--linear-neutral-600)'
-                }}
-              >
-                <img src={src} alt="sticker" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-              </button>
-            ))}
+            {stickerSlots.map((slot) => {
+              const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
+              const previewSrc = slot.candidates[currentIndex];
+              const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
+
+              return (
+                <button
+                  key={slot.key}
+                  className="linear-button linear-button--secondary"
+                  onClick={() => {
+                    if (previewSrc) {
+                      onStickerInsert?.(previewSrc);
+                    }
+                  }}
+                  disabled={!isReady}
+                  title={isReady ? `${slot.key} 스티커 추가` : `${slot.key} 스티커 준비 중`}
+                  style={{
+                    height: '60px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '8px',
+                    backgroundColor: 'var(--linear-neutral-600)',
+                    opacity: isReady ? 1 : 0.55,
+                    cursor: isReady ? 'pointer' : 'not-allowed'
+                  }}
+                >
+                  {isReady ? (
+                    <img
+                      src={previewSrc}
+                      alt={`${slot.key} sticker`}
+                      loading="lazy"
+                      onError={() => handleStickerPreviewError(slot.key, slot.candidates.length)}
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: '12px', lineHeight: 1.3, color: 'var(--linear-secondary-300)', textAlign: 'center' }}>
+                      {slot.key}
+                      <br />
+                      준비 중
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           <div className="linear-mt-4">
