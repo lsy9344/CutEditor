@@ -127,7 +127,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isItalic: boolean, isVertical: boolean) => {
     if (isVertical) {
       // 세로 배치일 때
-      const lines = text.split('\\n');
+      const lines = text.split('\n');
       const maxLength = Math.max(1, ...lines.map(line => line.length));
       return {
         width: fontSize * 0.6, // 한 글자 폭
@@ -137,7 +137,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       // 가로 배치일 때 - 캔버스로 정확한 측정
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      const lines = text.split('\\n');
+      const lines = text.split('\n');
 
       if (ctx) {
         ctx.font = `${isItalic ? 'italic ' : ''}${fontSize}px ${fontFamily}`;
@@ -1503,7 +1503,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     }}
                     min="1"
                     step="5"
-                    style={{ width: '60px', fontSize: '12px', height: '24px' }}
+                    style={{ width: '80px', fontSize: '12px', height: '24px' }}
                     disabled={!selectedImage}
                     title={selectedImage ? '선택된 슬롯의 이미지 줌(%)' : '슬롯을 선택하거나 이미지를 추가하세요'}
                   />

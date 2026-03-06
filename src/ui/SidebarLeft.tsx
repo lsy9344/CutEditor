@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import type { FrameType, FrameOption } from "../types/frame";
+import { getCategorySelectionOutcome } from "../utils/frameChangeFlow";
 
 export type SidebarLeftProps = {
   selectedFrame: FrameType | null;
@@ -60,24 +61,19 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
     setLoadedImages((prev) => ({ ...prev, [value]: true }));
   };
 
-  const isMobile = (() => {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || (navigator as any).maxTouchPoints > 0;
-  })();
-
   const handleCategoryClick = (category: string) => {
-    if (selectedCategory === category) {
-      onCategoryChange(null);
-      onCanvasModeChange('gallery');
-    } else {
-      onCategoryChange(category);
-      onCanvasModeChange('gallery');
-      const options = FRAME_OPTIONS_BY_CATEGORY[category];
-      if (options && options.length === 1) {
-        onFrameSelect(options[0].value);
-        onCanvasModeChange('editor');
-      }
+    const options = FRAME_OPTIONS_BY_CATEGORY[category] ?? [];
+    const outcome = getCategorySelectionOutcome({
+      selectedCategory,
+      category,
+      options: options.map((option) => option.value),
+    });
+
+    onCategoryChange(outcome.nextCategory);
+    onCanvasModeChange(outcome.nextCanvasMode);
+
+    if (outcome.autoSelectFrame) {
+      onFrameSelect(outcome.autoSelectFrame);
     }
   };
 
@@ -147,7 +143,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               </button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, alignContent: "start", paddingRight: "4px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, alignContent: "start", paddingRight: "12px", marginRight: "-4px" }}>
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
                 <div
                   key={option.value}

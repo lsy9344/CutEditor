@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
-import { buildStickerSlots } from "./stickerCatalog";
+import { STICKER_CATEGORIES } from "./stickerCatalog";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -68,6 +69,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   onExport
 }) => {
   const [activeTab, setActiveTab] = useState<"text" | "sticker">("text");
+  const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
+  const [categoryPreviewIndexes, setCategoryPreviewIndexes] = useState<Record<string, number>>({});
+  const [loadedCategoryPreviews, setLoadedCategoryPreviews] = useState<Record<string, boolean>>({});
   const [stickerPreviewIndexes, setStickerPreviewIndexes] = useState<Record<string, number>>({});
 
   // Text State
@@ -160,6 +164,46 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   const displayedIsVertical = selectedText?.isVertical ?? isVertical;
   const displayedTextAlign = selectedText?.textAlign ?? textAlign;
 
+  const handleStickerPreviewError = (slotKey: string, candidateCount: number) => {
+    setStickerPreviewIndexes((prev) => {
+      const currentIndex = prev[slotKey] ?? 0;
+
+      if (currentIndex >= candidateCount) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [slotKey]: currentIndex + 1,
+      };
+    });
+  };
+
+  const handleCategoryPreviewError = (categoryId: string, candidateCount: number) => {
+    setCategoryPreviewIndexes((prev) => {
+      const currentIndex = prev[categoryId] ?? 0;
+
+      if (currentIndex >= candidateCount) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        [categoryId]: currentIndex + 1,
+      };
+    });
+    setLoadedCategoryPreviews((prev) => ({
+      ...prev,
+      [categoryId]: false,
+    }));
+  };
+
+  const handleCategoryPreviewLoad = (categoryId: string) => {
+    setLoadedCategoryPreviews((prev) => ({
+      ...prev,
+      [categoryId]: true,
+    }));
+  };
 
   const handleDescriptionSelect = (value: string) => {
     if (textInputRef.current) {
@@ -246,23 +290,6 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       onTextUpdate(selectedText.id, { textAlign: newAlign });
     }
   };
-  const stickerSlots = buildStickerSlots();
-
-  const handleStickerPreviewError = (slotKey: string, candidateCount: number) => {
-    setStickerPreviewIndexes((prev) => {
-      const currentIndex = prev[slotKey] ?? 0;
-
-      if (currentIndex >= candidateCount) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        [slotKey]: currentIndex + 1,
-      };
-    });
-  };
-
 
   return (
     <aside className="linear-card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
@@ -488,58 +515,146 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       )}
 
       {activeTab === 'sticker' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
-          <h3>스티커 붙이기</h3>
-          <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)', marginBottom: '8px' }}>
-            클릭하여 스티커를 캔버스에 추가하세요.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-            {stickerSlots.map((slot) => {
-              const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
-              const previewSrc = slot.candidates[currentIndex];
-              const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)', flex: 1, minHeight: 0 }}>
+          {!selectedStickerCategory ? (
+            <>
+              <h3>스티커 카테고리 선택</h3>
+              <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)', marginBottom: '8px' }}>
+                클릭하여 스티커 목록을 확인하세요.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0 }}>
+                {STICKER_CATEGORIES.map((category) => {
+                  const currentIndex = categoryPreviewIndexes[category.id] ?? 0;
+                  const previewSrc = category.previewCandidates[currentIndex];
+                  const isReady = currentIndex < category.previewCandidates.length && Boolean(previewSrc);
 
-              return (
+                  return (
+                    <div
+                      key={category.id}
+                      className="frame-gallery-card"
+                      onClick={() => setSelectedStickerCategory(category.id)}
+                      style={{
+                        borderColor: 'var(--linear-neutral-400)',
+                        backgroundColor: 'var(--linear-neutral-700)',
+                      }}
+                    >
+                      <div className={`frame-gallery-image-container ${loadedCategoryPreviews[category.id] ? 'loaded' : 'loading'}`} style={{
+                        aspectRatio: '16/9',
+                        borderBottomColor: 'var(--linear-neutral-400)'
+                      }}>
+                        {isReady ? (
+                          <img
+                            src={previewSrc}
+                            alt={category.label}
+                            loading="lazy"
+                            onLoad={() => handleCategoryPreviewLoad(category.id)}
+                            onError={() => handleCategoryPreviewError(category.id, category.previewCandidates.length)}
+                          />
+                        ) : (
+                          <div style={{
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'var(--linear-secondary-400)',
+                            fontSize: '12px'
+                          }}>
+                            준비 중
+                          </div>
+                        )}
+                      </div>
+                      <div className="frame-gallery-label" style={{ padding: '8px' }}>
+                        <span className="label-text" style={{ fontSize: '11px', color: 'var(--linear-neutral-50)' }}>
+                          {category.label}
+                        </span>
+                        <span className="label-desc" style={{ color: 'var(--linear-secondary-300)' }}>
+                          {category.description}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <button
-                  key={slot.key}
+                  type="button"
                   className="linear-button linear-button--secondary"
-                  onClick={() => {
-                    if (previewSrc) {
-                      onStickerInsert?.(previewSrc);
-                    }
-                  }}
-                  disabled={!isReady}
-                  title={isReady ? `${slot.key} 스티커 추가` : `${slot.key} 스티커 준비 중`}
+                  onClick={() => setSelectedStickerCategory(null)}
                   style={{
-                    height: '60px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '8px',
-                    backgroundColor: 'var(--linear-neutral-600)',
-                    opacity: isReady ? 1 : 0.55,
-                    cursor: isReady ? 'pointer' : 'not-allowed'
+                    padding: '4px 8px',
+                    fontSize: '12px',
                   }}
                 >
-                  {isReady ? (
-                    <img
-                      src={previewSrc}
-                      alt={`${slot.key} sticker`}
-                      loading="lazy"
-                      onError={() => handleStickerPreviewError(slot.key, slot.candidates.length)}
-                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <span style={{ fontSize: '12px', lineHeight: 1.3, color: 'var(--linear-secondary-300)', textAlign: 'center' }}>
-                      {slot.key}
-                      <br />
-                      준비 중
-                    </span>
-                  )}
+                  ← 뒤로
                 </button>
-              );
-            })}
-          </div>
+                <h3 style={{ margin: 0, fontSize: '14px', flex: 1 }}>
+                  {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.label}
+                </h3>
+              </div>
+              <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "8px",
+                overflowY: "auto",
+                flex: 1,
+                minHeight: 0
+              }}>
+                {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.stickers.map((slot) => {
+                  const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
+                  const previewSrc = slot.candidates[currentIndex];
+                  const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
+
+                  return (
+                    <button
+                      key={slot.key}
+                      onClick={() => {
+                        if (isReady && previewSrc && onStickerInsert) {
+                          onStickerInsert(previewSrc);
+                        }
+                      }}
+                      style={{
+                        aspectRatio: '1',
+                        border: 'var(--border-width) solid var(--linear-neutral-500)',
+                        background: 'var(--linear-neutral-700)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: isReady ? 'pointer' : 'not-allowed',
+                        padding: '4px',
+                        opacity: isReady ? 1 : 0.5,
+                        boxShadow: 'var(--shadow-sm)',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      {!isReady ? (
+                        <>
+                          <span style={{ fontSize: '10px', color: 'var(--linear-secondary-400)' }}>{slot.key}</span>
+                          <span style={{ fontSize: '10px', color: 'var(--linear-secondary-400)' }}>준비 중</span>
+                        </>
+                      ) : (
+                        <img
+                          src={previewSrc}
+                          alt={`${slot.key} sticker`}
+                          loading="lazy"
+                          onError={() => handleStickerPreviewError(slot.key, slot.candidates.length)}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'contain'
+                          }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
 
           <div className="linear-mt-4">
             <button
@@ -566,7 +681,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       )}
 
       {/* 폰트 선택 모달 */}
-      {isFontPickerOpen && (
+      {isFontPickerOpen && typeof document !== 'undefined' && createPortal(
         <div
           role="dialog"
           aria-modal="true"
@@ -578,15 +693,17 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 1000
+            zIndex: 9999
           }}
           onClick={() => setFontPickerOpen(false)}
         >
           <div
             className="linear-card"
             style={{
-              width: 'min(720px, 90vw)',
-              maxHeight: '80vh',
+              width: 'min(800px, 90vw)',
+              height: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
               overflow: 'hidden',
               boxShadow: 'var(--shadow-lg)',
               borderRadius: '0',
@@ -615,7 +732,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               aria-label="폰트 목록"
               style={{
                 marginTop: '12px',
-                maxHeight: '60vh',
+                flex: 1,
                 overflowY: 'auto',
                 border: 'var(--border-width) solid var(--linear-neutral-500)',
                 borderRadius: '0'
@@ -674,7 +791,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 세 번째 섹션: 내보내기 */}

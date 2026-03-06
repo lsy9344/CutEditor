@@ -287,7 +287,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     slots: [
       { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
       { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
+      { id: "slot-3", x: 17, y: 365, width: 217, height: 325 },
       { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
     ]
   },

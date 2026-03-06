@@ -480,7 +480,7 @@ p {
   width: 100%;
   max-width: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   gap: var(--linear-space-4);
 }
 
@@ -505,6 +505,8 @@ p {
   background: var(--linear-neutral-600);
   border: var(--border-width) solid var(--linear-neutral-500);
   box-shadow: var(--shadow-base);
+  margin-right: 4px;
+  margin-bottom: 4px;
 }
 
 /* Scrollbar Styling for Brutalism */

@@ -8,6 +8,7 @@ import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import { FRAME_LAYOUTS, type FrameType, type UserImage } from './types/frame'
 import { FRAME_OPTIONS_BY_CATEGORY } from './ui/SidebarLeft'
+import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -78,6 +79,7 @@ function App() {
   const [stickers, setStickers] = useState<CanvasSticker[]>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
+  const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
   const stageRef = useRef<Konva.Stage | null>(null);
   // 모바일 내보내기 오버레이 상태
@@ -116,31 +118,7 @@ function App() {
     setEditorState(prev => ({ ...prev, selectedSlot: slotId }))
   }
 
-  const handleFrameSelect = (rawFrameType: string | null) => {
-    if (!rawFrameType) return;
-
-    // 호환성 방어 로직
-    const legacyMap: Record<string, FrameType> = {
-      "2": "2v",
-      "4": "4v",
-      "6": "6v",
-      "9": "9v"
-    };
-    const frameType = (legacyMap[rawFrameType] || rawFrameType) as FrameType;
-
-    // 동일한 프레임이면 모드만 에디터로 변경
-    if (editorState.selectedFrame === frameType) {
-      setCanvasMode('editor');
-      return;
-    }
-
-    // 편집 내용 존재 시 리셋 경고창
-    const hasContent = texts.length > 0 || stickers.length > 0 || editorState.userImages.some(img => img !== null);
-    if (editorState.selectedFrame && hasContent) {
-      const confirmReset = window.confirm("프레임을 변경하면 디자인 캔버스의 모든 편집 내용이 초기화됩니다. 변경하시겠습니까?");
-      if (!confirmReset) return;
-    }
-
+  const applyFrameChange = (frameType: FrameType) => {
     setEditorState(prev => {
       return {
         ...prev,
@@ -149,13 +127,39 @@ function App() {
         selectedSlot: null,
         selection: null,
       };
-    })
+    });
     // 텍스트 및 스티커 선택 상태 초기화
     setTexts([]);
     setStickers([]);
     setSelectedTextId(null);
     setSelectedStickerId(null);
+    setPendingFrameChange(null);
     setCanvasMode('editor');
+  };
+
+  const handleFrameSelect = (rawFrameType: string | null) => {
+    const decision = getFrameSelectionDecision({
+      rawFrameType,
+      selectedFrame: editorState.selectedFrame,
+      hasContent: hasFrameContent({
+        textCount: texts.length,
+        stickerCount: stickers.length,
+        userImageCount: editorState.userImages.length,
+      }),
+    });
+
+    if (decision.kind === 'noop') return;
+    if (decision.kind === 'activate-editor') {
+      setPendingFrameChange(null);
+      setCanvasMode('editor');
+      return;
+    }
+    if (decision.kind === 'confirm') {
+      setPendingFrameChange(decision.frameType);
+      return;
+    }
+
+    applyFrameChange(decision.frameType);
   }
 
   const handleImageUpload = (file: File, slotId: string) => {
@@ -227,7 +231,7 @@ function App() {
     }
 
     if (typeof document === 'undefined') {
-      const lines = textItem.text.split('\\n');
+      const lines = textItem.text.split('\n');
       const maxLen = Math.max(...lines.map(l => l.length));
       return Math.max(maxLen * textItem.fontSize * 0.6, 1);
     }
@@ -235,13 +239,13 @@ function App() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      const lines = textItem.text.split('\\n');
+      const lines = textItem.text.split('\n');
       const maxLen = Math.max(...lines.map(l => l.length));
       return Math.max(maxLen * textItem.fontSize * 0.6, 1);
     }
 
     ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
-    const lines = textItem.text.split('\\n');
+    const lines = textItem.text.split('\n');
     let maxWidth = 1;
     lines.forEach(line => {
       const text = line.length > 0 ? line : ' ';
@@ -619,6 +623,61 @@ function App() {
           onExport={handleExport}
         />
       </div>
+
+      {pendingFrameChange && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="linear-fade-in"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'var(--linear-backdrop)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 9999,
+          }}
+          onClick={() => setPendingFrameChange(null)}
+        >
+          <div
+            className="linear-card"
+            style={{
+              width: 'min(480px, 100%)',
+              boxShadow: 'var(--shadow-lg)',
+              borderRadius: '0',
+              border: 'var(--border-width) solid var(--linear-neutral-500)',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h3 style={{ margin: 0 }}>프레임 변경 확인</h3>
+              <p style={{ margin: 0, lineHeight: 1.6 }}>
+                프레임을 변경하면 디자인 캔버스의 모든 편집 내용이 초기화됩니다.
+                <br />
+                {FRAME_LAYOUTS[pendingFrameChange].name} 프레임으로 변경하시겠습니까?
+              </p>
+              <div className="linear-flex" style={{ justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  className="linear-button linear-button--secondary"
+                  onClick={() => setPendingFrameChange(null)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="linear-button linear-button--primary"
+                  onClick={() => applyFrameChange(pendingFrameChange)}
+                >
+                  변경
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
       {isMobile && exportOverlayOpen && (
