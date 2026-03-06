@@ -14,21 +14,35 @@ export type SidebarLeftProps = {
 
 export const FRAME_OPTIONS_BY_CATEGORY: Record<string, FrameOption[]> = {
   "1컷": [
-    { value: "1l", label: "사진에 글씨새기기", image: "1_l.png", orientation: "vertical", description: "사진에 직접 텍스트 올리기" },
-    { value: "1f", label: "1컷 프레임", image: "1_v.png", orientation: "vertical", description: "프레임 안에 사진 넣기" },
+    { value: "1l", label: "사진에 글씨새기기", image: "1l.png", orientation: "vertical", description: "사진에 직접 텍스트 올리기" },
+    { value: "1f", label: "1컷 프레임", image: "1f.png", orientation: "vertical", description: "프레임 안에 사진 넣기" },
   ],
   "2컷": [
-    { value: "2h", label: "2컷 가로", image: "2_h.png", orientation: "horizontal" },
-    { value: "2v", label: "2컷 세로", image: "2_v.png", orientation: "vertical" },
+    { value: "2h", label: "2컷 가로", image: "2h.png", orientation: "horizontal" },
+    { value: "2v", label: "2컷 세로", image: "2v.png", orientation: "vertical" },
+  ],
+  "3컷": [
+    { value: "3v_1", label: "3컷 세로 1", image: "3v_1.png", orientation: "vertical" },
   ],
   "4컷": [
-    { value: "4v", label: "4컷 세로", image: "4_v.png", orientation: "vertical" },
+    { value: "4v_1", label: "4컷 세로 1", image: "4v_1.png", orientation: "vertical" },
+    { value: "4v_2", label: "4컷 세로 2", image: "4v_2.png", orientation: "vertical" },
+    { value: "4v_3", label: "4컷 세로 3", image: "4v_3.png", orientation: "vertical" },
+    { value: "4v_4", label: "4컷 세로 4", image: "4v_4.png", orientation: "vertical" },
+    { value: "4v_5", label: "4컷 세로 5", image: "4v_5.png", orientation: "vertical" },
+    { value: "4v_6", label: "4컷 세로 6", image: "4v_6.png", orientation: "vertical" },
   ],
   "6컷": [
-    { value: "6v", label: "6컷 세로", image: "6_v.png", orientation: "vertical" },
+    { value: "6v_1", label: "6컷 세로 1", image: "6v_1.png", orientation: "vertical" },
+    { value: "6v_2", label: "6컷 세로 2", image: "6v_2.png", orientation: "vertical" },
+  ],
+  "8컷": [
+    { value: "8v_1", label: "8컷 세로 1", image: "8v_1.png", orientation: "vertical" },
+    { value: "8v_2", label: "8컷 세로 2", image: "8v_2.png", orientation: "vertical" },
+    { value: "8v_3", label: "8컷 세로 3", image: "8v_3.png", orientation: "vertical" },
   ],
   "9컷": [
-    { value: "9v", label: "9컷 세로", image: "9_v.png", orientation: "vertical" },
+    { value: "9v", label: "9컷 세로", image: "9v.png", orientation: "vertical" },
   ]
 };
 
@@ -84,7 +98,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
 
       <div>
         <h3 style={{ marginBottom: "12px" }}>프레임 컷 수 선택</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", marginBottom: "16px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "16px" }}>
           {Object.keys(FRAME_OPTIONS_BY_CATEGORY).map((category) => (
             <button
               key={category}
@@ -92,9 +106,9 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               onClick={() => handleCategoryClick(category)}
               style={{
                 width: "100%",
-                height: "40px",
+                height: "48px",
                 padding: "0",
-                fontSize: "13px",
+                fontSize: "15px",
                 border: activeCategory === category
                   ? "var(--border-width) solid var(--linear-neutral-500)"
                   : "var(--border-width) solid var(--linear-neutral-500)",
@@ -116,6 +130,17 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
             <p style={{ marginBottom: "12px", color: "var(--linear-secondary-400)", fontSize: "var(--linear-text-sm)", textAlign: "center" }}>
               {activeCategory} 상세 스타일을 선택하세요.
             </p>
+
+            <div style={{ marginBottom: '16px' }}>
+              <button
+                className="linear-button linear-button--secondary"
+                onClick={() => onCanvasModeChange('gallery')}
+                style={{ width: "100%" }}
+              >
+                ← 다른 프레임 갤러리 보기
+              </button>
+            </div>
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "12px" }}>
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
                 <div key={option.value} style={{ position: "relative" }}>
@@ -166,16 +191,6 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                   )}
                 </div>
               ))}
-            </div>
-
-            <div style={{ marginTop: '24px' }}>
-              <button
-                className="linear-button linear-button--secondary"
-                onClick={() => onCanvasModeChange('gallery')}
-                style={{ width: "100%" }}
-              >
-                ← 다른 프레임 갤러리 보기
-              </button>
             </div>
           </div>
         )}
