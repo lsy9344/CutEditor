@@ -4,6 +4,19 @@ import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
 import { FRAME_LAYOUTS } from "../types/frame";
+import {
+  getClampedKeyboardMove,
+  getContainedImageSize,
+  getNextImageSelection,
+  getNudgedPosition,
+  getRotatedTransform,
+  getScaledTransform,
+  getSelectedImageFromState,
+  KEYBOARD_MOVE_FAST_STEP,
+  KEYBOARD_MOVE_STEP,
+  KEYBOARD_ROTATE_STEP,
+  KEYBOARD_SCALE_FACTOR,
+} from "./keyboardShortcuts";
 
 export type CanvasStageProps = {
   template: Template | null;
@@ -55,6 +68,7 @@ export type CanvasStageProps = {
     textAlign: "left" | "center" | "right";
   }>) => void;
   onImageDelete?: (imageId: string) => void;
+  onStickerDelete?: (stickerId: string) => void;
   onStickerUpdate?: (stickerId: string, updates: Partial<{
     x: number;
     y: number;
@@ -86,11 +100,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onTextUpdate, // eslint-disable-line @typescript-eslint/no-unused-vars
   onZoomChange,
   onImageDelete,
+  onStickerDelete,
   onStickerUpdate
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const stageWrapperRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 컨테이너 측정 크기 (피드백 루프 방지용)
   const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
@@ -117,6 +133,43 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   ]);
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
+  const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
+  const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
+
+  const focusCanvasArea = useCallback(() => {
+    stageWrapperRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const selectImage = useCallback((imageId: string, slotId: string) => {
+    onSelect?.(imageId);
+    onSlotSelect?.(slotId);
+    focusCanvasArea();
+  }, [focusCanvasArea, onSelect, onSlotSelect]);
+
+  const selectSticker = useCallback((stickerId: string) => {
+    onSelect?.(stickerId);
+    focusCanvasArea();
+  }, [focusCanvasArea, onSelect]);
+
+  const getImageDisplayContext = useCallback((image: Pick<UserImage, "id" | "slotId">) => {
+    if (!frameLayout) return null;
+
+    const slot = frameLayout.slots.find((item) => item.id === image.slotId);
+    if (!slot) return null;
+
+    const loadedImage = loadedImages.get(image.id);
+    if (!(loadedImage instanceof HTMLImageElement)) return null;
+
+    return {
+      slot,
+      displaySize: getContainedImageSize(
+        loadedImage.width,
+        loadedImage.height,
+        slot.width,
+        slot.height,
+      ),
+    };
+  }, [frameLayout, loadedImages]);
 
   // 텍스트 세로 배치 유틸리티 함수
   const formatVerticalText = (text: string, isVertical: boolean): string => {
@@ -299,7 +352,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     console.log('🔥 handleSlotClick called with slotId:', slotId);
 
     // 슬롯 선택 상태 업데이트
+    onSelect?.(null);
     onSlotSelect?.(slotId);
+    focusCanvasArea();
 
     setDraggedSlotId(slotId);
     currentSlotIdRef.current = slotId; // ref에도 저장
@@ -349,6 +404,136 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (Object.keys(payload).length === 0) return;
     onImageTransform(imageId, payload);
   };
+
+  const handleCanvasKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (exportMode || showCustomPalette || !frameLayout) return;
+
+    const target = e.target as HTMLElement | null;
+    if (
+      target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target instanceof HTMLSelectElement ||
+      target?.isContentEditable
+    ) {
+      return;
+    }
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onSelect?.(null);
+      onSlotSelect?.(null);
+      return;
+    }
+
+    if (e.key === "Tab") {
+      const nextSelection = getNextImageSelection({
+        selection,
+        selectedSlot,
+        slotOrder: frameLayout.slots.map((slot) => slot.id),
+        userImages,
+        direction: e.shiftKey ? -1 : 1,
+      });
+
+      if (nextSelection) {
+        e.preventDefault();
+        selectImage(nextSelection.imageId, nextSelection.slotId);
+      }
+      return;
+    }
+
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      if (selectedSticker) {
+        onStickerDelete?.(selectedSticker.id);
+        return;
+      }
+      if (!selectedImage) return;
+      onImageDelete?.(selectedImage.id);
+      return;
+    }
+
+    if (!selectedImage) return;
+
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      handleImageTransform(selectedImage.id, getScaledTransform({
+        image: selectedImage,
+        scaleFactor: KEYBOARD_SCALE_FACTOR,
+      }));
+      return;
+    }
+
+    if (e.key === "-") {
+      e.preventDefault();
+      handleImageTransform(selectedImage.id, getScaledTransform({
+        image: selectedImage,
+        scaleFactor: 1 / KEYBOARD_SCALE_FACTOR,
+      }));
+      return;
+    }
+
+    if (e.key.toLowerCase() === "r") {
+      e.preventDefault();
+      handleImageTransform(selectedImage.id, getRotatedTransform({
+        image: selectedImage,
+        deltaDegrees: e.shiftKey ? -KEYBOARD_ROTATE_STEP : KEYBOARD_ROTATE_STEP,
+      }));
+      return;
+    }
+
+    const movementByKey: Record<string, { x: number; y: number }> = {
+      ArrowUp: { x: 0, y: -1 },
+      ArrowDown: { x: 0, y: 1 },
+      ArrowLeft: { x: -1, y: 0 },
+      ArrowRight: { x: 1, y: 0 },
+    };
+
+    const movement = movementByKey[e.key];
+    if (!movement) return;
+
+    e.preventDefault();
+    const step = e.shiftKey ? KEYBOARD_MOVE_FAST_STEP : KEYBOARD_MOVE_STEP;
+    const delta = {
+      x: movement.x * step,
+      y: movement.y * step,
+    };
+
+    if (selectedSticker) {
+      onStickerUpdate?.(selectedSticker.id, getNudgedPosition({
+        x: selectedSticker.x,
+        y: selectedSticker.y,
+        delta,
+      }));
+      return;
+    }
+
+    const context = getImageDisplayContext(selectedImage);
+    if (!context) return;
+
+    handleImageTransform(selectedImage.id, getClampedKeyboardMove({
+      image: selectedImage,
+      slot: context.slot,
+      displaySize: context.displaySize,
+      delta,
+    }));
+  }, [
+    exportMode,
+    frameLayout,
+    getImageDisplayContext,
+    handleImageTransform,
+    onImageDelete,
+    onSelect,
+    onSlotSelect,
+    onStickerDelete,
+    onStickerUpdate,
+    selectImage,
+    selectedImage,
+    selectedSticker,
+    selectedSlot,
+    selection,
+    showCustomPalette,
+    userImages,
+  ]);
 
   // 이미지 휠 줌 핸들러 (해당 슬롯/이미지에만 적용)
   const handleImageWheel = (
@@ -904,9 +1089,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           className="canvas-stage-area"
         >
           <div
+            ref={stageWrapperRef}
             style={stageWrapperStyle}
+            tabIndex={0}
+            role="application"
+            aria-label="캔버스 편집 영역"
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            onKeyDown={handleCanvasKeyDown}
           >
             <Stage
               ref={(node) => {
@@ -922,6 +1112,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               scaleY={zoom}
               onClick={(e) => {
                 if (e.target === e.target.getStage()) {
+                  focusCanvasArea();
                   onSelect?.(null);
                   onSlotSelect?.(null);  // 슬롯 선택도 해제
                 }
@@ -957,19 +1148,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
 
                   if (userImage && loadedImg && loadedImg !== null) {
-                    // 이미지를 슬롯 중앙에 배치하기 위한 계산
-                    const imageAspectRatio = loadedImg.width / loadedImg.height;
-                    const slotAspectRatio = slot.width / slot.height;
-
-                    let displayWidth = slot.width;
-                    let displayHeight = slot.height;
-
-                    // 비율을 유지하면서 슬롯에 맞추기 (contain)
-                    if (imageAspectRatio > slotAspectRatio) {
-                      displayHeight = slot.width / imageAspectRatio;
-                    } else {
-                      displayWidth = slot.height * imageAspectRatio;
-                    }
+                    const { width: displayWidth, height: displayHeight } = getContainedImageSize(
+                      loadedImg.width,
+                      loadedImg.height,
+                      slot.width,
+                      slot.height,
+                    );
 
                     // NaN 방어: 사용자 변형 값 보정
                     const uX = Number.isFinite(userImage.x) ? userImage.x : 0;
@@ -1000,13 +1184,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           listening={true}
                           onWheel={(e) => handleImageWheel(e as unknown as Konva.KonvaEventObject<WheelEvent>, userImage.id, slot, displayWidth, displayHeight)}
                           onClick={() => {
-                            onSelect?.(userImage.id);
-                            onSlotSelect?.(slot.id);
+                            selectImage(userImage.id, slot.id);
                           }}
                           onTap={() => {
                             // 모바일 탭에서도 동일 동작
-                            onSelect?.(userImage.id);
-                            onSlotSelect?.(slot.id);
+                            selectImage(userImage.id, slot.id);
                           }}
                           onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
                           onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
@@ -1025,8 +1207,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           rotation={uRotation}
                           draggable={true}
                           onClick={() => {
-                            onSelect?.(userImage.id);
-                            onSlotSelect?.(slot.id);
+                            selectImage(userImage.id, slot.id);
                           }}
                           onWheel={(e) => handleImageWheel(e, userImage.id, slot, displayWidth, displayHeight)}
                           onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
@@ -1138,8 +1319,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         width={slot.width}
                         height={slot.height}
                         fill={exportMode ? 'transparent' : (hasImage ? 'transparent' : (draggedSlotId === slot.id ? 'rgba(0, 123, 255, 0.2)' : 'rgba(200, 200, 200, 0.3)'))}
-                        stroke={exportMode ? 'transparent' : (hasImage ? 'transparent' : (isSelected ? '#ff6b35' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')))}
-                        strokeWidth={exportMode ? 0 : (isSelected ? 3 : 2)}
+                        stroke={exportMode ? 'transparent' : (hasImage ? 'transparent' : (isSelected ? 'transparent' : (draggedSlotId === slot.id ? '#007bff' : '#ccc')))}
+                        strokeWidth={exportMode ? 0 : (isSelected ? 0 : 2)}
                         listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
                         onMouseEnter={() => {
                           if (!hasImage) {
@@ -1175,18 +1356,65 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         }}
                       />
 
-                      {/* 이미지가 있는 슬롯의 선택 표시 */}
-                      {hasImage && (
-                        <Rect
-                          x={slot.x}
-                          y={slot.y}
-                          width={slot.width}
-                          height={slot.height}
-                          fill="transparent"
-                          stroke={!exportMode && isSelected ? "#ff6b35" : "transparent"}
-                          strokeWidth={3}
-                          listening={false}
-                        />
+                      {/* 슬롯 선택 표시 (캔버스 점선 바탕과 확연히 구분되도록 안쪽으로 들여서 3D Neo-Brutalism 테두리 그리기) */}
+                      {!exportMode && isSelected && (
+                        <Group listening={false}>
+                          {/* 1. 그림자 (검은색 테두리) - 우측 하단으로 오프셋 */}
+                          <Rect
+                            x={slot.x + 8}
+                            y={slot.y + 8}
+                            width={slot.width - 16}
+                            height={slot.height - 16}
+                            fill="transparent"
+                            stroke="black"
+                            strokeWidth={4}
+                          />
+                          {/* 2. 메인 박스 (흰색 바탕의 주황색 테두리) */}
+                          <Rect
+                            x={slot.x + 6}
+                            y={slot.y + 6}
+                            width={slot.width - 16}
+                            height={slot.height - 16}
+                            fill="transparent"
+                            stroke="white"
+                            strokeWidth={4}
+                          />
+                          <Rect
+                            x={slot.x + 6}
+                            y={slot.y + 6}
+                            width={slot.width - 16}
+                            height={slot.height - 16}
+                            fill="transparent"
+                            stroke="#ff6b35"
+                            strokeWidth={2}
+                          />
+                          {/* 3. 모서리 앵커 (Neo-Brutalism 스타일) */}
+                          {[
+                            { x: slot.x + 6, y: slot.y + 6 },
+                            { x: slot.x + slot.width - 10, y: slot.y + 6 },
+                            { x: slot.x + 6, y: slot.y + slot.height - 10 },
+                            { x: slot.x + slot.width - 10, y: slot.y + slot.height - 10 },
+                          ].map((pos, i) => (
+                            <Group key={i}>
+                              <Rect
+                                x={pos.x - 4}
+                                y={pos.y - 4}
+                                width={12}
+                                height={12}
+                                fill="black"
+                              />
+                              <Rect
+                                x={pos.x - 6}
+                                y={pos.y - 6}
+                                width={12}
+                                height={12}
+                                fill="white"
+                                stroke="#ff6b35"
+                                strokeWidth={2}
+                              />
+                            </Group>
+                          ))}
+                        </Group>
                       )}
 
                       {/* 슬롯 레이블 */}
@@ -1267,16 +1495,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             scaleY={sticker.scaleY}
                             rotation={sticker.rotation}
                             draggable={!exportMode}
-                            onClick={() => onSelect?.(sticker.id)}
-                            onTap={() => onSelect?.(sticker.id)}
-                            onTouchStart={() => onSelect?.(sticker.id)}
+                            onClick={() => selectSticker(sticker.id)}
+                            onTap={() => selectSticker(sticker.id)}
+                            onTouchStart={() => selectSticker(sticker.id)}
                             onDragEnd={(e) => {
                               onStickerUpdate?.(sticker.id, {
                                 x: e.target.x(),
                                 y: e.target.y()
                               });
                             }}
-                            onTransformEnd={(e) => {
+                            onTransformEnd={() => {
                               const node = imageRef.current;
                               if (node) {
                                 onStickerUpdate?.(sticker.id, {
@@ -1293,7 +1521,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         {isSelected && !exportMode && (
                           <Transformer
                             id={`transformer-${sticker.id}`}
-                            boundBoxFunc={(oldBox: any, newBox: any) => {
+                            borderStroke="black"
+                            borderStrokeWidth={3}
+                            anchorSize={12}
+                            anchorStroke="black"
+                            anchorStrokeWidth={3}
+                            anchorFill="white"
+                            anchorCornerRadius={0}
+                            boundBoxFunc={(oldBox, newBox) => {
                               // 최소 크기 제한
                               if (newBox.width < 10 || newBox.height < 10) {
                                 return oldBox;
@@ -1314,71 +1549,78 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <Layer>
                 {texts.map((textItem) => {
                   const isSelected = selection === textItem.id;
-                  return (
-                    <Group key={textItem.id}>
-                      {(() => {
-                        // 텍스트 크기 계산
-                        const dimensions = getTextDimensions(
-                          textItem.text,
-                          textItem.fontSize,
-                          textItem.fontFamily,
-                          textItem.isItalic,
-                          textItem.isVertical
-                        );
 
-                        return (
-                          <Text
-                            x={textItem.x}
-                            y={textItem.y}
-                            offsetX={dimensions.width / 2}
-                            offsetY={dimensions.height / 2}
-                            text={formatVerticalText(textItem.text, textItem.isVertical)}
-                            fontSize={textItem.fontSize}
-                            fontFamily={textItem.fontFamily}
-                            fill={textItem.fontColor}
-                            fontStyle={textItem.isItalic ? 'italic' : 'normal'}
-                            align={textItem.textAlign}
-                            lineHeight={textItem.isVertical ? 1.2 : 1} // 세로쓰기일 때 줄 간격 조정
-                            draggable={true}
-                            // 데스크톱: 클릭 시 선택
-                            onClick={() => onSelect?.(textItem.id)}
-                            // 모바일: 탭/터치 시 선택 (iOS Safari 대응)
-                            onTap={() => onSelect?.(textItem.id)}
-                            onTouchStart={() => onSelect?.(textItem.id)}
-                            onDragEnd={(e) => {
-                              const newX = e.target.x();
-                              const newY = e.target.y();
-                              onTextMove?.(textItem.id, newX, newY);
+                  const TextNode = () => {
+                    const textRef = useRef<Konva.Text | null>(null);
+
+                    useEffect(() => {
+                      if (isSelected && textRef.current) {
+                        const tr = textRef.current.getStage()?.findOne(`#transformer-text-${textItem.id}`);
+                        if (tr) {
+                          (tr as Konva.Transformer).nodes([textRef.current]);
+                          tr.getLayer()?.batchDraw();
+                        }
+                      }
+                    }, [isSelected]);
+
+                    const dimensions = getTextDimensions(
+                      textItem.text,
+                      textItem.fontSize,
+                      textItem.fontFamily,
+                      textItem.isItalic,
+                      textItem.isVertical
+                    );
+
+                    return (
+                      <Group key={textItem.id}>
+                        <Text
+                          ref={textRef}
+                          x={textItem.x}
+                          y={textItem.y}
+                          offsetX={dimensions.width / 2}
+                          offsetY={dimensions.height / 2}
+                          text={formatVerticalText(textItem.text, textItem.isVertical)}
+                          fontSize={textItem.fontSize}
+                          fontFamily={textItem.fontFamily}
+                          fill={textItem.fontColor}
+                          fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                          align={textItem.textAlign}
+                          lineHeight={textItem.isVertical ? 1.2 : 1}
+                          draggable={true}
+                          onClick={() => onSelect?.(textItem.id)}
+                          onTap={() => onSelect?.(textItem.id)}
+                          onTouchStart={() => onSelect?.(textItem.id)}
+                          onDragEnd={(e) => {
+                            const newX = e.target.x();
+                            const newY = e.target.y();
+                            onTextMove?.(textItem.id, newX, newY);
+                          }}
+                        />
+                        {isSelected && !exportMode && (
+                          <Transformer
+                            id={`transformer-text-${textItem.id}`}
+                            borderStroke="black"
+                            borderStrokeWidth={3}
+                            anchorSize={12}
+                            anchorStroke="black"
+                            anchorStrokeWidth={3}
+                            anchorFill="white"
+                            anchorCornerRadius={0}
+                            keepRatio={true}
+                            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                            boundBoxFunc={(oldBox, newBox) => {
+                              if (newBox.width < 10 || newBox.height < 10) {
+                                return oldBox;
+                              }
+                              return newBox;
                             }}
                           />
-                        );
-                      })()}
-                      {/* 선택된 텍스트에 테두리 표시 (exportMode에서는 숨김) */}
-                      {isSelected && !exportMode && (() => {
-                        // 테두리용 텍스트 크기 계산
-                        const borderDimensions = getTextDimensions(
-                          textItem.text,
-                          textItem.fontSize,
-                          textItem.fontFamily,
-                          textItem.isItalic,
-                          textItem.isVertical
-                        );
+                        )}
+                      </Group>
+                    );
+                  };
 
-                        return (
-                          <Rect
-                            x={textItem.x - borderDimensions.width / 2 - 2}
-                            y={textItem.y - borderDimensions.height / 2 - 2}
-                            width={borderDimensions.width + 4}
-                            height={borderDimensions.height + 4}
-                            fill="transparent"
-                            stroke="#ff6b35"
-                            strokeWidth={2}
-                            listening={false}
-                          />
-                        );
-                      })()}
-                    </Group>
-                  );
+                  return <TextNode key={textItem.id} />;
                 })}
               </Layer>
             </Stage>
@@ -1485,58 +1727,49 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <label style={{ color: 'var(--linear-neutral-50)', fontSize: '18px' }}>줌:</label>
-            {(() => {
-              const selectedImage = selectedSlot ? userImages.find(img => img.slotId === selectedSlot) : null;
-              const currentScale = selectedImage && Number.isFinite(selectedImage.scaleX) ? (selectedImage.scaleX as number) : 1;
-              return (
-                <>
-                  <input
-                    type="number"
-                    className="linear-input"
-                    value={Math.round(currentScale * 10)}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (!isNaN(value) && value > 0 && selectedImage) {
-                        const nextScale = Math.max(0.1, value / 10);
-                        handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
-                      }
-                    }}
-                    min="1"
-                    step="5"
-                    style={{ width: '80px', fontSize: '12px', height: '24px' }}
-                    disabled={!selectedImage}
-                    title={selectedImage ? '선택된 슬롯의 이미지 줌(%)' : '슬롯을 선택하거나 이미지를 추가하세요'}
-                  />
-                  <span style={{ color: 'var(--linear-secondary-400)', fontSize: '12px' }}>%</span>
-                </>
-              );
-            })()}
+            <>
+              <input
+                type="number"
+                className="linear-input"
+                value={Math.round((selectedImage?.scaleX ?? 1) * 10)}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  if (!isNaN(value) && value > 0 && selectedImage) {
+                    const nextScale = Math.max(0.1, value / 10);
+                    handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
+                  }
+                }}
+                min="1"
+                step="5"
+                style={{ width: '80px', fontSize: '12px', height: '24px' }}
+                disabled={!selectedImage}
+                title={selectedImage ? '선택된 이미지 줌(%)' : '이미지를 선택하거나 추가하세요'}
+              />
+              <span style={{ color: 'var(--linear-secondary-400)', fontSize: '12px' }}>%</span>
+            </>
           </div>
 
           {/* 선택된 이미지 삭제 버튼 */}
-          {(() => {
-            const selectedImage = selectedSlot ? userImages.find(img => img.slotId === selectedSlot) : null;
-            return selectedImage && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
-                <button
-                  type="button"
-                  className="linear-button linear-button--secondary"
-                  onClick={() => onImageDelete?.(selectedImage.id)}
-                  style={{
-                    height: '24px',
-                    padding: '0 12px',
-                    fontSize: '12px',
-                    backgroundColor: 'var(--linear-accent-error)',
-                    color: 'var(--linear-accent-white)',
-                    border: 'var(--border-width) solid var(--linear-neutral-500)'
-                  }}
-                  title="선택된 슬롯의 이미지를 삭제합니다"
-                >
-                  선택된 이미지 삭제
-                </button>
-              </div>
-            );
-          })()}
+          {selectedImage && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => onImageDelete?.(selectedImage.id)}
+                style={{
+                  height: '24px',
+                  padding: '0 12px',
+                  fontSize: '12px',
+                  backgroundColor: 'var(--linear-accent-error)',
+                  color: 'var(--linear-accent-white)',
+                  border: 'var(--border-width) solid var(--linear-neutral-500)'
+                }}
+                title="선택된 이미지를 삭제합니다"
+              >
+                선택된 이미지 삭제
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

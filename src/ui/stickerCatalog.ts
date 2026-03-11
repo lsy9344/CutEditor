@@ -1,4 +1,4 @@
-export const STICKER_SLOT_COUNT = 10;
+export const STICKER_SLOT_COUNT = 20;
 export const STICKER_EXTENSIONS = ["svg", "png", "webp", "jpg", "jpeg"] as const;
 
 export type StickerSlot = {
@@ -47,5 +47,13 @@ export const STICKER_CATEGORIES: StickerCategory[] = [
     assetPrefix: "2s",
     previewCandidates: buildStickerPath("2s"),
     stickers: buildStickerSlots("2s"),
+  },
+  {
+    id: "point",
+    label: "포인트 스티커",
+    description: "사진을 꾸며줄 레터링과 포인트",
+    assetPrefix: "3s",
+    previewCandidates: buildStickerPath("3s"),
+    stickers: buildStickerSlots("3s"),
   }
 ];

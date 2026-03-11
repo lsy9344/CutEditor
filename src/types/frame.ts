@@ -258,7 +258,7 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 50, y: 50, width: 383, height: 180 },
+      { id: "slot-1", x: 13, y: 13, width: 300, height: 200 },
       { id: "slot-2", x: 50, y: 250, width: 383, height: 180 },
       { id: "slot-3", x: 50, y: 450, width: 383, height: 180 }
     ]

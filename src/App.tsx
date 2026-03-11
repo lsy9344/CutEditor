@@ -108,7 +108,13 @@ function App() {
   ), []);
 
   const handleSelect = (id: string | null) => {
-    setEditorState(prev => ({ ...prev, selection: id }))
+    const selectedImage = id ? editorState.userImages.find((image) => image.id === id) : null;
+
+    setEditorState(prev => ({
+      ...prev,
+      selection: id,
+      selectedSlot: selectedImage?.slotId ?? null,
+    }))
 
     // 텍스트/스티커 선택 상태 업데이트
     if (id && texts.some(text => text.id === id)) {
@@ -441,7 +447,8 @@ function App() {
         ...prev,
         userImages: filteredImages,
         // 선택 상태 초기화 (선택된 이미지가 삭제된 경우)
-        selection: prev.selection === imageId ? null : prev.selection
+        selection: prev.selection === imageId ? null : prev.selection,
+        selectedSlot: prev.selectedSlot === imageToDelete?.slotId ? null : prev.selectedSlot,
       };
     });
   }
@@ -636,6 +643,7 @@ function App() {
             onTextMove={handleTextMove}
             onTextUpdate={handleTextUpdate}
             onImageDelete={handleImageDelete}
+            onStickerDelete={handleStickerDelete}
             onStickerUpdate={handleStickerUpdate}
           />
         )}

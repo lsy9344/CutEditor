@@ -294,25 +294,35 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   return (
     <aside className="linear-card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
       {/* 탭 네비게이션 */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--linear-neutral-500)', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', borderBottom: 'var(--border-width) solid var(--linear-neutral-500)', marginBottom: '16px', gap: '8px' }}>
         <button
+          className={`linear-button ${activeTab === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}`}
           onClick={() => setActiveTab('text')}
           style={{
-            flex: 1, padding: '12px', background: 'none', border: 'none',
-            borderBottom: activeTab === 'text' ? '2px solid var(--linear-primary-500)' : '2px solid transparent',
-            color: activeTab === 'text' ? 'var(--linear-neutral-50)' : 'var(--linear-secondary-400)',
-            cursor: 'pointer', fontSize: '14px', fontWeight: activeTab === 'text' ? '600' : '400'
+            flex: 1,
+            padding: '12px',
+            border: 'var(--border-width) solid var(--linear-neutral-500)',
+            borderBottom: activeTab === 'text' ? 'none' : 'var(--border-width) solid var(--linear-neutral-500)',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            opacity: activeTab === 'text' ? 1 : 0.7,
           }}
         >
           글씨
         </button>
         <button
+          className={`linear-button ${activeTab === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}`}
           onClick={() => setActiveTab('sticker')}
           style={{
-            flex: 1, padding: '12px', background: 'none', border: 'none',
-            borderBottom: activeTab === 'sticker' ? '2px solid var(--linear-primary-500)' : '2px solid transparent',
-            color: activeTab === 'sticker' ? 'var(--linear-neutral-50)' : 'var(--linear-secondary-400)',
-            cursor: 'pointer', fontSize: '14px', fontWeight: activeTab === 'sticker' ? '600' : '400'
+            flex: 1,
+            padding: '12px',
+            border: 'var(--border-width) solid var(--linear-neutral-500)',
+            borderBottom: activeTab === 'sticker' ? 'none' : 'var(--border-width) solid var(--linear-neutral-500)',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontWeight: '600',
+            opacity: activeTab === 'sticker' ? 1 : 0.7,
           }}
         >
           스티커
@@ -564,11 +574,11 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                           </div>
                         )}
                       </div>
-                      <div className="frame-gallery-label" style={{ padding: '8px' }}>
-                        <span className="label-text" style={{ fontSize: '11px', color: 'var(--linear-neutral-50)' }}>
+                      <div className="frame-gallery-label" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <span className="label-text" style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--linear-neutral-50)' }}>
                           {category.label}
                         </span>
-                        <span className="label-desc" style={{ color: 'var(--linear-secondary-300)' }}>
+                        <span className="label-desc" style={{ fontSize: '12px', color: 'var(--linear-secondary-300)' }}>
                           {category.description}
                         </span>
                       </div>
@@ -579,26 +589,28 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             </>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 <button
                   type="button"
-                  className="linear-button linear-button--secondary"
+                  className="linear-button linear-button--primary"
                   onClick={() => setSelectedStickerCategory(null)}
                   style={{
-                    padding: '4px 8px',
-                    fontSize: '12px',
+                    padding: '8px 16px',
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)'
                   }}
                 >
                   ← 뒤로
                 </button>
-                <h3 style={{ margin: 0, fontSize: '14px', flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '16px', flex: 1, color: 'var(--linear-neutral-50)' }}>
                   {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.label}
                 </h3>
               </div>
               <div style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "8px",
+                gap: "4px",
                 overflowY: "auto",
                 flex: 1,
                 minHeight: 0

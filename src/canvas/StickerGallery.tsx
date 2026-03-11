@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { StickerCategory, StickerSlot } from '../ui/stickerCatalog';
+import type { StickerCategory } from '../ui/stickerCatalog';
 
 interface StickerGalleryProps {
     selectedCategory: StickerCategory | null;
@@ -80,7 +80,7 @@ export const StickerGallery: React.FC<StickerGalleryProps> = ({
                     const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
 
                     return (
-                        <div
+                        <button
                             key={slot.key}
                             className="frame-gallery-card"
                             onClick={() => {
@@ -113,7 +113,7 @@ export const StickerGallery: React.FC<StickerGalleryProps> = ({
                                     </span>
                                 )}
                             </div>
-                        </div>
+                        </button>
                     );
                 })}
             </div>
