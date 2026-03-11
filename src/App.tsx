@@ -8,6 +8,14 @@ import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import { FRAME_LAYOUTS, type FrameType, type UserImage } from './types/frame'
 import { FRAME_OPTIONS_BY_CATEGORY } from './ui/SidebarLeft'
+import {
+  DEFAULT_STICKER_HEIGHT,
+  DEFAULT_STICKER_WIDTH,
+  getCenteredStickerPosition,
+  getInitialStickerScale,
+  getScaledStickerDimensions,
+  loadStickerDimensions,
+} from './utils/stickerSizing'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 
 type FileSystemWritableFileStream = {
@@ -63,6 +71,7 @@ type CanvasSticker = {
 };
 
 const DEFAULT_CANVAS_WIDTH = 483;
+const DEFAULT_CANVAS_HEIGHT = 719;
 const TEXT_ALIGN_PADDING = 24;
 
 declare global {
@@ -354,19 +363,38 @@ function App() {
     }
   }
 
-  const handleStickerInsert = (src: string) => {
-    // 프레임 중앙 위치 계산 (임시)
-    const { x, y } = { x: 241.5, y: 360 }; // TODO: Use better default position or center based on selectedFrame 
+  const handleStickerInsert = async (src: string) => {
+    const { width, height } = await loadStickerDimensions(src, {
+      fallbackWidth: DEFAULT_STICKER_WIDTH,
+      fallbackHeight: DEFAULT_STICKER_HEIGHT,
+    });
+    const initialScale = getInitialStickerScale({ width, height });
+    const displayDimensions = getScaledStickerDimensions({
+      width,
+      height,
+      scale: initialScale,
+    });
+
+    const selectedFrameLayout = editorState.selectedFrame
+      ? FRAME_LAYOUTS[editorState.selectedFrame]
+      : null;
+
+    const { x, y } = getCenteredStickerPosition({
+      canvasWidth: selectedFrameLayout?.canvasWidth ?? DEFAULT_CANVAS_WIDTH,
+      canvasHeight: selectedFrameLayout?.canvasHeight ?? DEFAULT_CANVAS_HEIGHT,
+      stickerWidth: displayDimensions.width,
+      stickerHeight: displayDimensions.height,
+    });
 
     const newSticker: CanvasSticker = {
       id: `sticker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       src,
       x,
       y,
-      width: 100,  // 기본 크기
-      height: 100, // 기본 크기
-      scaleX: 1,
-      scaleY: 1,
+      width,
+      height,
+      scaleX: initialScale,
+      scaleY: initialScale,
       rotation: 0
     };
 
