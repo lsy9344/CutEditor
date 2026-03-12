@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { FrameType, FrameOption } from "../types/frame";
+import { FRAME_LAYOUTS, type FrameType, type FrameOption } from "../types/frame";
 import { getCategorySelectionOutcome } from "../utils/frameChangeFlow";
 
 export type SidebarLeftProps = {
@@ -56,9 +56,27 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   onCategoryChange,
 }) => {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const [previewSources, setPreviewSources] = useState<Record<string, string>>({});
 
   const handleImageLoad = (value: string) => {
     setLoadedImages((prev) => ({ ...prev, [value]: true }));
+  };
+
+  const getPreviewSource = (option: FrameOption): string => {
+    return previewSources[option.value] ?? `/popover/${option.image}`;
+  };
+
+  const handleImageError = (option: FrameOption) => {
+    const fallbackSource = FRAME_LAYOUTS[option.value]?.imagePath;
+    if (!fallbackSource) return;
+
+    setPreviewSources((prev) => {
+      if (prev[option.value] === fallbackSource) {
+        return prev;
+      }
+      return { ...prev, [option.value]: fallbackSource };
+    });
+    setLoadedImages((prev) => ({ ...prev, [option.value]: false }));
   };
 
   const handleCategoryClick = (category: string) => {
@@ -156,10 +174,11 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                 >
                   <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`} style={{ borderBottomColor: selectedFrame === option.value ? 'var(--linear-neutral-500)' : 'var(--linear-neutral-400)' }}>
                     <img
-                      src={`/popover/${option.image}`}
+                      src={getPreviewSource(option)}
                       alt={option.label}
                       loading="lazy"
                       onLoad={() => handleImageLoad(option.value)}
+                      onError={() => handleImageError(option)}
                     />
                   </div>
                   <div className="frame-gallery-label" style={{ padding: '8px' }}>

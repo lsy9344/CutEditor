@@ -45,11 +45,54 @@ export type UserImage = {
   rotation: number;
 };
 
-// 원본 문서 기준 사이즈
-const HORIZONTAL = { width: 719, height: 483 }; // 가로
-const VERTICAL = { width: 483, height: 719 };   // 세로 (기본)
+type CanvasSize = {
+  width: number;
+  height: number;
+};
 
-export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
+// 기존 좌표 데이터가 맞춰져 있는 레거시 기준 캔버스
+const LEGACY_HORIZONTAL: CanvasSize = { width: 719, height: 483 };
+const LEGACY_VERTICAL: CanvasSize = { width: 483, height: 719 };
+
+// 화면/저장 기준으로 사용할 정확한 2:3 캔버스
+export const EXACT_HORIZONTAL_CANVAS: CanvasSize = { width: 720, height: 480 };
+export const EXACT_VERTICAL_CANVAS: CanvasSize = { width: 480, height: 720 };
+
+const HORIZONTAL = LEGACY_HORIZONTAL;
+const VERTICAL = LEGACY_VERTICAL;
+
+const scaleSlotToCanvas = (
+  slot: SlotPosition,
+  from: CanvasSize,
+  to: CanvasSize,
+): SlotPosition => {
+  const left = Math.round((slot.x / from.width) * to.width);
+  const top = Math.round((slot.y / from.height) * to.height);
+  const right = Math.round(((slot.x + slot.width) / from.width) * to.width);
+  const bottom = Math.round(((slot.y + slot.height) / from.height) * to.height);
+
+  return {
+    ...slot,
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+  };
+};
+
+const normalizeFrameLayout = (layout: FrameLayout): FrameLayout => {
+  const from = { width: layout.canvasWidth, height: layout.canvasHeight };
+  const to = from.width >= from.height ? EXACT_HORIZONTAL_CANVAS : EXACT_VERTICAL_CANVAS;
+
+  return {
+    ...layout,
+    canvasWidth: to.width,
+    canvasHeight: to.height,
+    slots: layout.slots.map((slot) => scaleSlotToCanvas(slot, from, to)),
+  };
+};
+
+const RAW_FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
 
   // 1컷
   "1l": {
@@ -258,9 +301,12 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 13, y: 13, width: 300, height: 200 },
-      { id: "slot-2", x: 50, y: 250, width: 383, height: 180 },
-      { id: "slot-3", x: 50, y: 450, width: 383, height: 180 }
+      { id: "slot-1", x: 13, y: 13, width: 216, height: 178 },
+      { id: "slot-2", x: 13, y: 197, width: 216, height: 178 },
+      { id: "slot-3", x: 13, y: 381, width: 216, height: 178 },
+      { id: "slot-4", x: 254, y: 13, width: 216, height: 178 },
+      { id: "slot-5", x: 254, y: 197, width: 216, height: 178 },
+      { id: "slot-6", x: 254, y: 381, width: 216, height: 178 }
     ]
   },
   "4v_1": {
@@ -271,10 +317,14 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
-      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-1", x: 16, y: 12, width: 208, height: 150 },
+      { id: "slot-2", x: 16, y: 177, width: 208, height: 150 },
+      { id: "slot-3", x: 16, y: 342, width: 208, height: 150 },
+      { id: "slot-4", x: 16, y: 507, width: 208, height: 150 },
+      { id: "slot-5", x: 258, y: 12, width: 208, height: 150 },
+      { id: "slot-6", x: 258, y: 177, width: 208, height: 150 },
+      { id: "slot-7", x: 258, y: 342, width: 208, height: 150 },
+      { id: "slot-8", x: 258, y: 507, width: 208, height: 150 }
     ]
   },
   "4v_2": {
@@ -285,10 +335,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
-      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 17, y: 365, width: 217, height: 325 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-1", x: 21, y: 35, width: 214, height: 318 },
+      { id: "slot-2", x: 21, y: 363, width: 214, height: 318 },
+      { id: "slot-3", x: 248, y: 60, width: 214, height: 318 },
+      { id: "slot-4", x: 248, y: 387, width: 214, height: 321 }
     ]
   },
   "4v_3": {
@@ -299,10 +349,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
-      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-1", x: 29, y: 31, width: 200, height: 300 },
+      { id: "slot-2", x: 29, y: 353, width: 200, height: 300 },
+      { id: "slot-3", x: 254, y: 31, width: 200, height: 300 },
+      { id: "slot-4", x: 254, y: 353, width: 200, height: 300 }
     ]
   },
   "4v_4": {
@@ -313,10 +363,14 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
-      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-1", x: 12, y: 12, width: 218, height: 146 },
+      { id: "slot-2", x: 12, y: 163, width: 218, height: 146 },
+      { id: "slot-3", x: 12, y: 314, width: 218, height: 146 },
+      { id: "slot-4", x: 12, y: 465, width: 218, height: 146 },
+      { id: "slot-5", x: 253, y: 12, width: 218, height: 146 },
+      { id: "slot-6", x: 253, y: 163, width: 218, height: 146 },
+      { id: "slot-7", x: 253, y: 314, width: 218, height: 146 },
+      { id: "slot-8", x: 253, y: 465, width: 218, height: 146 }
     ]
   },
   "4v_5": {
@@ -327,10 +381,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
-      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-1", x: 38, y: 28, width: 201, height: 374 },
+      { id: "slot-2", x: 20, y: 508, width: 161, height: 180 },
+      { id: "slot-3", x: 263, y: 100, width: 204, height: 242 },
+      { id: "slot-4", x: 203, y: 434, width: 259, height: 199 }
     ]
   },
   "4v_6": {
@@ -341,10 +395,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
-      { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-1", x: 25, y: 38, width: 203, height: 301 },
+      { id: "slot-2", x: 25, y: 379, width: 203, height: 301 },
+      { id: "slot-3", x: 254, y: 38, width: 203, height: 301 },
+      { id: "slot-4", x: 254, y: 379, width: 203, height: 301 }
     ]
   },
   "6v_1": {
@@ -371,12 +425,12 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 10, y: 20, width: 224, height: 200 },
-      { id: "slot-2", x: 249, y: 20, width: 224, height: 200 },
-      { id: "slot-3", x: 10, y: 230, width: 224, height: 200 },
-      { id: "slot-4", x: 249, y: 230, width: 224, height: 200 },
-      { id: "slot-5", x: 10, y: 440, width: 224, height: 200 },
-      { id: "slot-6", x: 249, y: 440, width: 224, height: 200 }
+      { id: "slot-1", x: 10, y: 10, width: 228, height: 178 },
+      { id: "slot-2", x: 10, y: 195, width: 228, height: 178 },
+      { id: "slot-3", x: 10, y: 380, width: 228, height: 178 },
+      { id: "slot-4", x: 246, y: 10, width: 228, height: 178 },
+      { id: "slot-5", x: 246, y: 195, width: 228, height: 178 },
+      { id: "slot-6", x: 246, y: 380, width: 228, height: 178 }
     ]
   },
   "8v_1": {
@@ -405,14 +459,14 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 20, y: 20, width: 100, height: 100 },
-      { id: "slot-2", x: 140, y: 20, width: 100, height: 100 },
-      { id: "slot-3", x: 260, y: 20, width: 100, height: 100 },
-      { id: "slot-4", x: 380, y: 20, width: 100, height: 100 },
-      { id: "slot-5", x: 20, y: 140, width: 100, height: 100 },
-      { id: "slot-6", x: 140, y: 140, width: 100, height: 100 },
-      { id: "slot-7", x: 260, y: 140, width: 100, height: 100 },
-      { id: "slot-8", x: 380, y: 140, width: 100, height: 100 }
+      { id: "slot-1", x: 10, y: 10, width: 228, height: 146 },
+      { id: "slot-2", x: 10, y: 162, width: 228, height: 146 },
+      { id: "slot-3", x: 10, y: 314, width: 228, height: 146 },
+      { id: "slot-4", x: 10, y: 466, width: 228, height: 146 },
+      { id: "slot-5", x: 246, y: 10, width: 228, height: 146 },
+      { id: "slot-6", x: 246, y: 162, width: 228, height: 146 },
+      { id: "slot-7", x: 246, y: 314, width: 228, height: 146 },
+      { id: "slot-8", x: 246, y: 466, width: 228, height: 146 }
     ]
   },
   "8v_3": {
@@ -434,3 +488,10 @@ export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     ]
   }
 };
+
+export const FRAME_LAYOUTS: Record<FrameType, FrameLayout> = Object.fromEntries(
+  Object.entries(RAW_FRAME_LAYOUTS).map(([frameType, layout]) => [
+    frameType,
+    normalizeFrameLayout(layout),
+  ]),
+) as Record<FrameType, FrameLayout>;

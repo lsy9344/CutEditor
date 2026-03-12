@@ -6,7 +6,12 @@ import { SidebarRight } from './ui/SidebarRight'
 import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
-import { FRAME_LAYOUTS, type FrameType, type UserImage } from './types/frame'
+import {
+  EXACT_VERTICAL_CANVAS,
+  FRAME_LAYOUTS,
+  type FrameType,
+  type UserImage,
+} from './types/frame'
 import { FRAME_OPTIONS_BY_CATEGORY } from './ui/SidebarLeft'
 import {
   DEFAULT_STICKER_HEIGHT,
@@ -68,10 +73,13 @@ type CanvasSticker = {
   scaleX: number;
   scaleY: number;
   rotation: number;
+  flipX: boolean;
+  flipY: boolean;
+  tintColor: string | null;
 };
 
-const DEFAULT_CANVAS_WIDTH = 483;
-const DEFAULT_CANVAS_HEIGHT = 719;
+const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
+const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const TEXT_ALIGN_PADDING = 24;
 
 declare global {
@@ -401,7 +409,10 @@ function App() {
       height,
       scaleX: initialScale,
       scaleY: initialScale,
-      rotation: 0
+      rotation: 0,
+      flipX: false,
+      flipY: false,
+      tintColor: null,
     };
 
     setStickers(prev => [...prev, newSticker]);
@@ -655,6 +666,7 @@ function App() {
           onTextUpdate={handleTextUpdate}
           onTextDelete={handleTextDelete}
           onStickerInsert={handleStickerInsert}
+          onStickerUpdate={handleStickerUpdate}
           onStickerDelete={handleStickerDelete}
           onExport={handleExport}
         />

@@ -50,6 +50,9 @@ export type CanvasStageProps = {
     scaleX: number;
     scaleY: number;
     rotation: number;
+    flipX: boolean;
+    flipY: boolean;
+    tintColor: string | null;
   }>;
   onSelect?: (id: string | null) => void;
   onSlotSelect?: (slotId: string | null) => void;
@@ -77,7 +80,37 @@ export type CanvasStageProps = {
     scaleX: number;
     scaleY: number;
     rotation: number;
+    flipX: boolean;
+    flipY: boolean;
+    tintColor: string | null;
   }>) => void;
+};
+
+const toLegacyFrameFileName = (frameType: FrameType): string | null => {
+  if (frameType === "1l") return "1_l";
+  if (frameType === "1f") return "1_v";
+
+  const parsed = frameType.match(/^(\d+)([a-z])(?:_(\d+))?$/i);
+  if (!parsed) return null;
+
+  const [, cutCount, orientation, variant] = parsed;
+  const suffix = variant ? `_${variant}` : "";
+  return `${cutCount}_${orientation.toLowerCase()}${suffix}`;
+};
+
+const buildFrameImageCandidates = (frameType: FrameType, primaryPath: string): string[] => {
+  const candidates = new Set<string>([
+    primaryPath,
+    `/frame/${frameType}.png`,
+    `/popover/${frameType}.png`,
+  ]);
+
+  const legacyFileName = toLegacyFrameFileName(frameType);
+  if (legacyFileName) {
+    candidates.add(`/frame/${legacyFileName}.png`);
+  }
+
+  return Array.from(candidates);
 };
 
 export const CanvasStage: React.FC<CanvasStageProps> = ({
@@ -220,13 +253,42 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // 프레임 이미지 로드 (캐시 우회 및 오류 처리)
   useEffect(() => {
     if (selectedFrame && frameLayout) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => setFrameImage(img);
-      img.onerror = () => setFrameImage(null);
-      const src = frameLayout.imagePath;
-      const bust = `${src}${src.includes("?") ? "&" : "?"}t=${Date.now()}`;
-      img.src = bust;
+      let cancelled = false;
+      const sources = buildFrameImageCandidates(selectedFrame, frameLayout.imagePath);
+      let currentSourceIndex = 0;
+
+      const tryLoad = () => {
+        if (cancelled) return;
+
+        const source = sources[currentSourceIndex];
+        if (!source) {
+          console.warn(`[CanvasStage] 프레임 이미지를 불러오지 못했습니다: ${selectedFrame}`);
+          setFrameImage(null);
+          return;
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          if (!cancelled) {
+            setFrameImage(img);
+          }
+        };
+        img.onerror = () => {
+          currentSourceIndex += 1;
+          tryLoad();
+        };
+
+        const bust = `${source}${source.includes("?") ? "&" : "?"}t=${Date.now()}`;
+        img.src = bust;
+      };
+
+      setFrameImage(null);
+      tryLoad();
+
+      return () => {
+        cancelled = true;
+      };
     } else {
       setFrameImage(null);
     }
@@ -1082,7 +1144,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   return (
-    <div className="linear-card linear-fade-in">
+    <div className="linear-card linear-fade-in" style={{ height: '100%', overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="canvas-stage-layout">
         <div
           ref={containerRef}
@@ -1470,6 +1532,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       img.src = sticker.src;
                     }, [sticker.src]);
 
+                    // 틴트 색상 적용을 위한 캐시 갱신
+                    useEffect(() => {
+                      if (imageRef.current && image) {
+                        if (sticker.tintColor) {
+                          imageRef.current.cache();
+                          imageRef.current.getLayer()?.batchDraw();
+                        } else {
+                          imageRef.current.clearCache();
+                          imageRef.current.getLayer()?.batchDraw();
+                        }
+                      }
+                    }, [sticker.tintColor, image]);
+
                     // Update transformer when selected
                     useEffect(() => {
                       if (isSelected && imageRef.current) {
@@ -1481,6 +1556,26 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       }
                     }, [isSelected, image]);
 
+                    // 반전과 사용자 스케일을 합성
+                    const effectiveScaleX = sticker.scaleX * (sticker.flipX ? -1 : 1);
+                    const effectiveScaleY = sticker.scaleY * (sticker.flipY ? -1 : 1);
+
+                    // 틴트 필터 함수: multiply blend로 색상 오버레이 적용
+                    const tintFilter = (imageData: ImageData) => {
+                      if (!sticker.tintColor) return;
+                      const hex = sticker.tintColor.replace('#', '');
+                      const tR = parseInt(hex.substring(0, 2), 16) / 255;
+                      const tG = parseInt(hex.substring(2, 4), 16) / 255;
+                      const tB = parseInt(hex.substring(4, 6), 16) / 255;
+                      const data = imageData.data;
+                      for (let i = 0; i < data.length; i += 4) {
+                        data[i] = Math.round(data[i] * tR);     // R
+                        data[i + 1] = Math.round(data[i + 1] * tG); // G
+                        data[i + 2] = Math.round(data[i + 2] * tB); // B
+                        // A는 유지
+                      }
+                    };
+
                     return (
                       <Group key={sticker.id}>
                         {image && (
@@ -1491,13 +1586,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             y={sticker.y}
                             width={sticker.width}
                             height={sticker.height}
-                            scaleX={sticker.scaleX}
-                            scaleY={sticker.scaleY}
+                            scaleX={effectiveScaleX}
+                            scaleY={effectiveScaleY}
+                            offsetX={sticker.flipX ? sticker.width : 0}
+                            offsetY={sticker.flipY ? sticker.height : 0}
                             rotation={sticker.rotation}
                             draggable={!exportMode}
                             onClick={() => selectSticker(sticker.id)}
                             onTap={() => selectSticker(sticker.id)}
                             onTouchStart={() => selectSticker(sticker.id)}
+                            filters={sticker.tintColor ? [tintFilter] : undefined}
                             onDragEnd={(e) => {
                               onStickerUpdate?.(sticker.id, {
                                 x: e.target.x(),
@@ -1507,11 +1605,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             onTransformEnd={() => {
                               const node = imageRef.current;
                               if (node) {
+                                // Transformer가 변형한 scaleX/scaleY에서 flip 부호를 제거하여 저장
+                                const rawScaleX = node.scaleX();
+                                const rawScaleY = node.scaleY();
                                 onStickerUpdate?.(sticker.id, {
                                   x: node.x(),
                                   y: node.y(),
-                                  scaleX: node.scaleX(),
-                                  scaleY: node.scaleY(),
+                                  scaleX: Math.abs(rawScaleX),
+                                  scaleY: Math.abs(rawScaleY),
                                   rotation: node.rotation()
                                 });
                               }
@@ -1768,6 +1869,108 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               >
                 선택된 이미지 삭제
               </button>
+            </div>
+          )}
+
+          {/* 선택된 스티커 편집 도구 */}
+          {selectedSticker && (
+            <div style={{
+              border: 'var(--border-width) solid var(--linear-neutral-500)',
+              padding: '12px',
+              background: 'var(--linear-neutral-700)',
+              marginTop: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>스티커 편집</h4>
+
+              {/* 반전 버튼 */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipX: !selectedSticker.flipX })}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  }}
+                  title="좌우 반전"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="7 2 3 6 7 10" />
+                    <polyline points="17 2 21 6 17 10" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                  </svg>
+                  좌우
+                </button>
+                <button
+                  type="button"
+                  className={`linear-button ${selectedSticker.flipY ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipY: !selectedSticker.flipY })}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  }}
+                  title="상하 반전"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="2 7 6 3 10 7" />
+                    <polyline points="2 17 6 21 10 17" />
+                    <line x1="6" y1="3" x2="6" y2="21" />
+                  </svg>
+                  상하
+                </button>
+              </div>
+
+              {/* 색상 틴트 */}
+              <div>
+                <p style={{ fontSize: '11px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    className="linear-input"
+                    value={selectedSticker.tintColor ?? '#000000'}
+                    onChange={(e) => onStickerUpdate?.(selectedSticker.id, { tintColor: e.target.value })}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      padding: '2px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      cursor: 'pointer',
+                    }}
+                    title="틴트 색상 선택"
+                  />
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => onStickerUpdate?.(selectedSticker.id, { tintColor: null })}
+                    disabled={!selectedSticker.tintColor}
+                    style={{
+                      flex: 1,
+                      height: '32px',
+                      fontSize: '11px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      opacity: selectedSticker.tintColor ? 1 : 0.5,
+                    }}
+                    title="원래 색상으로 복원"
+                  >
+                    리셋
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

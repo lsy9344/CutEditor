@@ -30,6 +30,9 @@ export type SidebarRightProps = {
     scaleX: number;
     scaleY: number;
     rotation: number;
+    flipX: boolean;
+    flipY: boolean;
+    tintColor: string | null;
   };
   onTextInsert?: (textData: {
     text: string;
@@ -53,6 +56,18 @@ export type SidebarRightProps = {
   }>) => void;
   onTextDelete?: (textId: string) => void;
   onStickerInsert?: (src: string) => void;
+  onStickerUpdate?: (stickerId: string, updates: Partial<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
+    flipX: boolean;
+    flipY: boolean;
+    tintColor: string | null;
+  }>) => void;
   onStickerDelete?: (stickerId: string) => void;
   onExport?: () => void;
 };
@@ -291,8 +306,26 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
     }
   };
 
+  const stickerScrollAreaStyle: React.CSSProperties = {
+    overflowY: 'auto',
+    flex: 1,
+    minHeight: 0,
+    marginTop: '12px',
+    paddingRight: '12px',
+    marginRight: '-4px',
+  };
+
   return (
-    <aside className="linear-card" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
+    <aside
+      className="linear-card"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 'var(--linear-space-2)',
+        minHeight: 0,
+        overflow: 'hidden',
+      }}
+    >
       {/* 탭 네비게이션 */}
       <div style={{ display: 'flex', borderBottom: 'var(--border-width) solid var(--linear-neutral-500)', marginBottom: '16px', gap: '8px' }}>
         <button
@@ -330,7 +363,19 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       </div>
 
       {activeTab === 'text' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--linear-space-2)',
+            flex: 1,
+            overflowY: 'auto',
+            minHeight: 0,
+            paddingRight: '12px',
+            marginRight: '-12px',
+            paddingBottom: '16px',
+          }}
+        >
           {/* 텍스트 내용 작성 파트 */}
           <div>
             <h3>사진에 글씨 새기기</h3>
@@ -529,10 +574,17 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
           {!selectedStickerCategory ? (
             <>
               <h3>스티커 카테고리 선택</h3>
-              <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)', marginBottom: '8px' }}>
+              <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>
                 클릭하여 스티커 목록을 확인하세요.
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0 }}>
+              <div
+                style={{
+                  ...stickerScrollAreaStyle,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
                 {STICKER_CATEGORIES.map((category) => {
                   const currentIndex = categoryPreviewIndexes[category.id] ?? 0;
                   const previewSrc = category.previewCandidates[currentIndex];
@@ -589,7 +641,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             </>
           ) : (
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <button
                   type="button"
                   className="linear-button linear-button--primary"
@@ -607,14 +659,15 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                   {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.label}
                 </h3>
               </div>
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(3, 1fr)",
-                gap: "4px",
-                overflowY: "auto",
-                flex: 1,
-                minHeight: 0
-              }}>
+              <div
+                style={{
+                  ...stickerScrollAreaStyle,
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "8px",
+                  alignContent: "start",
+                }}
+              >
                 {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.stickers.map((slot) => {
                   const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
                   const previewSrc = slot.candidates[currentIndex];
@@ -630,17 +683,15 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                       }}
                       style={{
                         aspectRatio: '1',
-                        border: 'var(--border-width) solid var(--linear-neutral-500)',
-                        background: 'var(--linear-neutral-700)',
+                        border: 'none',
+                        background: 'transparent',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
                         cursor: isReady ? 'pointer' : 'not-allowed',
-                        padding: '4px',
+                        padding: '0',
                         opacity: isReady ? 1 : 0.5,
-                        boxShadow: 'var(--shadow-sm)',
-                        overflow: 'hidden'
                       }}
                     >
                       {!isReady ? (
@@ -808,8 +859,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       )}
 
       {/* 세 번째 섹션: 내보내기 */}
-      <hr style={{ border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: 'var(--linear-space-2) 0' }} />
-      <div>
+      <hr style={{ border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: 'var(--linear-space-2) 0', flexShrink: 0 }} />
+      <div style={{ flexShrink: 0 }}>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <button
             className="linear-button linear-button--primary"

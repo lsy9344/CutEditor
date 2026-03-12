@@ -21,3 +21,21 @@ test("오른쪽 스티커 grid 간격은 4px로 줄어든다", () => {
     /gridTemplateColumns:\s*"repeat\(3,\s*1fr\)",[\s\S]*gap:\s*"4px"/
   );
 });
+
+test("오른쪽 스티커 사이드바는 카드 높이 안에서 내부 스크롤을 유지한다", () => {
+  const source = readFileSync("src/ui/SidebarRight.tsx", "utf8");
+
+  assert.match(
+    source,
+    /<aside[\s\S]*minHeight:\s*0,[\s\S]*overflow:\s*'hidden'/
+  );
+});
+
+test("오른쪽 스티커 스크롤 영역은 왼쪽 4컷 목록처럼 여백을 둔다", () => {
+  const source = readFileSync("src/ui/SidebarRight.tsx", "utf8");
+
+  assert.match(
+    source,
+    /marginTop:\s*'12px',[\s\S]*paddingRight:\s*'12px',[\s\S]*marginRight:\s*'-4px'/
+  );
+});
