@@ -441,14 +441,14 @@ const RAW_FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 22, y: 47, width: 197, height: 157 },
-      { id: "slot-2", x: 22, y: 209, width: 197, height: 157 },
-      { id: "slot-3", x: 22, y: 371, width: 197, height: 157 },
-      { id: "slot-4", x: 22, y: 533, width: 197, height: 157 },
-      { id: "slot-5", x: 264, y: 47, width: 197, height: 157 },
-      { id: "slot-6", x: 264, y: 209, width: 197, height: 157 },
-      { id: "slot-7", x: 264, y: 371, width: 197, height: 157 },
-      { id: "slot-8", x: 264, y: 533, width: 197, height: 157 }
+      { id: "slot-1", x: 26, y: 37, width: 197, height: 158 },
+      { id: "slot-2", x: 26, y: 198, width: 197, height: 158 },
+      { id: "slot-3", x: 26, y: 359, width: 197, height: 158 },
+      { id: "slot-4", x: 26, y: 520, width: 197, height: 158 },
+      { id: "slot-5", x: 268, y: 37, width: 197, height: 158 },
+      { id: "slot-6", x: 268, y: 198, width: 197, height: 158 },
+      { id: "slot-7", x: 268, y: 359, width: 197, height: 158 },
+      { id: "slot-8", x: 268, y: 520, width: 197, height: 158 }
     ]
   },
   "8v_2": {
