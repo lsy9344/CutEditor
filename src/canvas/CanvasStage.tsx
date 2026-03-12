@@ -33,6 +33,7 @@ export type CanvasStageProps = {
     text: string;
     x: number;
     y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
@@ -63,6 +64,9 @@ export type CanvasStageProps = {
   onTextMove?: (textId: string, x: number, y: number) => void;
   onTextUpdate?: (textId: string, updates: Partial<{
     text: string;
+    x: number;
+    y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
@@ -968,14 +972,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     const measureContainer = () => {
       // 뷰포트 기반 측정으로 Stage 콘텐츠에 의한 피드백 루프 완전 방지
       // 너비: 뷰포트에서 양쪽 사이드바, 갭, 패딩을 빼서 중앙 영역 계산
-      // app-main: grid-template-columns: 320px 1fr 320px, gap: 24px, padding: 24px
-      const sidebarW = 320;
+      // app-main: grid-template-columns: 260px 1fr 420px, gap: 24px, padding: 24px
+      const sidebarLeftW = 260;
+      const sidebarRightW = 420;
       const gap = 24;
       const mainPad = 24;
       const cardPadH = 48;
       const border = 6;
       const measuredWidth = window.innerWidth
-        - (sidebarW * 2) - (gap * 2) - (mainPad * 2) - cardPadH - border;
+        - sidebarLeftW - sidebarRightW - (gap * 2) - (mainPad * 2) - cardPadH - border;
 
       // 높이: 뷰포트 기반
       const mainPadV = 48;
@@ -1678,7 +1683,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           ref={textRef}
                           x={textItem.x}
                           y={textItem.y}
-                          offsetX={dimensions.width / 2}
+                          width={textItem.boxWidth}
+                          offsetX={textItem.boxWidth / 2}
                           offsetY={dimensions.height / 2}
                           text={formatVerticalText(textItem.text, textItem.isVertical)}
                           fontSize={textItem.fontSize}
@@ -1686,6 +1692,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           fill={textItem.fontColor}
                           fontStyle={textItem.isItalic ? 'italic' : 'normal'}
                           align={textItem.textAlign}
+                          wrap="none"
                           lineHeight={textItem.isVertical ? 1.2 : 1}
                           draggable={true}
                           onClick={() => onSelect?.(textItem.id)}
@@ -1695,6 +1702,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             const newX = e.target.x();
                             const newY = e.target.y();
                             onTextMove?.(textItem.id, newX, newY);
+                          }}
+                          onTransformEnd={() => {
+                            const node = textRef.current;
+                            if (!node) return;
+
+                            onTextUpdate?.(textItem.id, {
+                              x: node.x(),
+                              y: node.y(),
+                              boxWidth: Math.max(10, node.width() * Math.abs(node.scaleX())),
+                              fontSize: Math.max(1, Math.round(textItem.fontSize * Math.abs(node.scaleY()))),
+                            });
                           }}
                         />
                         {isSelected && !exportMode && (

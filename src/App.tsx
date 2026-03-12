@@ -55,6 +55,7 @@ type CanvasText = {
   text: string;
   x: number;
   y: number;
+  boxWidth: number;
   fontSize: number;
   fontFamily: string;
   fontColor: string;
@@ -241,13 +242,6 @@ function App() {
     setEditorState(prev => ({ ...prev, zoom }))
   }
 
-  const getCanvasWidth = useCallback(() => {
-    if (!editorState.selectedFrame) {
-      return DEFAULT_CANVAS_WIDTH;
-    }
-    return FRAME_LAYOUTS[editorState.selectedFrame].canvasWidth;
-  }, [editorState.selectedFrame]);
-
   const getTextWidth = useCallback((textItem: CanvasText) => {
     if (textItem.isVertical) {
       return Math.max(textItem.fontSize * 0.6, 1);
@@ -279,27 +273,10 @@ function App() {
     return maxWidth;
   }, []);
 
-  const getAlignedTextX = useCallback((textItem: CanvasText, align: TextAlign) => {
-    const canvasWidth = getCanvasWidth();
-    const textWidth = getTextWidth(textItem);
-    const halfWidth = textWidth / 2;
-
-    let targetX = textItem.x;
-    if (align === 'left') {
-      targetX = TEXT_ALIGN_PADDING + halfWidth;
-    } else if (align === 'center') {
-      targetX = canvasWidth / 2;
-    } else {
-      targetX = canvasWidth - TEXT_ALIGN_PADDING - halfWidth;
-    }
-
-    const minX = halfWidth;
-    const maxX = canvasWidth - halfWidth;
-    if (minX > maxX) {
-      return canvasWidth / 2;
-    }
-    return Math.min(maxX, Math.max(minX, targetX));
-  }, [getCanvasWidth, getTextWidth]);
+  const getMinimumTextBoxWidth = useCallback((textItem: Pick<CanvasText, 'text' | 'fontSize' | 'fontFamily' | 'isItalic' | 'isVertical'>) => {
+    const measuredWidth = getTextWidth(textItem as CanvasText);
+    return Math.max(160, Math.ceil(measuredWidth + TEXT_ALIGN_PADDING * 2));
+  }, [getTextWidth]);
 
   const handleTextInsert = (textData: {
     text: string;
@@ -315,8 +292,9 @@ function App() {
     const newText: CanvasText = {
       id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       ...textData,
+      boxWidth: 0,
     };
-    newText.x = getAlignedTextX(newText, newText.textAlign);
+    newText.boxWidth = getMinimumTextBoxWidth(newText);
 
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
@@ -333,6 +311,9 @@ function App() {
 
   const handleTextUpdate = (textId: string, updates: Partial<{
     text: string;
+    x: number;
+    y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
@@ -349,17 +330,17 @@ function App() {
         const updatedText: CanvasText = { ...text, ...updates };
         const widthRelatedUpdated =
           updates.text !== undefined ||
+          updates.boxWidth !== undefined ||
           updates.fontSize !== undefined ||
           updates.fontFamily !== undefined ||
           updates.isItalic !== undefined ||
           updates.isVertical !== undefined;
 
-        const shouldRealign =
-          updates.textAlign !== undefined ||
-          (updatedText.textAlign !== 'center' && widthRelatedUpdated);
-
-        if (shouldRealign) {
-          updatedText.x = getAlignedTextX(updatedText, updatedText.textAlign);
+        if (widthRelatedUpdated) {
+          updatedText.boxWidth = Math.max(
+            updatedText.boxWidth,
+            getMinimumTextBoxWidth(updatedText),
+          );
         }
 
         return updatedText;
