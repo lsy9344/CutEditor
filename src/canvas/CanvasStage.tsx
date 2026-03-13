@@ -17,6 +17,7 @@ import {
   KEYBOARD_ROTATE_STEP,
   KEYBOARD_SCALE_FACTOR,
 } from "./keyboardShortcuts";
+import { getZoomToFit } from "./zoomSizing";
 
 export type CanvasStageProps = {
   template: Template | null;
@@ -970,22 +971,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (!node) return;
 
     const measureContainer = () => {
-      // 뷰포트 기반 측정으로 Stage 콘텐츠에 의한 피드백 루프 완전 방지
-      // 너비: 뷰포트에서 양쪽 사이드바, 갭, 패딩을 빼서 중앙 영역 계산
-      // app-main: grid-template-columns: 260px 1fr 420px, gap: 24px, padding: 24px
-      const sidebarLeftW = 260;
-      const sidebarRightW = 420;
-      const gap = 24;
-      const mainPad = 24;
-      const cardPadH = 48;
-      const border = 6;
-      const measuredWidth = window.innerWidth
-        - sidebarLeftW - sidebarRightW - (gap * 2) - (mainPad * 2) - cardPadH - border;
-
-      // 높이: 뷰포트 기반
-      const mainPadV = 48;
-      const cardPadV = 48;
-      const measuredHeight = window.innerHeight - mainPadV - cardPadV;
+      const measuredWidth = Math.round(node.clientWidth || node.getBoundingClientRect().width);
+      const measuredHeight = Math.round(node.clientHeight || node.getBoundingClientRect().height);
 
       if (measuredWidth > 100 && measuredHeight > 100) {
         setContainerSize({ width: measuredWidth, height: measuredHeight });
@@ -1015,24 +1002,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (!frameLayout || !onZoomChange) return;
     if (!containerSize.width || !containerSize.height) return;
 
-    const baseWidth = frameLayout.canvasWidth;
-    const baseHeight = frameLayout.canvasHeight;
-    if (!baseWidth || !baseHeight) return;
+    const clamped = getZoomToFit({
+      containerWidth: containerSize.width,
+      containerHeight: containerSize.height,
+      canvasWidth: frameLayout.canvasWidth,
+      canvasHeight: frameLayout.canvasHeight,
+    });
 
-    // 여백(패딩, 보더) 고려
-    const padding = 48; // 양쪽 패딩 합계
-    const availableWidth = Math.max(100, containerSize.width - padding);
-    const availableHeight = Math.max(100, containerSize.height - padding);
-
-    const ratioX = availableWidth / baseWidth;
-    const ratioY = availableHeight / baseHeight;
-
-    // 너비와 높이 중 더 제한적인 비율을 사용하여 프레임이 컨테이너를 넘지 않도록 함
-    const ratio = Math.min(ratioX, ratioY);
-
-    if (!Number.isFinite(ratio) || ratio <= 0) return;
-    // 줌의 최대치를 0.1 ~ 2 사이로 제한
-    const clamped = Math.max(0.1, Math.min(2, Number(ratio.toFixed(4))));
     if (Math.abs(clamped - zoom) > 0.005) {
       onZoomChange(clamped);
     }
