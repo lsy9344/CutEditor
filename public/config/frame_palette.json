@@ -1,12 +1,12 @@
 {
   "frameColors": [
-    '#FFFFFF', // White
-    '#000000', // Black
-    '#DCDCDC', // Light Gray.
-    '#fe9fb3', // Deep Pink.
-    '#ffe4c4', // Gold
-    '#C8F7DC', // Mint.
-    '#C6E2FF', // Light Blue.
-    '#ffc1cc', // Rose Pink.
+    "#FFFFFF",
+    "#000000",
+    "#DCDCDC",
+    "#fe9fb3",
+    "#ffe4c4",
+    "#C8F7DC",
+    "#C6E2FF",
+    "#ffc1cc"
   ]
 }

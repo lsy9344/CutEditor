@@ -440,6 +440,7 @@ p {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  min-height: 100dvh;
   width: 100vw;
   background-color: var(--linear-neutral-900);
   color: var(--linear-neutral-50);
@@ -477,6 +478,65 @@ p {
   background-color: var(--linear-neutral-700);
   /* sub background for main body */
   overflow: hidden;
+}
+
+.app-mobile-canvas-shell {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-mobile-canvas-shell > * {
+  flex: 1;
+  min-height: 0;
+}
+
+.app-mobile-toolbar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.app-mobile-toolbar .linear-button {
+  width: 100%;
+  min-height: 52px;
+}
+
+.app-mobile-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--linear-backdrop);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  z-index: 9998;
+}
+
+.app-mobile-sheet {
+  width: min(760px, 100%);
+  max-height: min(78dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.app-mobile-sheet__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.app-mobile-sheet__content {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* 중앙 캔버스 영역: grid 1fr 컬럼이 콘텐츠에 의해 확장되지 않도록 제한 */
@@ -558,18 +618,28 @@ p {
 }
 
 @media (max-width: 768px) {
+  .app-container {
+    height: auto;
+    min-height: 100dvh;
+  }
+
   .app-main {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
+    grid-template-rows: auto 1fr;
+    overflow: auto;
   }
 
   .canvas-stage-layout {
     flex-direction: column;
     align-items: center;
+    height: 100%;
+    gap: var(--linear-space-2);
   }
 
   .canvas-stage-area {
     width: 100%;
+    height: 100%;
+    min-height: 0;
   }
 
   .canvas-control-panel {
@@ -578,6 +648,35 @@ p {
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
+  }
+
+  .app-main--mobile-editor {
+    display: flex;
+    flex-direction: column;
+    gap: var(--linear-space-2);
+    overflow: hidden;
+  }
+
+  .app-main--mobile-editor > .app-mobile-canvas-shell {
+    flex: 1;
+    min-height: min(62dvh, 680px);
+  }
+
+  .app-main--mobile-editor .linear-card {
+    min-height: 0;
+  }
+
+  .app-main--mobile-editor .canvas-stage-area {
+    min-height: 0;
+    overflow: auto;
+    align-items: flex-start;
+    justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  .app-main--mobile-editor .canvas-stage-layout {
+    justify-content: flex-start;
   }
 }
 

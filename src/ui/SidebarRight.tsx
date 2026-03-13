@@ -13,12 +13,15 @@ export type SidebarRightProps = {
     text: string;
     x: number;
     y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: TextAlign;
+    rotation: number;
   };
   selectedSticker?: {
     id: string;
@@ -39,6 +42,7 @@ export type SidebarRightProps = {
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: TextAlign;
@@ -53,9 +57,11 @@ export type SidebarRightProps = {
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: TextAlign;
+    rotation: number;
   }>) => void;
   onTextDelete?: (textId: string) => void;
   onStickerInsert?: (src: string) => void;
@@ -73,6 +79,9 @@ export type SidebarRightProps = {
   }>) => void;
   onStickerDelete?: (stickerId: string) => void;
   onExport?: () => void;
+  forcedTab?: "text" | "sticker" | null;
+  showActionRail?: boolean;
+  showExportButton?: boolean;
 };
 
 export const SidebarRight: React.FC<SidebarRightProps> = ({
@@ -84,9 +93,12 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   onTextDelete,
   onStickerInsert,
   onStickerDelete,
-  onExport
+  onExport,
+  forcedTab,
+  showActionRail = true,
+  showExportButton = true,
 }) => {
-  const [activeTab, setActiveTab] = useState<"text" | "sticker" | null>(null);
+  const [activeTab, setActiveTab] = useState<"text" | "sticker" | null>(forcedTab ?? null);
   const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
   const [categoryPreviewIndexes, setCategoryPreviewIndexes] = useState<Record<string, number>>({});
   const [loadedCategoryPreviews, setLoadedCategoryPreviews] = useState<Record<string, boolean>>({});
@@ -95,7 +107,8 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   // Text State
   const [textInput, setTextInput] = useState("");
   const [textSize, setTextSize] = useState(16);
-  const [isItalic, setIsItalic] = useState(true);
+  const [isBold, setIsBold] = useState(false);
+  const [isItalic, setIsItalic] = useState(false);
   const [isVertical, setIsVertical] = useState(false);
   const [fontFamily, setFontFamily] = useState("");
   const [isFontPickerOpen, setFontPickerOpen] = useState(false);
@@ -131,6 +144,12 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       setActiveTab("sticker");
     }
   }, [selectedSticker]);
+
+  useEffect(() => {
+    if (forcedTab !== undefined) {
+      setActiveTab(forcedTab);
+    }
+  }, [forcedTab]);
 
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
@@ -178,6 +197,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   const displayedTextSize = selectedText?.fontSize ?? textSize;
   const displayedFontFamily = selectedText?.fontFamily ?? fontFamily;
   const displayedFontColor = selectedText?.fontColor ?? fontColor;
+  const displayedIsBold = selectedText?.isBold ?? isBold;
   const displayedIsItalic = selectedText?.isItalic ?? isItalic;
   const displayedIsVertical = selectedText?.isVertical ?? isVertical;
   const displayedTextAlign = selectedText?.textAlign ?? textAlign;
@@ -246,6 +266,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
       fontSize: textSize,
       fontFamily,
       fontColor,
+      isBold,
       isItalic,
       isVertical,
       textAlign: displayedTextAlign,
@@ -272,6 +293,14 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
     setFontColor(newColor);
     if (selectedText && onTextUpdate) {
       onTextUpdate(selectedText.id, { fontColor: newColor });
+    }
+  };
+
+  const handleBoldToggle = () => {
+    const newIsBold = !displayedIsBold;
+    setIsBold(newIsBold);
+    if (selectedText && onTextUpdate) {
+      onTextUpdate(selectedText.id, { isBold: newIsBold });
     }
   };
 
@@ -319,91 +348,101 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'row-reverse', height: '100%', gap: '16px' }}>
+    <div style={{
+      display: 'flex',
+      flexDirection: showActionRail ? 'row-reverse' : 'column',
+      height: '100%',
+      minHeight: 0,
+      gap: '16px',
+    }}>
       {/* 탭 네비게이션 (아이콘 바) */}
-      <aside
-        className="linear-card"
-        style={{
-          width: '56px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '16px',
-          padding: '16px 8px',
-          flexShrink: 0,
-        }}
-      >
-        <button
-          onClick={() => setActiveTab(activeTab === 'text' ? null : 'text')}
+      {showActionRail && (
+        <aside
+          className="linear-card"
           style={{
-            background: activeTab === 'text' ? 'var(--linear-neutral-50)' : 'transparent',
-            color: activeTab === 'text' ? 'var(--linear-neutral-600)' : 'var(--linear-secondary-300)',
-            border: 'none',
-            boxShadow: 'none',
-            width: '100%',
-            padding: '12px 0',
+            width: '56px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            cursor: 'pointer',
-            borderRadius: '8px',
-            transition: 'all 0.2s',
+            gap: '16px',
+            padding: '16px 8px',
+            flexShrink: 0,
           }}
         >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="4 7 4 4 20 4 20 7" />
-            <line x1="9" y1="20" x2="15" y2="20" />
-            <line x1="12" y1="4" x2="12" y2="20" />
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>글씨</span>
-        </button>
+          <button
+            onClick={() => setActiveTab(activeTab === 'text' ? null : 'text')}
+            style={{
+              background: activeTab === 'text' ? 'var(--linear-neutral-50)' : 'transparent',
+              color: activeTab === 'text' ? 'var(--linear-neutral-600)' : 'var(--linear-secondary-300)',
+              border: 'none',
+              boxShadow: 'none',
+              width: '100%',
+              padding: '12px 0',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              borderRadius: '8px',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="4 7 4 4 20 4 20 7" />
+              <line x1="9" y1="20" x2="15" y2="20" />
+              <line x1="12" y1="4" x2="12" y2="20" />
+            </svg>
+            <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>글씨</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab(activeTab === 'sticker' ? null : 'sticker')}
-          style={{
-            background: activeTab === 'sticker' ? 'var(--linear-neutral-50)' : 'transparent',
-            color: activeTab === 'sticker' ? 'var(--linear-neutral-600)' : 'var(--linear-secondary-300)',
-            border: 'none',
-            boxShadow: 'none',
-            width: '100%',
-            padding: '12px 0',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '6px',
-            cursor: 'pointer',
-            borderRadius: '8px',
-            transition: 'all 0.2s',
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-            <line x1="9" y1="9" x2="9.01" y2="9" />
-            <line x1="15" y1="9" x2="15.01" y2="9" />
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
-        </button>
+          <button
+            onClick={() => setActiveTab(activeTab === 'sticker' ? null : 'sticker')}
+            style={{
+              background: activeTab === 'sticker' ? 'var(--linear-neutral-50)' : 'transparent',
+              color: activeTab === 'sticker' ? 'var(--linear-neutral-600)' : 'var(--linear-secondary-300)',
+              border: 'none',
+              boxShadow: 'none',
+              width: '100%',
+              padding: '12px 0',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              cursor: 'pointer',
+              borderRadius: '8px',
+              transition: 'all 0.2s',
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+              <line x1="9" y1="9" x2="9.01" y2="9" />
+              <line x1="15" y1="9" x2="15.01" y2="9" />
+            </svg>
+            <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
+          </button>
 
-        <div style={{ flex: 1 }} />
+          <div style={{ flex: 1 }} />
 
-        <button
-          className="linear-button linear-button--primary"
-          onClick={onExport}
-          onTouchStart={() => {/* 모바일 보조 */ }}
-          style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-          <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>저장</span>
-        </button>
-      </aside>
+          {showExportButton && (
+            <button
+              className="linear-button linear-button--primary"
+              onClick={onExport}
+              onTouchStart={() => {/* 모바일 보조 */ }}
+              style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>저장</span>
+            </button>
+          )}
+        </aside>
+      )}
 
       {/* 펼쳐지는 사이드바 패널 */}
       {activeTab && (
@@ -510,120 +549,126 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
               <hr style={{ border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: 'var(--linear-space-2) 0' }} />
 
               {/* 텍스트 스타일 설정 파트 */}
-              <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--linear-space-3)" }}>
+                {/* 폰트 선택 (전체 너비) */}
+                <label>
+                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 선택</p>
+                  <div className="linear-flex" style={{ alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => !fontsLoading && setFontPickerOpen(true)}
+                      disabled={fontsLoading}
+                      title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
+                      style={{
+                        border: 'var(--border-width) solid var(--linear-neutral-500)',
+                        padding: '6px 10px', fontSize: '14px', fontFamily: displayedFontFamily || 'var(--linear-font-family)',
+                        width: '100%',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                      }}
+                    >
+                      {fontsLoading ? '로딩 중…' : (displayedFontFamily || '선택')}
+                    </button>
+                  </div>
+                </label>
+
+                {/* 크기 및 색상 (1fr 1fr) */}
                 <div className="linear-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "var(--linear-space-2)" }}>
-                  {/* 글자 크기 */}
                   <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 크기</p>
+                    <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 크기</p>
                     <input
                       type="number"
                       className="linear-input"
-                      style={{ borderColor: 'var(--linear-neutral-300)', width: '100%', marginTop: 'var(--linear-space-1)' }}
+                      style={{ borderColor: 'var(--linear-neutral-300)', width: '100%' }}
                       value={displayedTextSize}
                       onChange={(e) => handleTextSizeChange(Number(e.target.value))}
                       min="1" max="99" placeholder="16"
                     />
                   </label>
 
-                  {/* 폰트 선택 */}
                   <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 선택</p>
-                    <div className="linear-flex" style={{ alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        className="linear-button linear-button--secondary"
-                        onClick={() => !fontsLoading && setFontPickerOpen(true)}
-                        disabled={fontsLoading}
-                        title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
-                        style={{
-                          border: 'var(--border-width) solid var(--linear-neutral-500)',
-                          padding: '6px 10px', fontSize: '14px', fontFamily: displayedFontFamily || 'var(--linear-font-family)',
-                          width: '100%', marginTop: 'var(--linear-space-1)',
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                        }}
-                      >
-                        {fontsLoading ? '로딩 중…' : (displayedFontFamily || '선택')}
-                      </button>
-                    </div>
-                  </label>
-
-                  {/* 폰트 색상 */}
-                  <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 색상</p>
+                    <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 색상</p>
                     <input
                       type="color"
                       className="linear-input"
-                      style={{ borderColor: 'var(--linear-neutral-300)', width: '100%', height: '36px', padding: '2px', marginTop: 'var(--linear-space-1)' }}
+                      style={{ borderColor: 'var(--linear-neutral-300)', width: '100%', height: '36px', padding: '2px' }}
                       value={displayedFontColor}
                       onChange={(e) => handleFontColorChange(e.target.value)}
                     />
                   </label>
-
-                  {/* 폰트 스타일 (기울임 / 세로) */}
-                  <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>폰트 스타일</p>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: 'var(--linear-space-1)' }}>
-                      <button
-                        className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                        onClick={handleItalicToggle}
-                        style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
-                      >
-                        기울임
-                      </button>
-                      <button
-                        className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                        onClick={handleVerticalToggle}
-                        style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
-                      >
-                        세로쓰기
-                      </button>
-                    </div>
-                  </label>
-
-                  {/* 텍스트 정렬 */}
-                  <label style={{ gridColumn: "1 / -1" }}>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>텍스트 정렬</p>
-                    <div style={{ display: "flex", gap: "6px", marginTop: "var(--linear-space-1)" }}>
-                      {["left", "center", "right"].map((align) => (
-                        <button
-                          key={align}
-                          type="button"
-                          className={`linear-button ${displayedTextAlign === align ? "linear-button--primary" : "linear-button--secondary"}`}
-                          onClick={() => handleTextAlignChange(align as TextAlign)}
-                          disabled={!selectedText}
-                          style={{
-                            width: "100%", height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
-                            opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed"
-                          }}
-                        >
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                            {align === 'left' && (
-                              <>
-                                <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
-                                <line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="2" />
-                                <line x1="4" y1="18" x2="18" y2="18" stroke="currentColor" strokeWidth="2" />
-                              </>
-                            )}
-                            {align === 'center' && (
-                              <>
-                                <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
-                                <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" />
-                                <line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" strokeWidth="2" />
-                              </>
-                            )}
-                            {align === 'right' && (
-                              <>
-                                <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
-                                <line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
-                                <line x1="6" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2" />
-                              </>
-                            )}
-                          </svg>
-                        </button>
-                      ))}
-                    </div>
-                  </label>
                 </div>
+
+                {/* 폰트 스타일 */}
+                <label>
+                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 스타일</p>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      className={`linear-button ${displayedIsBold ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                      onClick={handleBoldToggle}
+                      style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                    >
+                      굵게
+                    </button>
+                    <button
+                      className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                      onClick={handleItalicToggle}
+                      style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                    >
+                      기울임
+                    </button>
+                    <button
+                      className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                      onClick={handleVerticalToggle}
+                      style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                    >
+                      세로쓰기
+                    </button>
+                  </div>
+                </label>
+
+                {/* 텍스트 정렬 */}
+                <label>
+                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>텍스트 정렬</p>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    {["left", "center", "right"].map((align) => (
+                      <button
+                        key={align}
+                        type="button"
+                        className={`linear-button ${displayedTextAlign === align ? "linear-button--primary" : "linear-button--secondary"}`}
+                        onClick={() => handleTextAlignChange(align as TextAlign)}
+                        disabled={!selectedText}
+                        style={{
+                          width: "100%", height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
+                          opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed"
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                          {align === 'left' && (
+                            <>
+                              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                              <line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="2" />
+                              <line x1="4" y1="18" x2="18" y2="18" stroke="currentColor" strokeWidth="2" />
+                            </>
+                          )}
+                          {align === 'center' && (
+                            <>
+                              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                              <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" />
+                              <line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" strokeWidth="2" />
+                            </>
+                          )}
+                          {align === 'right' && (
+                            <>
+                              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                              <line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
+                              <line x1="6" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2" />
+                            </>
+                          )}
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+                </label>
               </div>
             </div>
           )}

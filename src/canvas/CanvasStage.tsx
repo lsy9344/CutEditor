@@ -38,9 +38,11 @@ export type CanvasStageProps = {
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: "left" | "center" | "right";
+    rotation: number;
   }>;
   stickers?: Array<{
     id: string;
@@ -71,9 +73,11 @@ export type CanvasStageProps = {
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: "left" | "center" | "right";
+    rotation: number;
   }>) => void;
   onImageDelete?: (imageId: string) => void;
   onStickerDelete?: (stickerId: string) => void;
@@ -214,7 +218,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   // 텍스트 크기 계산 유틸리티 함수
-  const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isItalic: boolean, isVertical: boolean) => {
+  const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isBold: boolean, isItalic: boolean, isVertical: boolean) => {
     if (isVertical) {
       // 세로 배치일 때
       const lines = text.split('\n');
@@ -230,7 +234,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const lines = text.split('\n');
 
       if (ctx) {
-        ctx.font = `${isItalic ? 'italic ' : ''}${fontSize}px ${fontFamily}`;
+        ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
         const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
         return {
           width: maxWidth,
@@ -1000,12 +1004,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     if (!frameLayout || !onZoomChange) return;
     if (!containerSize.width || !containerSize.height) return;
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
 
     const clamped = getZoomToFit({
       containerWidth: containerSize.width,
       containerHeight: containerSize.height,
       canvasWidth: frameLayout.canvasWidth,
       canvasHeight: frameLayout.canvasHeight,
+      fitMode: isMobileViewport ? "width" : "contain",
     });
 
     if (Math.abs(clamped - zoom) > 0.005) {
@@ -1038,11 +1044,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   }
 
   // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
-  const stageWidth = frameLayout.canvasWidth * zoom;
-  const stageHeight = frameLayout.canvasHeight * zoom;
+  const stageWidth = Math.ceil(frameLayout.canvasWidth * zoom);
+  const stageHeight = Math.ceil(frameLayout.canvasHeight * zoom);
   const stageWrapperStyle: React.CSSProperties = {
     border: 'var(--border-width) dashed var(--linear-neutral-500)',
     borderRadius: '0px',
+    boxSizing: 'content-box',
     overflow: 'hidden',
     position: 'relative',
     width: `${stageWidth}px`,
@@ -1148,8 +1155,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   (stageRefExternal as React.MutableRefObject<Konva.Stage | null>).current = node;
                 }
               }}
-              width={frameLayout.canvasWidth * zoom}
-              height={frameLayout.canvasHeight * zoom}
+              width={stageWidth}
+              height={stageHeight}
               scaleX={zoom}
               scaleY={zoom}
               onClick={(e) => {
@@ -1648,6 +1655,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       textItem.text,
                       textItem.fontSize,
                       textItem.fontFamily,
+                      textItem.isBold,
                       textItem.isItalic,
                       textItem.isVertical
                     );
@@ -1665,8 +1673,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           fontSize={textItem.fontSize}
                           fontFamily={textItem.fontFamily}
                           fill={textItem.fontColor}
-                          fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                          fontStyle={`${textItem.isItalic ? 'italic ' : ''}${textItem.isBold ? 'bold' : ''}`.trim() || 'normal'}
                           align={textItem.textAlign}
+                          rotation={textItem.rotation}
                           wrap="none"
                           lineHeight={textItem.isVertical ? 1.2 : 1}
                           draggable={true}
@@ -1687,6 +1696,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                               y: node.y(),
                               boxWidth: Math.max(10, node.width() * Math.abs(node.scaleX())),
                               fontSize: Math.max(1, Math.round(textItem.fontSize * Math.abs(node.scaleY()))),
+                              rotation: node.rotation(),
                             });
                           }}
                         />

@@ -6,6 +6,7 @@ type GetZoomToFitArgs = {
   padding?: number;
   minZoom?: number;
   maxZoom?: number;
+  fitMode?: "contain" | "width";
 };
 
 export function getZoomToFit({
@@ -16,6 +17,7 @@ export function getZoomToFit({
   padding = 48,
   minZoom = 0.1,
   maxZoom = 2,
+  fitMode = "contain",
 }: GetZoomToFitArgs): number {
   if (
     !Number.isFinite(containerWidth) ||
@@ -34,7 +36,7 @@ export function getZoomToFit({
   const availableHeight = Math.max(100, containerHeight - padding);
   const ratioX = availableWidth / canvasWidth;
   const ratioY = availableHeight / canvasHeight;
-  const ratio = Math.min(ratioX, ratioY);
+  const ratio = fitMode === "width" ? ratioX : Math.min(ratioX, ratioY);
 
   if (!Number.isFinite(ratio) || ratio <= 0) {
     return minZoom;
