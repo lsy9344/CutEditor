@@ -107,7 +107,6 @@ const buildFrameImageCandidates = (frameType: FrameType, primaryPath: string): s
   const candidates = new Set<string>([
     primaryPath,
     `/frame/${frameType}.png`,
-    `/popover/${frameType}.png`,
   ]);
 
   const legacyFileName = toLegacyFrameFileName(frameType);
