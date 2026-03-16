@@ -503,6 +503,43 @@ p {
   min-height: 52px;
 }
 
+.app-main--mobile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--linear-space-2);
+  overflow: hidden;
+}
+
+.app-main--mobile-editor > .app-mobile-canvas-shell {
+  flex: 1;
+  min-height: min(62dvh, 680px);
+  min-width: 0;
+}
+
+.app-main--mobile-editor .linear-card {
+  min-height: 0;
+}
+
+.app-main--mobile-editor .canvas-stage-area {
+  min-height: 0;
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.app-main--mobile-editor .canvas-stage-layout {
+  justify-content: flex-start;
+}
+
+.app-main--mobile-editor .konvajs-content,
+.app-main--mobile-editor .konvajs-content canvas {
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .app-mobile-sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -650,41 +687,6 @@ p {
     align-items: center;
   }
 
-  .app-main--mobile-editor {
-    display: flex;
-    flex-direction: column;
-    gap: var(--linear-space-2);
-    overflow: hidden;
-  }
-
-  .app-main--mobile-editor > .app-mobile-canvas-shell {
-    flex: 1;
-    min-height: min(62dvh, 680px);
-  }
-
-  .app-main--mobile-editor .linear-card {
-    min-height: 0;
-  }
-
-  .app-main--mobile-editor .canvas-stage-area {
-    min-height: 0;
-    overflow: auto;
-    align-items: flex-start;
-    justify-content: flex-start;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
-  }
-
-  .app-main--mobile-editor .canvas-stage-layout {
-    justify-content: flex-start;
-  }
-
-  .app-main--mobile-editor .konvajs-content,
-  .app-main--mobile-editor .konvajs-content canvas {
-    touch-action: pan-x pan-y;
-    user-select: none;
-    -webkit-user-select: none;
-  }
 }
 
 /* Animations */
