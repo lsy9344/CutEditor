@@ -1,6 +1,11 @@
 export const STICKER_SLOT_COUNT = 20;
 export const STICKER_EXTENSIONS = ["svg", "png", "webp", "jpg", "jpeg"] as const;
 
+const STICKER_CANDIDATE_PRIORITY_OVERRIDES: Record<string, readonly string[]> = {
+  // iOS canvas/Konva can fail to render this masked SVG after insertion, so prefer PNG.
+  "1s_18ss": ["png", "svg", "webp", "jpg", "jpeg"],
+};
+
 export type StickerSlot = {
   key: string;
   candidates: string[];
@@ -16,7 +21,9 @@ export type StickerCategory = {
 };
 
 function buildStickerPath(key: string): string[] {
-  return STICKER_EXTENSIONS.map((extension) => `/stickers/${key}.${extension}`);
+  const extensions = STICKER_CANDIDATE_PRIORITY_OVERRIDES[key] ?? STICKER_EXTENSIONS;
+
+  return extensions.map((extension) => `/stickers/${key}.${extension}`);
 }
 
 export function buildStickerSlots(prefix: string): StickerSlot[] {

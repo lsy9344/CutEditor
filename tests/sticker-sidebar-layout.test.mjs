@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { loadTsModule } from "./helpers/loadTsModule.mjs";
 
 const loadCatalog = async () =>
@@ -12,6 +12,21 @@ test("기본 스티커 슬롯은 20개까지 생성된다", async () => {
   assert.equal(STICKER_SLOT_COUNT, 20);
   assert.equal(buildStickerSlots("1s").length, 20);
   assert.equal(buildStickerSlots("1s").at(-1)?.key, "1s_20ss");
+});
+
+test("1s_18ss 스티커는 모바일 호환을 위해 PNG를 먼저 시도한다", async () => {
+  const { buildStickerSlots } = await loadCatalog();
+  const targetSlot = buildStickerSlots("1s").find((slot) => slot.key === "1s_18ss");
+
+  assert.ok(targetSlot);
+  assert.deepEqual(targetSlot.candidates.slice(0, 2), [
+    "/stickers/1s_18ss.png",
+    "/stickers/1s_18ss.svg",
+  ]);
+});
+
+test("1s_18ss PNG 대체 자산이 실제로 존재한다", () => {
+  assert.equal(existsSync("public/stickers/1s_18ss.png"), true);
 });
 
 test("오른쪽 스티커 grid 간격은 현재 8px을 유지한다", () => {
