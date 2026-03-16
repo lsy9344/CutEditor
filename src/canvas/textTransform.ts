@@ -30,7 +30,7 @@ export const getNextTextTransformState = (
   const appliedScaleY = Math.abs(node.scaleY) || 1;
   const nextBoxWidth = Math.max(10, safeNodeWidth * appliedScaleX);
   const widthScale = nextBoxWidth / safeBaseWidth;
-  const nextScale = Math.max(widthScale, appliedScaleY, 1);
+  const nextScale = Math.max(widthScale, appliedScaleY);
 
   return {
     x: node.x,

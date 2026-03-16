@@ -76,3 +76,27 @@ test("기존처럼 scale 값으로만 전달되는 경우도 동일하게 동작
   assert.equal(result.boxWidth, 360);
   assert.equal(result.fontSize, 36);
 });
+
+test("텍스트 박스를 줄이면 저장되는 fontSize도 함께 작아진다", async () => {
+  const { getNextTextTransformState } = await loadTsModule("src/canvas/textTransform.ts");
+
+  const result = getNextTextTransformState({
+    boxWidth: 320,
+    fontSize: 32,
+  }, {
+    x: 120,
+    y: 240,
+    rotation: 12,
+    width: 320,
+    scaleX: 0.5,
+    scaleY: 0.5,
+  });
+
+  assert.deepEqual(result, {
+    x: 120,
+    y: 240,
+    rotation: 12,
+    boxWidth: 160,
+    fontSize: 16,
+  });
+});
