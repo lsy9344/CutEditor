@@ -18,6 +18,10 @@ import {
   KEYBOARD_ROTATE_STEP,
   KEYBOARD_SCALE_FACTOR,
 } from "./keyboardShortcuts";
+import {
+  getStickerEditResetUpdates,
+  hasStickerEditChanges,
+} from "./stickerEdit";
 import { getZoomToFit } from "./zoomSizing";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
@@ -184,6 +188,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
+  const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isTouchManipulationActive = Boolean(selection);
 
   const focusCanvasArea = useCallback(() => {
@@ -1795,6 +1800,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       textItem.isItalic,
                       textItem.isVertical
                     );
+                    const renderedTextWidth = textItem.isVertical ? dimensions.width : textItem.boxWidth;
 
                     return (
                       <Group key={textItem.id}>
@@ -1802,8 +1808,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           ref={textRef}
                           x={textItem.x}
                           y={textItem.y}
-                          width={textItem.boxWidth}
-                          offsetX={textItem.boxWidth / 2}
+                          width={renderedTextWidth}
+                          offsetX={renderedTextWidth / 2}
                           offsetY={dimensions.height / 2}
                           text={formatVerticalText(textItem.text, textItem.isVertical)}
                           fontSize={textItem.fontSize}
@@ -1827,7 +1833,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             if (!node) return;
 
                             const nextState = getNextTextTransformState({
-                              boxWidth: textItem.boxWidth,
+                              boxWidth: renderedTextWidth,
                               fontSize: textItem.fontSize,
                             }, {
                               x: node.x(),
@@ -2103,16 +2109,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   <button
                     type="button"
                     className="linear-button linear-button--secondary"
-                    onClick={() => onStickerUpdate?.(selectedSticker.id, { tintColor: null })}
-                    disabled={!selectedSticker.tintColor}
+                    onClick={() => onStickerUpdate?.(selectedSticker.id, getStickerEditResetUpdates())}
+                    disabled={!canResetStickerEdit}
                     style={{
                       flex: 1,
                       height: '32px',
                       fontSize: '11px',
                       border: 'var(--border-width) solid var(--linear-neutral-500)',
-                      opacity: selectedSticker.tintColor ? 1 : 0.5,
+                      opacity: canResetStickerEdit ? 1 : 0.5,
                     }}
-                    title="원래 색상으로 복원"
+                    title="스티커 편집 상태를 기본값으로 복원"
                   >
                     리셋
                   </button>

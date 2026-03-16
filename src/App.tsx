@@ -21,6 +21,10 @@ import {
   getScaledStickerDimensions,
   loadStickerDimensions,
 } from './utils/stickerSizing'
+import {
+  getMinimumTextBoxWidthForMeasuredWidth,
+  resolveTextBoxWidth,
+} from './canvas/textBoxWidth'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import { getExportExperience, getExportRenderPlan } from './utils/exportBehavior'
 
@@ -84,7 +88,6 @@ type CanvasSticker = {
 
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
-const TEXT_ALIGN_PADDING = 24;
 
 declare global {
   interface Window {
@@ -320,7 +323,10 @@ function App() {
 
   const getMinimumTextBoxWidth = useCallback((textItem: Pick<CanvasText, 'text' | 'fontSize' | 'fontFamily' | 'isBold' | 'isItalic' | 'isVertical'>) => {
     const measuredWidth = getTextWidth(textItem as CanvasText);
-    return Math.max(160, Math.ceil(measuredWidth + TEXT_ALIGN_PADDING * 2));
+    return getMinimumTextBoxWidthForMeasuredWidth({
+      measuredWidth,
+      isVertical: textItem.isVertical,
+    });
   }, [getTextWidth]);
 
   const handleTextInsert = (textData: {
@@ -387,10 +393,17 @@ function App() {
           updates.isVertical !== undefined;
 
         if (widthRelatedUpdated) {
-          updatedText.boxWidth = Math.max(
-            updatedText.boxWidth,
-            getMinimumTextBoxWidth(updatedText),
-          );
+          const minimumBoxWidth = getMinimumTextBoxWidth(updatedText);
+          const didOrientationChange =
+            updates.isVertical !== undefined &&
+            updates.isVertical !== text.isVertical &&
+            updates.boxWidth === undefined;
+
+          updatedText.boxWidth = resolveTextBoxWidth({
+            previousBoxWidth: updatedText.boxWidth,
+            minimumBoxWidth,
+            didOrientationChange,
+          });
         }
 
         return updatedText;
@@ -634,6 +647,22 @@ function App() {
   }
 
   // 모바일: '사진에 저장' 버튼 핸들러 (사용자 제스처 컨텍스트 내)
+  const openExportPreview = (previewUrl: string) => {
+    const previewWindow = window.open(previewUrl, '_blank', 'noopener,noreferrer');
+    if (previewWindow) {
+      return true;
+    }
+
+    const anchor = document.createElement('a');
+    anchor.href = previewUrl;
+    anchor.target = '_blank';
+    anchor.rel = 'noopener noreferrer';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    return true;
+  };
+
   const handleMobileSaveToPhotos = async () => {
     if (!exportBlob) return;
     try {
@@ -667,7 +696,8 @@ function App() {
     try {
       const url = exportObjectUrl || (exportBlob ? URL.createObjectURL(exportBlob) : undefined);
       if (url) {
-        window.location.href = url;
+        openExportPreview(url);
+        return;
       }
     } catch {
       console.warn('이미지 열기 폴백 실패');
@@ -960,9 +990,9 @@ function App() {
                 type="button"
                 className="linear-button linear-button--secondary"
                 onClick={() => {
-                  // 이미지 열기(폴백): 같은 탭에서 열고, 사용자가 공유/저장 선택
+                  // 이미지 열기(폴백): 새 탭 미리보기로 현재 편집 화면을 유지
                   if (exportObjectUrl) {
-                    window.location.href = exportObjectUrl;
+                    openExportPreview(exportObjectUrl);
                   }
                 }}
               >
