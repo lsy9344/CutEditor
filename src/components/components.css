@@ -689,6 +689,40 @@ p {
 
 }
 
+/* 모바일 가로모드 최적화 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-main--mobile-editor {
+    flex-direction: row;
+    gap: var(--linear-space-2);
+  }
+
+  .app-main--mobile-editor > .app-mobile-canvas-shell {
+    min-height: 0;
+    flex: 1;
+  }
+
+  .app-mobile-toolbar {
+    grid-template-columns: 1fr;
+    width: 72px;
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+
+  .app-mobile-toolbar .linear-button {
+    min-height: 0;
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+
+  .app-mobile-sheet {
+    max-height: 90dvh;
+  }
+
+  .app-mobile-sheet-backdrop {
+    align-items: center;
+  }
+}
+
 /* Animations */
 .linear-transition {
   transition: all 0.2s ease-in-out;
