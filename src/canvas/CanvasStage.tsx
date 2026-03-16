@@ -162,9 +162,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const customPickButtonRef = useRef<HTMLButtonElement | null>(null);
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
   const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
+  const [loadedStickerImages, setLoadedStickerImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
   const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
   const currentSlotIdRef = useRef<string | null>(null);
+  const stickerLoadSourcesRef = useRef<Map<string, string>>(new Map());
+  const stickerImageRefs = useRef<Record<string, Konva.Image | null>>({});
   // 빠른 선택 스와치 색상 (외부 설정으로 오버라이드 가능)
   const [presetColors, setPresetColors] = useState<string[]>([
     '#FFFFFF', // White
@@ -194,15 +197,32 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   }, []);
 
   const selectImage = useCallback((imageId: string, slotId: string) => {
+    if (selection === imageId && selectedSlot === slotId) {
+      focusCanvasArea();
+      return;
+    }
     onSelect?.(imageId);
     onSlotSelect?.(slotId);
     focusCanvasArea();
-  }, [focusCanvasArea, onSelect, onSlotSelect]);
+  }, [focusCanvasArea, onSelect, onSlotSelect, selectedSlot, selection]);
 
   const selectSticker = useCallback((stickerId: string) => {
+    if (selection === stickerId) {
+      focusCanvasArea();
+      return;
+    }
     onSelect?.(stickerId);
     focusCanvasArea();
-  }, [focusCanvasArea, onSelect]);
+  }, [focusCanvasArea, onSelect, selection]);
+
+  const selectText = useCallback((textId: string) => {
+    if (selection === textId) {
+      focusCanvasArea();
+      return;
+    }
+    onSelect?.(textId);
+    focusCanvasArea();
+  }, [focusCanvasArea, onSelect, selection]);
 
   const clearCanvasSelection = useCallback(() => {
     onSelect?.(null);
@@ -419,6 +439,84 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
     });
   }, [userImages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const activeStickerIds = new Set(stickers.map((sticker) => sticker.id));
+
+    Object.keys(stickerImageRefs.current).forEach((stickerId) => {
+      if (!activeStickerIds.has(stickerId)) {
+        delete stickerImageRefs.current[stickerId];
+      }
+    });
+
+    setLoadedStickerImages((prev) => {
+      const next = new Map<string, HTMLImageElement | null>();
+      prev.forEach((image, stickerId) => {
+        if (activeStickerIds.has(stickerId)) {
+          next.set(stickerId, image);
+        }
+      });
+      return next;
+    });
+
+    Array.from(stickerLoadSourcesRef.current.keys()).forEach((stickerId) => {
+      if (!activeStickerIds.has(stickerId)) {
+        stickerLoadSourcesRef.current.delete(stickerId);
+      }
+    });
+
+    stickers.forEach((sticker) => {
+      if (stickerLoadSourcesRef.current.get(sticker.id) === sticker.src) {
+        return;
+      }
+
+      stickerLoadSourcesRef.current.set(sticker.id, sticker.src);
+      const image = new window.Image();
+      image.crossOrigin = "anonymous";
+      image.onload = () => {
+        if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
+        setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, image));
+      };
+      image.onerror = () => {
+        if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
+        setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, null));
+      };
+      image.src = sticker.src;
+    });
+  }, [stickers]);
+
+  useEffect(() => {
+    stickers.forEach((sticker) => {
+      const node = stickerImageRefs.current[sticker.id];
+      if (!node) return;
+
+      if (sticker.tintColor) {
+        node.cache();
+      } else {
+        node.clearCache();
+      }
+      node.getLayer()?.batchDraw();
+    });
+  }, [loadedStickerImages, stickers]);
+
+  useEffect(() => {
+    stickers.forEach((sticker) => {
+      const node = stickerImageRefs.current[sticker.id];
+      if (!node) return;
+
+      const tr = node.getStage()?.findOne(`#transformer-${sticker.id}`) as Konva.Transformer | null;
+      if (!tr) return;
+
+      if (selection === sticker.id) {
+        tr.nodes([node]);
+      } else if (tr.nodes().length > 0) {
+        tr.nodes([]);
+      }
+      tr.getLayer()?.batchDraw();
+    });
+  }, [loadedStickerImages, selection, stickers]);
 
   // 드래그 앤 드롭 핸들러
   const handleDragOver = (e: React.DragEvent) => {
@@ -789,33 +887,35 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (!userImage) return;
 
     const isSelectedImage = selection === imageId;
-    if (!isSelectedImage) {
+    if (!isSelectedImage && e.evt.touches.length < 2) {
       pinchRef.current = null;
       return;
     }
 
-    if (e.evt.touches.length >= 2) {
-      e.evt.preventDefault();
-      const node = e.target as unknown as Konva.Node;
-      const nodeScale = Number.isFinite((node as Konva.Node).scaleX()) ? (node as Konva.Node).scaleX() : 1;
-      pinchRef.current = {
-        imageId,
-        initDistance: getTouchDistance(e.evt),
-        initScale: nodeScale,
-        slot,
-        displayWidth,
-        displayHeight,
-      };
+    if (!isSelectedImage) {
       selectImage(userImage.id, userImage.slotId);
     }
+
+    if (e.evt.touches.length < 2) {
+      pinchRef.current = null;
+      return;
+    }
+
+    e.evt.preventDefault();
+    pinchRef.current = {
+      imageId,
+      initDistance: getTouchDistance(e.evt),
+      initScale: Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1,
+      slot,
+      displayWidth,
+      displayHeight,
+    };
   }, [selectImage, selection, userImages]);
 
   const handleImageTouchMove = useCallback((
     e: Konva.KonvaEventObject<TouchEvent>,
     imageId: string
   ) => {
-    if (selection !== imageId) return;
-
     const state = pinchRef.current;
     if (!state || state.imageId !== imageId) return;
     if (e.evt.touches.length < 2) return;
@@ -851,7 +951,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
 
     handleImageTransform(imageId, transform);
-  }, [handleImageTransform, selection]);
+  }, [handleImageTransform]);
 
   const handleImageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
     if (e.evt.touches.length < 2) {
@@ -1572,130 +1672,99 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <Layer>
                 {stickers.map((sticker) => {
                   const isSelected = selection === sticker.id;
+                  const stickerImage = loadedStickerImages.get(sticker.id) ?? null;
+                  const effectiveScaleX = sticker.scaleX * (sticker.flipX ? -1 : 1);
+                  const effectiveScaleY = sticker.scaleY * (sticker.flipY ? -1 : 1);
 
-                  // 스티커 이미지를 비동기로 로드하기 위한 인라인 컴포넌트 패턴 구현
-                  const StickerNode = () => {
-                    const [image, setImage] = useState<HTMLImageElement | null>(null);
-                    const imageRef = useRef<Konva.Image | null>(null);
-
-                    useEffect(() => {
-                      const img = new window.Image();
-                      img.crossOrigin = 'anonymous';
-                      img.onload = () => setImage(img);
-                      img.src = sticker.src;
-                    }, [sticker.src]);
-
-                    // 틴트 색상 적용을 위한 캐시 갱신
-                    useEffect(() => {
-                      if (imageRef.current && image) {
-                        if (sticker.tintColor) {
-                          imageRef.current.cache();
-                          imageRef.current.getLayer()?.batchDraw();
-                        } else {
-                          imageRef.current.clearCache();
-                          imageRef.current.getLayer()?.batchDraw();
-                        }
-                      }
-                    }, [sticker.tintColor, image]);
-
-                    // Update transformer when selected
-                    useEffect(() => {
-                      if (isSelected && imageRef.current) {
-                        const tr = imageRef.current.getStage()?.findOne(`#transformer-${sticker.id}`);
-                        if (tr) {
-                          (tr as Konva.Transformer).nodes([imageRef.current]);
-                          tr.getLayer()?.batchDraw();
-                        }
-                      }
-                    }, [isSelected, image]);
-
-                    // 반전과 사용자 스케일을 합성
-                    const effectiveScaleX = sticker.scaleX * (sticker.flipX ? -1 : 1);
-                    const effectiveScaleY = sticker.scaleY * (sticker.flipY ? -1 : 1);
-
-                    // 틴트 필터 함수: multiply blend로 색상 오버레이 적용
-                    const tintFilter = (imageData: ImageData) => {
-                      if (!sticker.tintColor) return;
-                      const hex = sticker.tintColor.replace('#', '');
-                      const tR = parseInt(hex.substring(0, 2), 16) / 255;
-                      const tG = parseInt(hex.substring(2, 4), 16) / 255;
-                      const tB = parseInt(hex.substring(4, 6), 16) / 255;
-                      const data = imageData.data;
-                      for (let i = 0; i < data.length; i += 4) {
-                        data[i] = Math.round(data[i] * tR);     // R
-                        data[i + 1] = Math.round(data[i + 1] * tG); // G
-                        data[i + 2] = Math.round(data[i + 2] * tB); // B
-                        // A는 유지
-                      }
-                    };
-
-                    return (
-                      <Group key={sticker.id}>
-                        {image && (
-                          <KonvaImage
-                            ref={imageRef}
-                            image={image}
-                            x={sticker.x}
-                            y={sticker.y}
-                            width={sticker.width}
-                            height={sticker.height}
-                            scaleX={effectiveScaleX}
-                            scaleY={effectiveScaleY}
-                            offsetX={sticker.flipX ? sticker.width : 0}
-                            offsetY={sticker.flipY ? sticker.height : 0}
-                            rotation={sticker.rotation}
-                            draggable={!exportMode}
-                            onClick={() => selectSticker(sticker.id)}
-                            onTap={() => selectSticker(sticker.id)}
-                            onTouchStart={() => selectSticker(sticker.id)}
-                            filters={sticker.tintColor ? [tintFilter] : undefined}
-                            onDragEnd={(e) => {
-                              onStickerUpdate?.(sticker.id, {
-                                x: e.target.x(),
-                                y: e.target.y()
-                              });
-                            }}
-                            onTransformEnd={() => {
-                              const node = imageRef.current;
-                              if (node) {
-                                // Transformer가 변형한 scaleX/scaleY에서 flip 부호를 제거하여 저장
-                                const rawScaleX = node.scaleX();
-                                const rawScaleY = node.scaleY();
-                                onStickerUpdate?.(sticker.id, {
-                                  x: node.x(),
-                                  y: node.y(),
-                                  scaleX: Math.abs(rawScaleX),
-                                  scaleY: Math.abs(rawScaleY),
-                                  rotation: node.rotation()
-                                });
-                              }
-                            }}
-                          />
-                        )}
-                        {isSelected && !exportMode && (
-                          <Transformer
-                            id={`transformer-${sticker.id}`}
-                            borderStroke="black"
-                            borderStrokeWidth={3}
-                            anchorSize={12}
-                            anchorStroke="black"
-                            anchorStrokeWidth={3}
-                            anchorFill="white"
-                            anchorCornerRadius={0}
-                            boundBoxFunc={(oldBox, newBox) => {
-                              // 최소 크기 제한
-                              if (newBox.width < 10 || newBox.height < 10) {
-                                return oldBox;
-                              }
-                              return newBox;
-                            }}
-                          />
-                        )}
-                      </Group>
-                    );
+                  const tintFilter = (imageData: ImageData) => {
+                    if (!sticker.tintColor) return;
+                    const hex = sticker.tintColor.replace('#', '');
+                    const tR = parseInt(hex.substring(0, 2), 16) / 255;
+                    const tG = parseInt(hex.substring(2, 4), 16) / 255;
+                    const tB = parseInt(hex.substring(4, 6), 16) / 255;
+                    const data = imageData.data;
+                    for (let i = 0; i < data.length; i += 4) {
+                      data[i] = Math.round(data[i] * tR);
+                      data[i + 1] = Math.round(data[i + 1] * tG);
+                      data[i + 2] = Math.round(data[i + 2] * tB);
+                    }
                   };
 
-                  return <StickerNode key={sticker.id} />;
+                  return (
+                    <Group key={sticker.id}>
+                      {stickerImage && (
+                        <KonvaImage
+                          ref={(node) => {
+                            stickerImageRefs.current[sticker.id] = node;
+                          }}
+                          image={stickerImage}
+                          x={sticker.x}
+                          y={sticker.y}
+                          width={sticker.width}
+                          height={sticker.height}
+                          scaleX={effectiveScaleX}
+                          scaleY={effectiveScaleY}
+                          offsetX={sticker.flipX ? sticker.width : 0}
+                          offsetY={sticker.flipY ? sticker.height : 0}
+                          rotation={sticker.rotation}
+                          draggable={!exportMode && isSelected}
+                          onClick={() => selectSticker(sticker.id)}
+                          onTap={() => selectSticker(sticker.id)}
+                          onDragStart={() => selectSticker(sticker.id)}
+                          onDragMove={(e) => {
+                            onStickerUpdate?.(sticker.id, {
+                              x: e.target.x(),
+                              y: e.target.y()
+                            });
+                          }}
+                          filters={sticker.tintColor ? [tintFilter] : undefined}
+                          onDragEnd={(e) => {
+                            onStickerUpdate?.(sticker.id, {
+                              x: e.target.x(),
+                              y: e.target.y()
+                            });
+                          }}
+                          onTransformEnd={() => {
+                            const node = stickerImageRefs.current[sticker.id];
+                            if (!node) return;
+
+                            const rawScaleX = node.scaleX();
+                            const rawScaleY = node.scaleY();
+                            const appliedScaleX = Math.abs(rawScaleX) || 1;
+                            const appliedScaleY = Math.abs(rawScaleY) || 1;
+                            onStickerUpdate?.(sticker.id, {
+                              x: node.x(),
+                              y: node.y(),
+                              scaleX: appliedScaleX,
+                              scaleY: appliedScaleY,
+                              rotation: node.rotation()
+                            });
+                            node.scaleX(sticker.flipX ? -appliedScaleX : appliedScaleX);
+                            node.scaleY(sticker.flipY ? -appliedScaleY : appliedScaleY);
+                          }}
+                        />
+                      )}
+                      {isSelected && !exportMode && (
+                        <Transformer
+                          id={`transformer-${sticker.id}`}
+                          flipEnabled={false}
+                          borderStroke="black"
+                          borderStrokeWidth={3}
+                          anchorSize={12}
+                          anchorStroke="black"
+                          anchorStrokeWidth={3}
+                          anchorFill="white"
+                          anchorCornerRadius={0}
+                          boundBoxFunc={(oldBox, newBox) => {
+                            if (newBox.width < 10 || newBox.height < 10) {
+                              return oldBox;
+                            }
+                            return newBox;
+                          }}
+                        />
+                      )}
+                    </Group>
+                  );
                 })}
               </Layer>
 
@@ -1745,9 +1814,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           wrap="none"
                           lineHeight={textItem.isVertical ? 1.2 : 1}
                           draggable={true}
-                          onClick={() => onSelect?.(textItem.id)}
-                          onTap={() => onSelect?.(textItem.id)}
-                          onTouchStart={() => onSelect?.(textItem.id)}
+                          onClick={() => selectText(textItem.id)}
+                          onTap={() => selectText(textItem.id)}
                           onDragEnd={(e) => {
                             const newX = e.target.x();
                             const newY = e.target.y();
@@ -1757,13 +1825,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             const node = textRef.current;
                             if (!node) return;
 
+                            const nextScale = Math.max(Math.abs(node.scaleX()), Math.abs(node.scaleY()));
+
                             onTextUpdate?.(textItem.id, {
                               x: node.x(),
                               y: node.y(),
-                              boxWidth: Math.max(10, node.width() * Math.abs(node.scaleX())),
-                              fontSize: Math.max(1, Math.round(textItem.fontSize * Math.abs(node.scaleY()))),
+                              boxWidth: Math.max(10, node.width() * nextScale),
+                              fontSize: Math.max(1, Math.round(textItem.fontSize * nextScale)),
                               rotation: node.rotation(),
                             });
+                            node.scaleX(1);
+                            node.scaleY(1);
                           }}
                         />
                         {isSelected && !exportMode && (
@@ -1777,6 +1849,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             anchorFill="white"
                             anchorCornerRadius={0}
                             keepRatio={true}
+                            flipEnabled={false}
                             enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
                             boundBoxFunc={(oldBox, newBox) => {
                               if (newBox.width < 10 || newBox.height < 10) {

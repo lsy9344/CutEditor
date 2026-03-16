@@ -26,13 +26,20 @@ test("CanvasStage는 모바일 드래그를 위해 Konva 포인터 캡처를 켠
   assert.match(source, /Konva\.capturePointerEventsEnabled = true;/);
 });
 
+test("App은 캔버스 selection에 editorState 선택값을 그대로 전달한다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /<CanvasStage[\s\S]*selection=\{editorState\.selection\}[\s\S]*\/>/);
+});
+
 test("CanvasStage는 선택된 이미지만 모바일에서 직접 조작할 수 있게 제한한다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
   assert.match(source, /const isTouchManipulationActive = Boolean\(selection\);/);
   assert.match(source, /const isSelectedImage = selection === userImage\.id;/);
   assert.match(source, /draggable=\{!exportMode && isSelectedImage\}/);
-  assert.match(source, /if \(!isSelectedImage\) \{\s*pinchRef\.current = null;\s*return;\s*\}/s);
+  assert.match(source, /selectImage\(userImage\.id, userImage\.slotId\);/);
+  assert.match(source, /if \(e\.evt\.touches\.length < 2\) \{\s*pinchRef\.current = null;\s*return;\s*\}/s);
   assert.match(source, /onTap=\{\(\) => \{\s*selectImage\(userImage\.id, slot\.id\);\s*\}\}/s);
 });
 
@@ -54,4 +61,12 @@ test("CanvasStage는 배경을 탭하면 현재 선택을 해제한다", () => {
   assert.match(source, /onSlotSelect\?\.\(null\);/);
   assert.match(source, /onMouseDown=\{handleStagePointerDown\}/);
   assert.match(source, /onTouchStart=\{handleStagePointerDown\}/);
+});
+
+test("CanvasStage는 스티커 이미지를 상위 캐시에서 읽고 선택된 스티커만 드래그한다", () => {
+  const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+
+  assert.match(source, /draggable=\{!exportMode && isSelected\}/);
+  assert.match(source, /onDragStart=\{\(\) => selectSticker\(sticker\.id\)\}/);
+  assert.match(source, /id=\{`transformer-\$\{sticker\.id\}`\}[\s\S]*flipEnabled=\{false\}/);
 });

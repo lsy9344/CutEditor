@@ -145,7 +145,7 @@ test("스티커 클릭은 캔버스 포커스를 유지하도록 selectSticker�
   assert.match(source, /const selectSticker = useCallback/);
   assert.match(source, /onClick=\{\(\) => selectSticker\(sticker.id\)\}/);
   assert.match(source, /onTap=\{\(\) => selectSticker\(sticker.id\)\}/);
-  assert.match(source, /onTouchStart=\{\(\) => selectSticker\(sticker.id\)\}/);
+  assert.match(source, /onDragStart=\{\(\) => selectSticker\(sticker.id\)\}/);
 });
 
 test("스티커 방향키 이동은 좌표에 delta를 더한다", async () => {
@@ -179,5 +179,19 @@ test("텍스트 정렬은 캔버스가 아니라 선택 박스 폭을 기준으�
   assert.match(stageSource, /width=\{textItem\.boxWidth\}/);
   assert.match(stageSource, /offsetX=\{textItem\.boxWidth \/ 2\}/);
   assert.match(stageSource, /onTransformEnd=\{\(\) => \{/);
-  assert.match(stageSource, /boxWidth: Math\.max\(10, node\.width\(\) \* Math\.abs\(node\.scaleX\(\)\)\)/);
+  assert.match(stageSource, /const nextScale = Math\.max\(Math\.abs\(node\.scaleX\(\)\), Math\.abs\(node\.scaleY\(\)\)\);/);
+  assert.match(stageSource, /boxWidth: Math\.max\(10, node\.width\(\) \* nextScale\)/);
+  assert.match(stageSource, /node\.scaleX\(1\);/);
+  assert.match(stageSource, /node\.scaleY\(1\);/);
+  assert.match(stageSource, /id=\{`transformer-text-\$\{textItem\.id\}`\}[\s\S]*flipEnabled=\{false\}/);
+});
+
+test("스티커 transform은 scale을 상태에 반영한 뒤 노드 기준값을 다시 맞춘다", () => {
+  const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+
+  assert.match(source, /onDragMove=\{\(e\) => \{\s*onStickerUpdate\?\.\(sticker\.id,\s*\{\s*x: e\.target\.x\(\),\s*y: e\.target\.y\(\),?\s*\}\);?\s*\}\}/s);
+  assert.match(source, /const appliedScaleX = Math\.abs\(rawScaleX\) \|\| 1;/);
+  assert.match(source, /const appliedScaleY = Math\.abs\(rawScaleY\) \|\| 1;/);
+  assert.match(source, /node\.scaleX\(sticker\.flipX \? -appliedScaleX : appliedScaleX\);/);
+  assert.match(source, /node\.scaleY\(sticker\.flipY \? -appliedScaleY : appliedScaleY\);/);
 });

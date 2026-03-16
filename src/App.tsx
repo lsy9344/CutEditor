@@ -246,9 +246,14 @@ function App() {
       console.log('🔥 Updating userImages from', prev.userImages.length, 'to', newUserImages.length);
       return {
         ...prev,
-        userImages: newUserImages
+        userImages: newUserImages,
+        selection: imageId,
+        selectedSlot: slotId,
       };
     });
+
+    setSelectedTextId(null);
+    setSelectedStickerId(null);
   }
 
 
@@ -714,7 +719,7 @@ function App() {
   ) : (
     <CanvasStage
       template={editorState.template}
-      selection={selectedTextId || selectedStickerId}
+      selection={editorState.selection}
       selectedSlot={editorState.selectedSlot}
       zoom={editorState.zoom}
       selectedFrame={editorState.selectedFrame}
