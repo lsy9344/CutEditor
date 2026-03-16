@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react'
+import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
@@ -6,7 +6,12 @@ import { SidebarRight } from './ui/SidebarRight'
 import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
-import { FRAME_LAYOUTS, type FrameType, type UserImage } from './types/frame'
+import {
+  EXACT_VERTICAL_CANVAS,
+  FRAME_LAYOUTS,
+  type FrameType,
+  type UserImage,
+} from './types/frame'
 import { FRAME_OPTIONS_BY_CATEGORY } from './ui/SidebarLeft'
 import {
   DEFAULT_STICKER_HEIGHT,
@@ -17,6 +22,7 @@ import {
   loadStickerDimensions,
 } from './utils/stickerSizing'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
+import { getExportExperience, getExportRenderPlan } from './utils/exportBehavior'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -50,12 +56,15 @@ type CanvasText = {
   text: string;
   x: number;
   y: number;
+  boxWidth: number;
   fontSize: number;
   fontFamily: string;
   fontColor: string;
+  isBold: boolean;
   isItalic: boolean;
   isVertical: boolean;
   textAlign: TextAlign;
+  rotation: number;
 };
 
 type CanvasSticker = {
@@ -68,10 +77,13 @@ type CanvasSticker = {
   scaleX: number;
   scaleY: number;
   rotation: number;
+  flipX: boolean;
+  flipY: boolean;
+  tintColor: string | null;
 };
 
-const DEFAULT_CANVAS_WIDTH = 483;
-const DEFAULT_CANVAS_HEIGHT = 719;
+const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
+const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const TEXT_ALIGN_PADDING = 24;
 
 declare global {
@@ -96,12 +108,42 @@ function App() {
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
   const [exportObjectUrl, setExportObjectUrl] = useState<string | null>(null);
   const [exportFilename, setExportFilename] = useState<string>("");
+  const [viewportWidth, setViewportWidth] = useState<number>(() => (
+    typeof window === 'undefined' ? 1280 : window.innerWidth
+  ));
+  const [hasCoarsePointer, setHasCoarsePointer] = useState<boolean>(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)').matches
+      : false
+  ));
+  const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
 
-  const isMobile = useMemo(() => {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    return /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const coarseMedia = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(pointer: coarse)')
+      : null;
+
+    const updateViewport = () => {
+      setViewportWidth(window.innerWidth);
+      setHasCoarsePointer(coarseMedia?.matches ?? false);
+    };
+
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    coarseMedia?.addEventListener?.('change', updateViewport);
+
+    return () => {
+      window.removeEventListener('resize', updateViewport);
+      coarseMedia?.removeEventListener?.('change', updateViewport);
+    };
   }, []);
+
+  const isResponsiveMobile = useMemo(() => {
+    const touchPoints = typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints ?? 0;
+    return viewportWidth <= 768 || hasCoarsePointer || touchPoints > 0;
+  }, [hasCoarsePointer, viewportWidth]);
 
   const supportsFilePicker = useMemo(() => (
     typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function'
@@ -149,6 +191,7 @@ function App() {
     setSelectedTextId(null);
     setSelectedStickerId(null);
     setPendingFrameChange(null);
+    setMobilePanel(null);
     setCanvasMode('editor');
   };
 
@@ -233,12 +276,11 @@ function App() {
     setEditorState(prev => ({ ...prev, zoom }))
   }
 
-  const getCanvasWidth = useCallback(() => {
-    if (!editorState.selectedFrame) {
-      return DEFAULT_CANVAS_WIDTH;
+  useEffect(() => {
+    if (!isResponsiveMobile || canvasMode !== 'editor') {
+      setMobilePanel(null);
     }
-    return FRAME_LAYOUTS[editorState.selectedFrame].canvasWidth;
-  }, [editorState.selectedFrame]);
+  }, [canvasMode, isResponsiveMobile]);
 
   const getTextWidth = useCallback((textItem: CanvasText) => {
     if (textItem.isVertical) {
@@ -259,7 +301,7 @@ function App() {
       return Math.max(maxLen * textItem.fontSize * 0.6, 1);
     }
 
-    ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
+    ctx.font = `${textItem.isItalic ? 'italic ' : ''}${textItem.isBold ? 'bold ' : ''}${textItem.fontSize}px ${textItem.fontFamily}`;
     const lines = textItem.text.split('\n');
     let maxWidth = 1;
     lines.forEach(line => {
@@ -271,33 +313,17 @@ function App() {
     return maxWidth;
   }, []);
 
-  const getAlignedTextX = useCallback((textItem: CanvasText, align: TextAlign) => {
-    const canvasWidth = getCanvasWidth();
-    const textWidth = getTextWidth(textItem);
-    const halfWidth = textWidth / 2;
-
-    let targetX = textItem.x;
-    if (align === 'left') {
-      targetX = TEXT_ALIGN_PADDING + halfWidth;
-    } else if (align === 'center') {
-      targetX = canvasWidth / 2;
-    } else {
-      targetX = canvasWidth - TEXT_ALIGN_PADDING - halfWidth;
-    }
-
-    const minX = halfWidth;
-    const maxX = canvasWidth - halfWidth;
-    if (minX > maxX) {
-      return canvasWidth / 2;
-    }
-    return Math.min(maxX, Math.max(minX, targetX));
-  }, [getCanvasWidth, getTextWidth]);
+  const getMinimumTextBoxWidth = useCallback((textItem: Pick<CanvasText, 'text' | 'fontSize' | 'fontFamily' | 'isBold' | 'isItalic' | 'isVertical'>) => {
+    const measuredWidth = getTextWidth(textItem as CanvasText);
+    return Math.max(160, Math.ceil(measuredWidth + TEXT_ALIGN_PADDING * 2));
+  }, [getTextWidth]);
 
   const handleTextInsert = (textData: {
     text: string;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: TextAlign;
@@ -307,8 +333,10 @@ function App() {
     const newText: CanvasText = {
       id: `text-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       ...textData,
+      boxWidth: 0,
+      rotation: 0,
     };
-    newText.x = getAlignedTextX(newText, newText.textAlign);
+    newText.boxWidth = getMinimumTextBoxWidth(newText);
 
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
@@ -325,12 +353,17 @@ function App() {
 
   const handleTextUpdate = (textId: string, updates: Partial<{
     text: string;
+    x: number;
+    y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: TextAlign;
+    rotation: number;
   }>) => {
     setTexts(prev =>
       prev.map(text => {
@@ -341,17 +374,18 @@ function App() {
         const updatedText: CanvasText = { ...text, ...updates };
         const widthRelatedUpdated =
           updates.text !== undefined ||
+          updates.boxWidth !== undefined ||
           updates.fontSize !== undefined ||
           updates.fontFamily !== undefined ||
+          updates.isBold !== undefined ||
           updates.isItalic !== undefined ||
           updates.isVertical !== undefined;
 
-        const shouldRealign =
-          updates.textAlign !== undefined ||
-          (updatedText.textAlign !== 'center' && widthRelatedUpdated);
-
-        if (shouldRealign) {
-          updatedText.x = getAlignedTextX(updatedText, updatedText.textAlign);
+        if (widthRelatedUpdated) {
+          updatedText.boxWidth = Math.max(
+            updatedText.boxWidth,
+            getMinimumTextBoxWidth(updatedText),
+          );
         }
 
         return updatedText;
@@ -401,7 +435,10 @@ function App() {
       height,
       scaleX: initialScale,
       scaleY: initialScale,
-      rotation: 0
+      rotation: 0,
+      flipX: false,
+      flipY: false,
+      tintColor: null,
     };
 
     setStickers(prev => [...prev, newSticker]);
@@ -453,6 +490,67 @@ function App() {
     });
   }
 
+  const canShareExportFile = useCallback((file: File) => {
+    const nav = navigator as Navigator & {
+      canShare?: (data: { files: File[] }) => boolean;
+    };
+
+    if (typeof navigator === 'undefined') return false;
+    if (typeof nav.canShare !== 'function') return false;
+
+    try {
+      return nav.canShare({ files: [file] });
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const exportBlobFromStage = useCallback(async ({
+    frameType,
+    stage,
+  }: {
+    frameType: FrameType;
+    stage: Konva.Stage;
+  }) => {
+    const frameLayout = FRAME_LAYOUTS[frameType];
+    const renderPlan = getExportRenderPlan({
+      frameType,
+      logicalCanvasWidth: frameLayout.canvasWidth,
+      logicalCanvasHeight: frameLayout.canvasHeight,
+      fallbackMaxWidthPx: 3072,
+    });
+    const previousSize = { width: stage.width(), height: stage.height() };
+    const previousScale = { x: stage.scaleX(), y: stage.scaleY() };
+
+    const restoreStage = () => {
+      stage.size(previousSize);
+      stage.scale(previousScale);
+      stage.batchDraw();
+    };
+
+    const renderBlob = async (pixelRatio: number) => {
+      stage.size({ width: frameLayout.canvasWidth, height: frameLayout.canvasHeight });
+      stage.scale({ x: 1, y: 1 });
+      stage.batchDraw();
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
+      return fetch(dataUrl).then((response) => response.blob());
+    };
+
+    try {
+      try {
+        return await renderBlob(renderPlan.initialPixelRatio);
+      } catch (initialError) {
+        if (renderPlan.fallbackPixelRatio == null) {
+          throw initialError;
+        }
+        return await renderBlob(renderPlan.fallbackPixelRatio);
+      }
+    } finally {
+      restoreStage();
+    }
+  }, []);
+
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
   const handleExport = async () => {
     const frameType = editorState.selectedFrame;
@@ -460,11 +558,6 @@ function App() {
       alert('프레임을 먼저 선택해주세요.');
       return;
     }
-    // 목표 해상도 계산 (docs/task/export_functionality.md: 1200 DPI, 10x15cm)
-    const isHorizontal = /h$/.test(frameType);
-    const targetDpi = 1200;
-    const cmToPx = (cm: number) => Math.round((cm * targetDpi) / 2.54);
-    const targetWidthPx = cmToPx(isHorizontal ? 15 : 10);
 
     // Stage 준비 및 오버레이 제거
     setExportMode(true);
@@ -474,30 +567,25 @@ function App() {
       const stage = stageRef.current;
       if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
 
-      // 현재 Stage 크기 기준으로 pixelRatio 계산
-      const stageW = stage.width();
-      const ratioX = targetWidthPx / stageW;
-      // 모바일 메모리 한계 고려: 과도한 픽셀 비율을 제한
-      const maxMobileRatio = 3; // 안전한 최대 배수 (디바이스에 따라 조정 가능)
-      const pixelRatio = isMobile ? Math.min(ratioX, maxMobileRatio) : ratioX;
-
-      // PNG DataURL 생성 후 Blob으로 변환 (모바일 메모리/호환성 고려)
-      const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
-      const blob = await fetch(dataUrl).then(r => r.blob());
-
       const filename = makeSuggestedFilename();
+      const blob = await exportBlobFromStage({ frameType, stage });
+      const exportFile = new File([blob], filename, { type: 'image/png' });
+      const exportExperience = getExportExperience({
+        hasShareFiles: canShareExportFile(exportFile),
+        hasFilePicker: supportsFilePicker,
+        prefersTouchExperience: isResponsiveMobile,
+      });
 
-      if (isMobile) {
-        // iOS 등에서 사용자가 명시적으로 '사진에 저장'을 누를 수 있도록 오버레이 표시
+      if (exportExperience === 'share-sheet') {
         const url = URL.createObjectURL(blob);
         setExportBlob(blob);
         setExportObjectUrl(url);
         setExportFilename(filename);
         setExportOverlayOpen(true);
-        return; // 오버레이에서 후속 액션 수행
+        return;
       }
 
-      if (supportsFilePicker && window.showSaveFilePicker) {
+      if (exportExperience === 'save-file-picker' && supportsFilePicker && window.showSaveFilePicker) {
         try {
           const fileHandle = await window.showSaveFilePicker({
             suggestedName: filename,
@@ -546,8 +634,7 @@ function App() {
     try {
       const file = new File([exportBlob], exportFilename || 'cut_export.png', { type: 'image/png' });
       const nav = navigator as unknown as { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title: string }) => Promise<void> };
-      const canShareFiles = typeof navigator !== 'undefined' && 'canShare' in navigator && nav.canShare?.({ files: [file] });
-      if (canShareFiles && 'share' in navigator) {
+      if (canShareExportFile(file) && 'share' in navigator) {
         await nav.share?.({ files: [file], title: '컷 내보내기' });
         // 공유 완료 후 오버레이 닫기
         handleCloseExportOverlay();
@@ -601,64 +688,171 @@ function App() {
   ) || null;
 
   const availableOptions = activeCategory ? FRAME_OPTIONS_BY_CATEGORY[activeCategory] : [];
+  const isMobileEditor = isResponsiveMobile && canvasMode === 'editor';
+  const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
+  const selectedSticker = selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined;
+
+  const sharedSidebarRightProps = {
+    selectedFrame: editorState.selectedFrame,
+    selectedText,
+    selectedSticker,
+    onTextInsert: handleTextInsert,
+    onTextUpdate: handleTextUpdate,
+    onTextDelete: handleTextDelete,
+    onStickerInsert: handleStickerInsert,
+    onStickerUpdate: handleStickerUpdate,
+    onStickerDelete: handleStickerDelete,
+    onExport: handleExport,
+  };
+
+  const mainCanvasContent = canvasMode === 'gallery' ? (
+    <FrameGallery
+      selectedCategory={activeCategory}
+      options={availableOptions}
+      onSelectFrame={handleFrameSelect}
+    />
+  ) : (
+    <CanvasStage
+      template={editorState.template}
+      selection={selectedTextId || selectedStickerId}
+      selectedSlot={editorState.selectedSlot}
+      zoom={editorState.zoom}
+      selectedFrame={editorState.selectedFrame}
+      userImages={editorState.userImages}
+      frameColor={editorState.frameColor}
+      exportMode={exportMode}
+      stageRefExternal={stageRef}
+      texts={texts}
+      stickers={stickers}
+      onSelect={handleSelect}
+      onSlotSelect={handleSlotSelect}
+      onZoomChange={handleZoomChange}
+      onImageUpload={handleImageUpload}
+      onImageTransform={handleImageTransform}
+      onFrameColorChange={handleFrameColorChange}
+      onTextMove={handleTextMove}
+      onTextUpdate={handleTextUpdate}
+      onImageDelete={handleImageDelete}
+      onStickerDelete={handleStickerDelete}
+      onStickerUpdate={handleStickerUpdate}
+    />
+  );
+
+  const mobileSheetTitle = mobilePanel === 'frames'
+    ? '프레임 선택'
+    : mobilePanel === 'text'
+      ? '글씨 편집'
+      : '스티커 편집';
 
   return (
     <div className="app-container">
-      <div className="app-main">
-        <SidebarLeft
-          selectedFrame={editorState.selectedFrame}
-          onFrameSelect={handleFrameSelect}
-          frameColor={editorState.frameColor}
-          onFrameColorChange={handleFrameColorChange}
-          canvasMode={canvasMode}
-          onCanvasModeChange={setCanvasMode}
-          selectedCategory={selectedCategory}
-          onCategoryChange={setSelectedCategory}
-        />
-        {canvasMode === 'gallery' ? (
-          <FrameGallery
-            selectedCategory={activeCategory}
-            options={availableOptions}
-            onSelectFrame={handleFrameSelect}
-          />
-        ) : (
-          <CanvasStage
-            template={editorState.template}
-            selection={selectedTextId || selectedStickerId}
-            selectedSlot={editorState.selectedSlot}
-            zoom={editorState.zoom}
+      <div className={`app-main${isMobileEditor ? ' app-main--mobile-editor' : ''}`}>
+        {!isMobileEditor && (
+          <SidebarLeft
             selectedFrame={editorState.selectedFrame}
-            userImages={editorState.userImages}
+            onFrameSelect={handleFrameSelect}
             frameColor={editorState.frameColor}
-            exportMode={exportMode}
-            stageRefExternal={stageRef}
-            texts={texts}
-            stickers={stickers}
-            onSelect={handleSelect}
-            onSlotSelect={handleSlotSelect}
-            onZoomChange={handleZoomChange}
-            onImageUpload={handleImageUpload}
-            onImageTransform={handleImageTransform}
             onFrameColorChange={handleFrameColorChange}
-            onTextMove={handleTextMove}
-            onTextUpdate={handleTextUpdate}
-            onImageDelete={handleImageDelete}
-            onStickerDelete={handleStickerDelete}
-            onStickerUpdate={handleStickerUpdate}
+            canvasMode={canvasMode}
+            onCanvasModeChange={setCanvasMode}
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
           />
         )}
-        <SidebarRight
-          selectedFrame={editorState.selectedFrame}
-          selectedText={selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined}
-          selectedSticker={selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined}
-          onTextInsert={handleTextInsert}
-          onTextUpdate={handleTextUpdate}
-          onTextDelete={handleTextDelete}
-          onStickerInsert={handleStickerInsert}
-          onStickerDelete={handleStickerDelete}
-          onExport={handleExport}
-        />
+        {isMobileEditor ? (
+          <>
+            <div className="app-mobile-canvas-shell">
+              {mainCanvasContent}
+            </div>
+            {/* 모바일 액션 바 */}
+            <div className="app-mobile-toolbar linear-card">
+              <button
+                type="button"
+                className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                onClick={() => setMobilePanel((prev) => prev === 'frames' ? null : 'frames')}
+              >
+                프레임
+              </button>
+              <button
+                type="button"
+                className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                onClick={() => setMobilePanel((prev) => prev === 'text' ? null : 'text')}
+              >
+                글씨
+              </button>
+              <button
+                type="button"
+                className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                onClick={() => setMobilePanel((prev) => prev === 'sticker' ? null : 'sticker')}
+              >
+                스티커
+              </button>
+              <button
+                type="button"
+                className="linear-button linear-button--primary"
+                onClick={handleExport}
+              >
+                저장
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            {mainCanvasContent}
+            {!isResponsiveMobile && (
+              <SidebarRight
+                {...sharedSidebarRightProps}
+              />
+            )}
+          </>
+        )}
       </div>
+
+      {isMobileEditor && mobilePanel && (
+        <div
+          className="app-mobile-sheet-backdrop linear-fade-in"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setMobilePanel(null)}
+        >
+          <div
+            className="app-mobile-sheet linear-card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="app-mobile-sheet__header">
+              <h3>{mobileSheetTitle}</h3>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => setMobilePanel(null)}
+              >
+                닫기
+              </button>
+            </div>
+            <div className="app-mobile-sheet__content">
+              {mobilePanel === 'frames' ? (
+                <SidebarLeft
+                  selectedFrame={editorState.selectedFrame}
+                  onFrameSelect={handleFrameSelect}
+                  frameColor={editorState.frameColor}
+                  onFrameColorChange={handleFrameColorChange}
+                  canvasMode={canvasMode}
+                  onCanvasModeChange={setCanvasMode}
+                  selectedCategory={selectedCategory}
+                  onCategoryChange={setSelectedCategory}
+                />
+              ) : (
+                <SidebarRight
+                  {...sharedSidebarRightProps}
+                  forcedTab={mobilePanel}
+                  showActionRail={false}
+                  showExportButton={false}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingFrameChange && (
         <div
@@ -716,7 +910,7 @@ function App() {
       )}
 
       {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
-      {isMobile && exportOverlayOpen && (
+      {isResponsiveMobile && exportOverlayOpen && (
         <div
           role="dialog"
           aria-modal="true"
@@ -746,7 +940,9 @@ function App() {
                 닫기
               </button>
             </div>
-            <p style={{ marginBottom: 12 }}>사진 앱에 저장하려면 아래 버튼을 눌러 주세요.</p>
+            <p style={{ marginBottom: 12 }}>
+              공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.
+            </p>
             {exportObjectUrl && (
               <img
                 src={exportObjectUrl}

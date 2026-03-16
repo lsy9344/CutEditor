@@ -23,11 +23,11 @@ export const useFonts = () => {
           // ["A.ttf", "B.ttf"] 형태
           return data.filter((f) => /\.ttf$/i.test(f));
         }
-        if (Array.isArray((data as any).files)) {
-          return (data as any).files.filter((f: string) => /\.ttf$/i.test(f));
+        if (data && typeof data === 'object' && Array.isArray((data as { files?: string[] }).files)) {
+          return (data as { files: string[] }).files.filter((f: string) => /\\.ttf$/.test(f));
         }
       }
-    } catch (_) {
+    } catch {
       // 무시하고 다음 방법으로 진행
     }
 
@@ -43,7 +43,7 @@ export const useFonts = () => {
           .filter(Boolean);
         if (files.length > 0) return files;
       }
-    } catch (_) {
+    } catch {
       // 무시
     }
 

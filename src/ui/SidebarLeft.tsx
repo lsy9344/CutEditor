@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import type { FrameType, FrameOption } from "../types/frame";
+import { FRAME_LAYOUTS, type FrameType, type FrameOption } from "../types/frame";
 import { getCategorySelectionOutcome } from "../utils/frameChangeFlow";
 
 export type SidebarLeftProps = {
@@ -40,7 +40,6 @@ export const FRAME_OPTIONS_BY_CATEGORY: Record<string, FrameOption[]> = {
   "8컷": [
     { value: "8v_1", label: "8컷 세로 1", image: "8v_1.png", orientation: "vertical" },
     { value: "8v_2", label: "8컷 세로 2", image: "8v_2.png", orientation: "vertical" },
-    { value: "8v_3", label: "8컷 세로 3", image: "8v_3.png", orientation: "vertical" },
   ],
   "9컷": [
     { value: "9v", label: "9컷 세로", image: "9v.png", orientation: "vertical" },
@@ -56,9 +55,27 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   onCategoryChange,
 }) => {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const [previewSources, setPreviewSources] = useState<Record<string, string>>({});
 
   const handleImageLoad = (value: string) => {
     setLoadedImages((prev) => ({ ...prev, [value]: true }));
+  };
+
+  const getPreviewSource = (option: FrameOption): string => {
+    return previewSources[option.value] ?? `/popover/${option.image}`;
+  };
+
+  const handleImageError = (option: FrameOption) => {
+    const fallbackSource = FRAME_LAYOUTS[option.value]?.imagePath;
+    if (!fallbackSource) return;
+
+    setPreviewSources((prev) => {
+      if (prev[option.value] === fallbackSource) {
+        return prev;
+      }
+      return { ...prev, [option.value]: fallbackSource };
+    });
+    setLoadedImages((prev) => ({ ...prev, [option.value]: false }));
   };
 
   const handleCategoryClick = (category: string) => {
@@ -147,35 +164,49 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
                 <div
                   key={option.value}
-                  className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''}`}
+                  className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''} ${selectedFrame === option.value ? 'frame-gallery-card--selected' : ''}`}
                   onClick={() => handleFrameSelect(option.value)}
-                  style={{
-                    borderColor: selectedFrame === option.value ? 'var(--linear-neutral-500)' : 'var(--linear-neutral-400)',
-                    backgroundColor: selectedFrame === option.value ? 'var(--linear-primary-500)' : 'var(--linear-neutral-700)',
-                  }}
                 >
-                  <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`} style={{ borderBottomColor: selectedFrame === option.value ? 'var(--linear-neutral-500)' : 'var(--linear-neutral-400)' }}>
+                  <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`}>
                     <img
-                      src={`/popover/${option.image}`}
+                      src={getPreviewSource(option)}
                       alt={option.label}
                       loading="lazy"
                       onLoad={() => handleImageLoad(option.value)}
+                      onError={() => handleImageError(option)}
                     />
+                    {canvasMode === 'editor' && selectedFrame === option.value && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        backgroundColor: 'var(--linear-accent-success-bg)',
+                        color: 'var(--linear-neutral-50)',
+                        border: '2px solid var(--linear-neutral-500)',
+                        boxShadow: '2px 2px 0px 0px #000',
+                        width: '28px',
+                        height: '28px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: '900',
+                        fontSize: '16px',
+                        zIndex: 10
+                      }}>
+                        ✓
+                      </div>
+                    )}
                   </div>
                   <div className="frame-gallery-label" style={{ padding: '8px' }}>
-                    <span className="label-text" style={{ fontSize: '11px', color: selectedFrame === option.value ? 'var(--linear-neutral-900)' : 'var(--linear-neutral-50)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                    <span className="label-text" style={{ 
+                      fontSize: '12px', 
+                      color: 'var(--linear-neutral-50)', 
+                      display: 'flex', 
+                      flexDirection: 'column', 
+                      alignItems: 'center', 
+                      gap: '4px'
+                    }}>
                       {option.label}
-                      {canvasMode === 'editor' && selectedFrame === option.value && (
-                        <span style={{
-                          backgroundColor: 'var(--linear-neutral-900)',
-                          color: 'var(--linear-primary-500)',
-                          fontSize: '9px',
-                          padding: '2px 4px',
-                          border: '1px solid var(--linear-neutral-500)',
-                        }}>
-                          ✏️ 편집 중
-                        </span>
-                      )}
                     </span>
                   </div>
                 </div>

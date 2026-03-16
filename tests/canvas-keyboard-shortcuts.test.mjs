@@ -166,3 +166,18 @@ test("캔버스 키보드 방향키는 선택된 스티커 이동도 지원한�
   assert.match(source, /onStickerUpdate\?\.\(selectedSticker\.id,/);
   assert.match(source, /getNudgedPosition\(\{/);
 });
+
+test("텍스트 정렬은 캔버스가 아니라 선택 박스 폭을 기준으로 렌더링한다", () => {
+  const appSource = readFileSync("src/App.tsx", "utf8");
+  const stageSource = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+
+  assert.match(appSource, /boxWidth:\s*number;/);
+  assert.match(appSource, /const getMinimumTextBoxWidth = useCallback/);
+  assert.match(appSource, /newText\.boxWidth = getMinimumTextBoxWidth\(newText\);/);
+  assert.doesNotMatch(appSource, /updatedText\.x = getAlignedTextX\(updatedText, updatedText\.textAlign\);/);
+
+  assert.match(stageSource, /width=\{textItem\.boxWidth\}/);
+  assert.match(stageSource, /offsetX=\{textItem\.boxWidth \/ 2\}/);
+  assert.match(stageSource, /onTransformEnd=\{\(\) => \{/);
+  assert.match(stageSource, /boxWidth: Math\.max\(10, node\.width\(\) \* Math\.abs\(node\.scaleX\(\)\)\)/);
+});

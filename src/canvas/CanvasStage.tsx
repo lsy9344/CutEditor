@@ -17,6 +17,11 @@ import {
   KEYBOARD_ROTATE_STEP,
   KEYBOARD_SCALE_FACTOR,
 } from "./keyboardShortcuts";
+import { getZoomToFit } from "./zoomSizing";
+
+// 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
+Konva.hitOnDragEnabled = true;
+Konva.capturePointerEventsEnabled = true;
 
 export type CanvasStageProps = {
   template: Template | null;
@@ -33,12 +38,15 @@ export type CanvasStageProps = {
     text: string;
     x: number;
     y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: "left" | "center" | "right";
+    rotation: number;
   }>;
   stickers?: Array<{
     id: string;
@@ -50,6 +58,9 @@ export type CanvasStageProps = {
     scaleX: number;
     scaleY: number;
     rotation: number;
+    flipX: boolean;
+    flipY: boolean;
+    tintColor: string | null;
   }>;
   onSelect?: (id: string | null) => void;
   onSlotSelect?: (slotId: string | null) => void;
@@ -60,12 +71,17 @@ export type CanvasStageProps = {
   onTextMove?: (textId: string, x: number, y: number) => void;
   onTextUpdate?: (textId: string, updates: Partial<{
     text: string;
+    x: number;
+    y: number;
+    boxWidth: number;
     fontSize: number;
     fontFamily: string;
     fontColor: string;
+    isBold: boolean;
     isItalic: boolean;
     isVertical: boolean;
     textAlign: "left" | "center" | "right";
+    rotation: number;
   }>) => void;
   onImageDelete?: (imageId: string) => void;
   onStickerDelete?: (stickerId: string) => void;
@@ -77,7 +93,36 @@ export type CanvasStageProps = {
     scaleX: number;
     scaleY: number;
     rotation: number;
+    flipX: boolean;
+    flipY: boolean;
+    tintColor: string | null;
   }>) => void;
+};
+
+const toLegacyFrameFileName = (frameType: FrameType): string | null => {
+  if (frameType === "1l") return "1_l";
+  if (frameType === "1f") return "1_v";
+
+  const parsed = frameType.match(/^(\d+)([a-z])(?:_(\d+))?$/i);
+  if (!parsed) return null;
+
+  const [, cutCount, orientation, variant] = parsed;
+  const suffix = variant ? `_${variant}` : "";
+  return `${cutCount}_${orientation.toLowerCase()}${suffix}`;
+};
+
+const buildFrameImageCandidates = (frameType: FrameType, primaryPath: string): string[] => {
+  const candidates = new Set<string>([
+    primaryPath,
+    `/frame/${frameType}.png`,
+  ]);
+
+  const legacyFileName = toLegacyFrameFileName(frameType);
+  if (legacyFileName) {
+    candidates.add(`/frame/${legacyFileName}.png`);
+  }
+
+  return Array.from(candidates);
 };
 
 export const CanvasStage: React.FC<CanvasStageProps> = ({
@@ -97,7 +142,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onImageTransform,
   onFrameColorChange,
   onTextMove,
-  onTextUpdate, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onTextUpdate,
   onZoomChange,
   onImageDelete,
   onStickerDelete,
@@ -135,9 +180,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
+  const isTouchManipulationActive = Boolean(selection);
 
   const focusCanvasArea = useCallback(() => {
     stageWrapperRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const setStageCursor = useCallback((cursor: string) => {
+    const stageContainer = stageRef.current?.container();
+    if (stageContainer) {
+      stageContainer.style.cursor = cursor;
+    }
   }, []);
 
   const selectImage = useCallback((imageId: string, slotId: string) => {
@@ -150,6 +203,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     onSelect?.(stickerId);
     focusCanvasArea();
   }, [focusCanvasArea, onSelect]);
+
+  const clearCanvasSelection = useCallback(() => {
+    onSelect?.(null);
+    onSlotSelect?.(null);
+    setStageCursor("default");
+  }, [onSelect, onSlotSelect, setStageCursor]);
+
+  const handleStagePointerDown = useCallback((e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (e.target === e.target.getStage()) {
+      focusCanvasArea();
+      clearCanvasSelection();
+    }
+  }, [clearCanvasSelection, focusCanvasArea]);
 
   const getImageDisplayContext = useCallback((image: Pick<UserImage, "id" | "slotId">) => {
     if (!frameLayout) return null;
@@ -177,7 +243,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   // 텍스트 크기 계산 유틸리티 함수
-  const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isItalic: boolean, isVertical: boolean) => {
+  const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isBold: boolean, isItalic: boolean, isVertical: boolean) => {
     if (isVertical) {
       // 세로 배치일 때
       const lines = text.split('\n');
@@ -193,7 +259,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const lines = text.split('\n');
 
       if (ctx) {
-        ctx.font = `${isItalic ? 'italic ' : ''}${fontSize}px ${fontFamily}`;
+        ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
         const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
         return {
           width: maxWidth,
@@ -220,13 +286,42 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // 프레임 이미지 로드 (캐시 우회 및 오류 처리)
   useEffect(() => {
     if (selectedFrame && frameLayout) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => setFrameImage(img);
-      img.onerror = () => setFrameImage(null);
-      const src = frameLayout.imagePath;
-      const bust = `${src}${src.includes("?") ? "&" : "?"}t=${Date.now()}`;
-      img.src = bust;
+      let cancelled = false;
+      const sources = buildFrameImageCandidates(selectedFrame, frameLayout.imagePath);
+      let currentSourceIndex = 0;
+
+      const tryLoad = () => {
+        if (cancelled) return;
+
+        const source = sources[currentSourceIndex];
+        if (!source) {
+          console.warn(`[CanvasStage] 프레임 이미지를 불러오지 못했습니다: ${selectedFrame}`);
+          setFrameImage(null);
+          return;
+        }
+
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          if (!cancelled) {
+            setFrameImage(img);
+          }
+        };
+        img.onerror = () => {
+          currentSourceIndex += 1;
+          tryLoad();
+        };
+
+        const bust = `${source}${source.includes("?") ? "&" : "?"}t=${Date.now()}`;
+        img.src = bust;
+      };
+
+      setFrameImage(null);
+      tryLoad();
+
+      return () => {
+        cancelled = true;
+      };
     } else {
       setFrameImage(null);
     }
@@ -683,13 +778,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const handleImageTouchStart = (
+  const handleImageTouchStart = useCallback((
     e: Konva.KonvaEventObject<TouchEvent>,
     imageId: string,
     slot?: { x: number; y: number; width: number; height: number },
     displayWidth?: number,
     displayHeight?: number
   ) => {
+    const userImage = userImages.find((img) => img.id === imageId);
+    if (!userImage) return;
+
+    const isSelectedImage = selection === imageId;
+    if (!isSelectedImage) {
+      pinchRef.current = null;
+      return;
+    }
+
     if (e.evt.touches.length >= 2) {
       e.evt.preventDefault();
       const node = e.target as unknown as Konva.Node;
@@ -702,19 +806,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         displayWidth,
         displayHeight,
       };
-      // 선택 동기화
-      const userImage = userImages.find(img => img.id === imageId);
-      if (userImage) {
-        onSelect?.(userImage.id);
-        onSlotSelect?.(userImage.slotId);
-      }
+      selectImage(userImage.id, userImage.slotId);
     }
-  };
+  }, [selectImage, selection, userImages]);
 
-  const handleImageTouchMove = (
+  const handleImageTouchMove = useCallback((
     e: Konva.KonvaEventObject<TouchEvent>,
     imageId: string
   ) => {
+    if (selection !== imageId) return;
+
     const state = pinchRef.current;
     if (!state || state.imageId !== imageId) return;
     if (e.evt.touches.length < 2) return;
@@ -750,7 +851,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
 
     handleImageTransform(imageId, transform);
-  };
+  }, [handleImageTransform, selection]);
 
   const handleImageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
     if (e.evt.touches.length < 2) {
@@ -898,27 +999,33 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     };
   }, [showCustomPalette]);
 
+  useEffect(() => {
+    const stageContainer = stageRef.current?.container();
+    if (!stageContainer) return;
+
+    const touchAction = isTouchManipulationActive ? 'none' : 'pan-x pan-y';
+    stageContainer.style.touchAction = touchAction;
+
+    const canvases = stageContainer.querySelectorAll("canvas");
+    canvases.forEach((canvas) => {
+      canvas.style.touchAction = touchAction;
+      canvas.style.userSelect = "none";
+      canvas.style.webkitUserSelect = "none";
+    });
+
+    if (!isTouchManipulationActive) {
+      setStageCursor("default");
+    }
+  }, [isTouchManipulationActive, setStageCursor]);
+
   // 컨테이너 크기 측정 (Stage 콘텐츠 크기와 독립적으로 동작)
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
 
     const measureContainer = () => {
-      // 뷰포트 기반 측정으로 Stage 콘텐츠에 의한 피드백 루프 완전 방지
-      // 너비: 뷰포트에서 양쪽 사이드바, 갭, 패딩을 빼서 중앙 영역 계산
-      // app-main: grid-template-columns: 320px 1fr 320px, gap: 24px, padding: 24px
-      const sidebarW = 320;
-      const gap = 24;
-      const mainPad = 24;
-      const cardPadH = 48;
-      const border = 6;
-      const measuredWidth = window.innerWidth
-        - (sidebarW * 2) - (gap * 2) - (mainPad * 2) - cardPadH - border;
-
-      // 높이: 뷰포트 기반
-      const mainPadV = 48;
-      const cardPadV = 48;
-      const measuredHeight = window.innerHeight - mainPadV - cardPadV;
+      const measuredWidth = Math.round(node.clientWidth || node.getBoundingClientRect().width);
+      const measuredHeight = Math.round(node.clientHeight || node.getBoundingClientRect().height);
 
       if (measuredWidth > 100 && measuredHeight > 100) {
         setContainerSize({ width: measuredWidth, height: measuredHeight });
@@ -947,25 +1054,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     if (!frameLayout || !onZoomChange) return;
     if (!containerSize.width || !containerSize.height) return;
+    const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
 
-    const baseWidth = frameLayout.canvasWidth;
-    const baseHeight = frameLayout.canvasHeight;
-    if (!baseWidth || !baseHeight) return;
+    const clamped = getZoomToFit({
+      containerWidth: containerSize.width,
+      containerHeight: containerSize.height,
+      canvasWidth: frameLayout.canvasWidth,
+      canvasHeight: frameLayout.canvasHeight,
+      fitMode: isMobileViewport ? "width" : "contain",
+    });
 
-    // 여백(패딩, 보더) 고려
-    const padding = 48; // 양쪽 패딩 합계
-    const availableWidth = Math.max(100, containerSize.width - padding);
-    const availableHeight = Math.max(100, containerSize.height - padding);
-
-    const ratioX = availableWidth / baseWidth;
-    const ratioY = availableHeight / baseHeight;
-
-    // 너비와 높이 중 더 제한적인 비율을 사용하여 프레임이 컨테이너를 넘지 않도록 함
-    const ratio = Math.min(ratioX, ratioY);
-
-    if (!Number.isFinite(ratio) || ratio <= 0) return;
-    // 줌의 최대치를 0.1 ~ 2 사이로 제한
-    const clamped = Math.max(0.1, Math.min(2, Number(ratio.toFixed(4))));
     if (Math.abs(clamped - zoom) > 0.005) {
       onZoomChange(clamped);
     }
@@ -996,11 +1094,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   }
 
   // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
-  const stageWidth = frameLayout.canvasWidth * zoom;
-  const stageHeight = frameLayout.canvasHeight * zoom;
+  const stageWidth = Math.ceil(frameLayout.canvasWidth * zoom);
+  const stageHeight = Math.ceil(frameLayout.canvasHeight * zoom);
   const stageWrapperStyle: React.CSSProperties = {
     border: 'var(--border-width) dashed var(--linear-neutral-500)',
     borderRadius: '0px',
+    boxSizing: 'content-box',
     overflow: 'hidden',
     position: 'relative',
     width: `${stageWidth}px`,
@@ -1082,7 +1181,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   return (
-    <div className="linear-card linear-fade-in">
+    <div className="linear-card linear-fade-in" style={{ height: '100%', overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div className="canvas-stage-layout">
         <div
           ref={containerRef}
@@ -1106,15 +1205,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   (stageRefExternal as React.MutableRefObject<Konva.Stage | null>).current = node;
                 }
               }}
-              width={frameLayout.canvasWidth * zoom}
-              height={frameLayout.canvasHeight * zoom}
+              width={stageWidth}
+              height={stageHeight}
               scaleX={zoom}
               scaleY={zoom}
+              onMouseDown={handleStagePointerDown}
+              onTouchStart={handleStagePointerDown}
               onClick={(e) => {
                 if (e.target === e.target.getStage()) {
                   focusCanvasArea();
-                  onSelect?.(null);
-                  onSlotSelect?.(null);  // 슬롯 선택도 해제
+                  clearCanvasSelection();
                 }
               }}
             >
@@ -1148,6 +1248,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
 
                   if (userImage && loadedImg && loadedImg !== null) {
+                    const isSelectedImage = selection === userImage.id;
                     const { width: displayWidth, height: displayHeight } = getContainedImageSize(
                       loadedImg.width,
                       loadedImg.height,
@@ -1205,9 +1306,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           scaleX={uScaleX}
                           scaleY={uScaleY}
                           rotation={uRotation}
-                          draggable={true}
+                          draggable={!exportMode && isSelectedImage}
                           onClick={() => {
                             selectImage(userImage.id, slot.id);
+                          }}
+                          onTap={() => {
+                            selectImage(userImage.id, slot.id);
+                          }}
+                          onMouseEnter={() => {
+                            setStageCursor(isSelectedImage ? "grab" : "pointer");
+                          }}
+                          onMouseLeave={() => {
+                            setStageCursor("default");
+                          }}
+                          onDragStart={() => {
+                            selectImage(userImage.id, slot.id);
+                            setStageCursor("grabbing");
                           }}
                           onWheel={(e) => handleImageWheel(e, userImage.id, slot, displayWidth, displayHeight)}
                           onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
@@ -1215,6 +1329,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
                           onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
                           onDragEnd={(e) => {
+                            setStageCursor("grab");
                             // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
                             const finalX = e.target.x();
                             const finalY = e.target.y();
@@ -1470,6 +1585,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       img.src = sticker.src;
                     }, [sticker.src]);
 
+                    // 틴트 색상 적용을 위한 캐시 갱신
+                    useEffect(() => {
+                      if (imageRef.current && image) {
+                        if (sticker.tintColor) {
+                          imageRef.current.cache();
+                          imageRef.current.getLayer()?.batchDraw();
+                        } else {
+                          imageRef.current.clearCache();
+                          imageRef.current.getLayer()?.batchDraw();
+                        }
+                      }
+                    }, [sticker.tintColor, image]);
+
                     // Update transformer when selected
                     useEffect(() => {
                       if (isSelected && imageRef.current) {
@@ -1481,6 +1609,26 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       }
                     }, [isSelected, image]);
 
+                    // 반전과 사용자 스케일을 합성
+                    const effectiveScaleX = sticker.scaleX * (sticker.flipX ? -1 : 1);
+                    const effectiveScaleY = sticker.scaleY * (sticker.flipY ? -1 : 1);
+
+                    // 틴트 필터 함수: multiply blend로 색상 오버레이 적용
+                    const tintFilter = (imageData: ImageData) => {
+                      if (!sticker.tintColor) return;
+                      const hex = sticker.tintColor.replace('#', '');
+                      const tR = parseInt(hex.substring(0, 2), 16) / 255;
+                      const tG = parseInt(hex.substring(2, 4), 16) / 255;
+                      const tB = parseInt(hex.substring(4, 6), 16) / 255;
+                      const data = imageData.data;
+                      for (let i = 0; i < data.length; i += 4) {
+                        data[i] = Math.round(data[i] * tR);     // R
+                        data[i + 1] = Math.round(data[i + 1] * tG); // G
+                        data[i + 2] = Math.round(data[i + 2] * tB); // B
+                        // A는 유지
+                      }
+                    };
+
                     return (
                       <Group key={sticker.id}>
                         {image && (
@@ -1491,13 +1639,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             y={sticker.y}
                             width={sticker.width}
                             height={sticker.height}
-                            scaleX={sticker.scaleX}
-                            scaleY={sticker.scaleY}
+                            scaleX={effectiveScaleX}
+                            scaleY={effectiveScaleY}
+                            offsetX={sticker.flipX ? sticker.width : 0}
+                            offsetY={sticker.flipY ? sticker.height : 0}
                             rotation={sticker.rotation}
                             draggable={!exportMode}
                             onClick={() => selectSticker(sticker.id)}
                             onTap={() => selectSticker(sticker.id)}
                             onTouchStart={() => selectSticker(sticker.id)}
+                            filters={sticker.tintColor ? [tintFilter] : undefined}
                             onDragEnd={(e) => {
                               onStickerUpdate?.(sticker.id, {
                                 x: e.target.x(),
@@ -1507,11 +1658,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             onTransformEnd={() => {
                               const node = imageRef.current;
                               if (node) {
+                                // Transformer가 변형한 scaleX/scaleY에서 flip 부호를 제거하여 저장
+                                const rawScaleX = node.scaleX();
+                                const rawScaleY = node.scaleY();
                                 onStickerUpdate?.(sticker.id, {
                                   x: node.x(),
                                   y: node.y(),
-                                  scaleX: node.scaleX(),
-                                  scaleY: node.scaleY(),
+                                  scaleX: Math.abs(rawScaleX),
+                                  scaleY: Math.abs(rawScaleY),
                                   rotation: node.rotation()
                                 });
                               }
@@ -1567,6 +1721,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       textItem.text,
                       textItem.fontSize,
                       textItem.fontFamily,
+                      textItem.isBold,
                       textItem.isItalic,
                       textItem.isVertical
                     );
@@ -1577,14 +1732,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           ref={textRef}
                           x={textItem.x}
                           y={textItem.y}
-                          offsetX={dimensions.width / 2}
+                          width={textItem.boxWidth}
+                          offsetX={textItem.boxWidth / 2}
                           offsetY={dimensions.height / 2}
                           text={formatVerticalText(textItem.text, textItem.isVertical)}
                           fontSize={textItem.fontSize}
                           fontFamily={textItem.fontFamily}
                           fill={textItem.fontColor}
-                          fontStyle={textItem.isItalic ? 'italic' : 'normal'}
+                          fontStyle={`${textItem.isItalic ? 'italic ' : ''}${textItem.isBold ? 'bold' : ''}`.trim() || 'normal'}
                           align={textItem.textAlign}
+                          rotation={textItem.rotation}
+                          wrap="none"
                           lineHeight={textItem.isVertical ? 1.2 : 1}
                           draggable={true}
                           onClick={() => onSelect?.(textItem.id)}
@@ -1594,6 +1752,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             const newX = e.target.x();
                             const newY = e.target.y();
                             onTextMove?.(textItem.id, newX, newY);
+                          }}
+                          onTransformEnd={() => {
+                            const node = textRef.current;
+                            if (!node) return;
+
+                            onTextUpdate?.(textItem.id, {
+                              x: node.x(),
+                              y: node.y(),
+                              boxWidth: Math.max(10, node.width() * Math.abs(node.scaleX())),
+                              fontSize: Math.max(1, Math.round(textItem.fontSize * Math.abs(node.scaleY()))),
+                              rotation: node.rotation(),
+                            });
                           }}
                         />
                         {isSelected && !exportMode && (
@@ -1768,6 +1938,108 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               >
                 선택된 이미지 삭제
               </button>
+            </div>
+          )}
+
+          {/* 선택된 스티커 편집 도구 */}
+          {selectedSticker && (
+            <div style={{
+              border: 'var(--border-width) solid var(--linear-neutral-500)',
+              padding: '12px',
+              background: 'var(--linear-neutral-700)',
+              marginTop: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>스티커 편집</h4>
+
+              {/* 반전 버튼 */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipX: !selectedSticker.flipX })}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  }}
+                  title="좌우 반전"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="7 2 3 6 7 10" />
+                    <polyline points="17 2 21 6 17 10" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                  </svg>
+                  좌우
+                </button>
+                <button
+                  type="button"
+                  className={`linear-button ${selectedSticker.flipY ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipY: !selectedSticker.flipY })}
+                  style={{
+                    flex: 1,
+                    height: '32px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  }}
+                  title="상하 반전"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="2 7 6 3 10 7" />
+                    <polyline points="2 17 6 21 10 17" />
+                    <line x1="6" y1="3" x2="6" y2="21" />
+                  </svg>
+                  상하
+                </button>
+              </div>
+
+              {/* 색상 틴트 */}
+              <div>
+                <p style={{ fontSize: '11px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                  <input
+                    type="color"
+                    className="linear-input"
+                    value={selectedSticker.tintColor ?? '#000000'}
+                    onChange={(e) => onStickerUpdate?.(selectedSticker.id, { tintColor: e.target.value })}
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      padding: '2px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      cursor: 'pointer',
+                    }}
+                    title="틴트 색상 선택"
+                  />
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => onStickerUpdate?.(selectedSticker.id, { tintColor: null })}
+                    disabled={!selectedSticker.tintColor}
+                    style={{
+                      flex: 1,
+                      height: '32px',
+                      fontSize: '11px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      opacity: selectedSticker.tintColor ? 1 : 0.5,
+                    }}
+                    title="원래 색상으로 복원"
+                  >
+                    리셋
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
