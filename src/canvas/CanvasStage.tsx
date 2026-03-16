@@ -19,6 +19,10 @@ import {
 } from "./keyboardShortcuts";
 import { getZoomToFit } from "./zoomSizing";
 
+// 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
+Konva.hitOnDragEnabled = true;
+Konva.capturePointerEventsEnabled = true;
+
 export type CanvasStageProps = {
   template: Template | null;
   selection: string | null;
@@ -138,7 +142,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onImageTransform,
   onFrameColorChange,
   onTextMove,
-  onTextUpdate, // eslint-disable-line @typescript-eslint/no-unused-vars
+  onTextUpdate,
   onZoomChange,
   onImageDelete,
   onStickerDelete,
@@ -176,9 +180,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
+  const isTouchManipulationActive = Boolean(selection);
 
   const focusCanvasArea = useCallback(() => {
     stageWrapperRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const setStageCursor = useCallback((cursor: string) => {
+    const stageContainer = stageRef.current?.container();
+    if (stageContainer) {
+      stageContainer.style.cursor = cursor;
+    }
   }, []);
 
   const selectImage = useCallback((imageId: string, slotId: string) => {
@@ -191,6 +203,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     onSelect?.(stickerId);
     focusCanvasArea();
   }, [focusCanvasArea, onSelect]);
+
+  const clearCanvasSelection = useCallback(() => {
+    onSelect?.(null);
+    onSlotSelect?.(null);
+    setStageCursor("default");
+  }, [onSelect, onSlotSelect, setStageCursor]);
+
+  const handleStagePointerDown = useCallback((e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
+    if (e.target === e.target.getStage()) {
+      focusCanvasArea();
+      clearCanvasSelection();
+    }
+  }, [clearCanvasSelection, focusCanvasArea]);
 
   const getImageDisplayContext = useCallback((image: Pick<UserImage, "id" | "slotId">) => {
     if (!frameLayout) return null;
@@ -753,13 +778,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const handleImageTouchStart = (
+  const handleImageTouchStart = useCallback((
     e: Konva.KonvaEventObject<TouchEvent>,
     imageId: string,
     slot?: { x: number; y: number; width: number; height: number },
     displayWidth?: number,
     displayHeight?: number
   ) => {
+    const userImage = userImages.find((img) => img.id === imageId);
+    if (!userImage) return;
+
+    const isSelectedImage = selection === imageId;
+    if (!isSelectedImage) {
+      pinchRef.current = null;
+      return;
+    }
+
     if (e.evt.touches.length >= 2) {
       e.evt.preventDefault();
       const node = e.target as unknown as Konva.Node;
@@ -772,19 +806,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         displayWidth,
         displayHeight,
       };
-      // 선택 동기화
-      const userImage = userImages.find(img => img.id === imageId);
-      if (userImage) {
-        onSelect?.(userImage.id);
-        onSlotSelect?.(userImage.slotId);
-      }
+      selectImage(userImage.id, userImage.slotId);
     }
-  };
+  }, [selectImage, selection, userImages]);
 
-  const handleImageTouchMove = (
+  const handleImageTouchMove = useCallback((
     e: Konva.KonvaEventObject<TouchEvent>,
     imageId: string
   ) => {
+    if (selection !== imageId) return;
+
     const state = pinchRef.current;
     if (!state || state.imageId !== imageId) return;
     if (e.evt.touches.length < 2) return;
@@ -820,7 +851,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
 
     handleImageTransform(imageId, transform);
-  };
+  }, [handleImageTransform, selection]);
 
   const handleImageTouchEnd = (e: Konva.KonvaEventObject<TouchEvent>) => {
     if (e.evt.touches.length < 2) {
@@ -967,6 +998,25 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       document.removeEventListener('keydown', onKey);
     };
   }, [showCustomPalette]);
+
+  useEffect(() => {
+    const stageContainer = stageRef.current?.container();
+    if (!stageContainer) return;
+
+    const touchAction = isTouchManipulationActive ? 'none' : 'pan-x pan-y';
+    stageContainer.style.touchAction = touchAction;
+
+    const canvases = stageContainer.querySelectorAll("canvas");
+    canvases.forEach((canvas) => {
+      canvas.style.touchAction = touchAction;
+      canvas.style.userSelect = "none";
+      canvas.style.webkitUserSelect = "none";
+    });
+
+    if (!isTouchManipulationActive) {
+      setStageCursor("default");
+    }
+  }, [isTouchManipulationActive, setStageCursor]);
 
   // 컨테이너 크기 측정 (Stage 콘텐츠 크기와 독립적으로 동작)
   useEffect(() => {
@@ -1159,11 +1209,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               height={stageHeight}
               scaleX={zoom}
               scaleY={zoom}
+              onMouseDown={handleStagePointerDown}
+              onTouchStart={handleStagePointerDown}
               onClick={(e) => {
                 if (e.target === e.target.getStage()) {
                   focusCanvasArea();
-                  onSelect?.(null);
-                  onSlotSelect?.(null);  // 슬롯 선택도 해제
+                  clearCanvasSelection();
                 }
               }}
             >
@@ -1197,6 +1248,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
 
                   if (userImage && loadedImg && loadedImg !== null) {
+                    const isSelectedImage = selection === userImage.id;
                     const { width: displayWidth, height: displayHeight } = getContainedImageSize(
                       loadedImg.width,
                       loadedImg.height,
@@ -1254,9 +1306,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           scaleX={uScaleX}
                           scaleY={uScaleY}
                           rotation={uRotation}
-                          draggable={true}
+                          draggable={!exportMode && isSelectedImage}
                           onClick={() => {
                             selectImage(userImage.id, slot.id);
+                          }}
+                          onTap={() => {
+                            selectImage(userImage.id, slot.id);
+                          }}
+                          onMouseEnter={() => {
+                            setStageCursor(isSelectedImage ? "grab" : "pointer");
+                          }}
+                          onMouseLeave={() => {
+                            setStageCursor("default");
+                          }}
+                          onDragStart={() => {
+                            selectImage(userImage.id, slot.id);
+                            setStageCursor("grabbing");
                           }}
                           onWheel={(e) => handleImageWheel(e, userImage.id, slot, displayWidth, displayHeight)}
                           onTouchStart={(e) => handleImageTouchStart(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id, slot, displayWidth, displayHeight)}
@@ -1264,6 +1329,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
                           onDragMove={(e) => handleImageDragMove(e, userImage.id, slot, displayWidth, displayHeight)}
                           onDragEnd={(e) => {
+                            setStageCursor("grab");
                             // 드래그 종료 시 최종 위치 계산 및 상태 업데이트
                             const finalX = e.target.x();
                             const finalY = e.target.y();

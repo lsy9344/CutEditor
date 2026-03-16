@@ -46,3 +46,12 @@
 
 
 `/Users/sooyeol/Desktop/Code/cut_editor_250830/src/components/components.css` 만들어둔 공통 컴포넌트를 사용해서 구현하고 새로 컴포넌트를 만들지 마세요.
+
+## Codex Multi-Agent Roles
+- 이 저장소는 `.codex/agents/` 아래에 PEER 스타일 역할을 정의합니다.
+- `planning`: 구현 전에 일을 작고 순서 있는 단계로 쪼갤 때 먼저 사용합니다.
+- `executing`: 하나의 구체적인 조사/수정/검증 작업을 맡길 때 사용합니다.
+- `expressing`: 여러 에이전트 결과를 초보자도 이해하기 쉬운 답변이나 핸드오프로 정리할 때 사용합니다.
+- `reviewing`: 변경 후 버그, 회귀, 검증 누락, 숨은 리스크를 점검할 때 사용합니다.
+- 독립적인 하위 작업은 가능한 범위에서 여러 `executing` 에이전트로 병렬 처리하고, 마지막에 `expressing` 또는 `reviewing`으로 묶습니다.
+- 각 하위 에이전트에는 넓은 과제 하나보다 좁고 분명한 과제를 맡기세요.

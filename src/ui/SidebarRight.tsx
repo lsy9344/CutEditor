@@ -103,6 +103,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
   const [categoryPreviewIndexes, setCategoryPreviewIndexes] = useState<Record<string, number>>({});
   const [loadedCategoryPreviews, setLoadedCategoryPreviews] = useState<Record<string, boolean>>({});
   const [stickerPreviewIndexes, setStickerPreviewIndexes] = useState<Record<string, number>>({});
+  const [loadedStickerPreviews, setLoadedStickerPreviews] = useState<Record<string, boolean>>({});
 
   // Text State
   const [textInput, setTextInput] = useState("");
@@ -215,6 +216,10 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         [slotKey]: currentIndex + 1,
       };
     });
+    setLoadedStickerPreviews((prev) => ({
+      ...prev,
+      [slotKey]: false,
+    }));
   };
 
   const handleCategoryPreviewError = (categoryId: string, candidateCount: number) => {
@@ -240,6 +245,13 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
     setLoadedCategoryPreviews((prev) => ({
       ...prev,
       [categoryId]: true,
+    }));
+  };
+
+  const handleStickerPreviewLoad = (slotKey: string) => {
+    setLoadedStickerPreviews((prev) => ({
+      ...prev,
+      [slotKey]: true,
     }));
   };
 
@@ -776,15 +788,17 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                       const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
                       const previewSrc = slot.candidates[currentIndex];
                       const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
+                      const isInsertable = isReady && loadedStickerPreviews[slot.key] === true;
 
                       return (
                         <button
                           key={slot.key}
                           onClick={() => {
-                            if (isReady && previewSrc && onStickerInsert) {
+                            if (isInsertable && previewSrc && onStickerInsert) {
                               onStickerInsert(previewSrc);
                             }
                           }}
+                          disabled={!isInsertable}
                           style={{
                             aspectRatio: '1',
                             border: 'none',
@@ -793,9 +807,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                             flexDirection: 'column',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            cursor: isReady ? 'pointer' : 'not-allowed',
+                            cursor: isInsertable ? 'pointer' : 'not-allowed',
                             padding: '0',
-                            opacity: isReady ? 1 : 0.5,
+                            opacity: isInsertable ? 1 : 0.5,
                           }}
                         >
                           {!isReady ? (
@@ -808,6 +822,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                               src={previewSrc}
                               alt={`${slot.key} sticker`}
                               loading="lazy"
+                              onLoad={() => handleStickerPreviewLoad(slot.key)}
                               onError={() => handleStickerPreviewError(slot.key, slot.candidates.length)}
                               style={{
                                 width: '100%',
