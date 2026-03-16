@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { loadTsModule } from "./helpers/loadTsModule.mjs";
 
 const loadFrameModule = async () =>
-  import(`../src/types/frame.ts?ts=${Date.now()}`);
+  loadTsModule("src/types/frame.ts");
 
 test("모든 프레임 캔버스가 정확한 2:3 또는 3:2 비율을 사용한다", async () => {
   const { FRAME_LAYOUTS } = await loadFrameModule();
