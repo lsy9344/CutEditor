@@ -15,11 +15,14 @@ test("App은 CanvasStage에 현재 전체 selection 상태를 전달해 모바�
 test("텍스트 Transformer는 변형값을 저장한 뒤 노드 스케일을 1로 초기화한다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
-  assert.match(source, /const nextScale = Math\.max\(Math\.abs\(node\.scaleX\(\)\), Math\.abs\(node\.scaleY\(\)\)\);/);
+  assert.match(source, /import \{ getNextTextTransformState \} from "\.\/textTransform";/);
+  assert.match(source, /const nextState = getNextTextTransformState\(\{/);
+  assert.match(source, /width: node\.width\(\),/);
+  assert.match(source, /scaleX: node\.scaleX\(\),/);
+  assert.match(source, /scaleY: node\.scaleY\(\),/);
+  assert.match(source, /onTextUpdate\?\.\(textItem\.id, nextState\);/);
   assert.match(source, /node\.scaleX\(1\);/);
   assert.match(source, /node\.scaleY\(1\);/);
-  assert.match(source, /boxWidth: Math\.max\(10, node\.width\(\) \* nextScale\)/);
-  assert.match(source, /fontSize: Math\.max\(1, Math\.round\(textItem\.fontSize \* nextScale\)\)/);
 });
 
 test("모바일 이미지 pinch는 현재 이미지 배율을 기준으로 시작하고 첫 제스처에서 선택을 동기화한다", () => {

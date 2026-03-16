@@ -4,6 +4,7 @@ import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
 import { FRAME_LAYOUTS } from "../types/frame";
+import { getNextTextTransformState } from "./textTransform";
 import {
   getClampedKeyboardMove,
   getContainedImageSize,
@@ -1825,15 +1826,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             const node = textRef.current;
                             if (!node) return;
 
-                            const nextScale = Math.max(Math.abs(node.scaleX()), Math.abs(node.scaleY()));
-
-                            onTextUpdate?.(textItem.id, {
+                            const nextState = getNextTextTransformState({
+                              boxWidth: textItem.boxWidth,
+                              fontSize: textItem.fontSize,
+                            }, {
                               x: node.x(),
                               y: node.y(),
-                              boxWidth: Math.max(10, node.width() * nextScale),
-                              fontSize: Math.max(1, Math.round(textItem.fontSize * nextScale)),
                               rotation: node.rotation(),
+                              width: node.width(),
+                              scaleX: node.scaleX(),
+                              scaleY: node.scaleY(),
                             });
+
+                            onTextUpdate?.(textItem.id, nextState);
                             node.scaleX(1);
                             node.scaleY(1);
                           }}

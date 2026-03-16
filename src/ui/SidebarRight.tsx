@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
+import { getDefaultTextPosition } from "./defaultTextPosition";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -154,35 +155,6 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
 
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
-
-  // 프레임별 기본 텍스트 위치
-  const getDefaultTextPosition = (frameType: FrameType | null): { x: number; y: number } => {
-    switch (frameType) {
-      case "1l": // 1컷 레터링
-        return { x: 241.5, y: 100 };
-
-      case "1f": // 1컷 프레임
-        return { x: 241.5, y: 665 };
-
-      case "2h": // 2컷 가로
-        return { x: 620, y: 241.5 };
-
-      case "2v": // 2컷 세로
-        return { x: 241.5, y: 630 };
-
-      case "4v": // 4컷
-        return { x: 241.5, y: 660 };
-
-      case "6v": // 6컷
-        return { x: 241.5, y: 660 };
-
-      case "9v": // 9컷
-        return { x: 241.5, y: 645 };
-
-      default:
-        return { x: 10, y: 10 };
-    }
-  };
 
   // ESC 키로 모달 닫기
   useEffect(() => {

@@ -179,8 +179,9 @@ test("텍스트 정렬은 캔버스가 아니라 선택 박스 폭을 기준으�
   assert.match(stageSource, /width=\{textItem\.boxWidth\}/);
   assert.match(stageSource, /offsetX=\{textItem\.boxWidth \/ 2\}/);
   assert.match(stageSource, /onTransformEnd=\{\(\) => \{/);
-  assert.match(stageSource, /const nextScale = Math\.max\(Math\.abs\(node\.scaleX\(\)\), Math\.abs\(node\.scaleY\(\)\)\);/);
-  assert.match(stageSource, /boxWidth: Math\.max\(10, node\.width\(\) \* nextScale\)/);
+  assert.match(stageSource, /const nextState = getNextTextTransformState\(\{/);
+  assert.match(stageSource, /width: node\.width\(\),/);
+  assert.match(stageSource, /onTextUpdate\?\.\(textItem\.id, nextState\);/);
   assert.match(stageSource, /node\.scaleX\(1\);/);
   assert.match(stageSource, /node\.scaleY\(1\);/);
   assert.match(stageSource, /id=\{`transformer-text-\$\{textItem\.id\}`\}[\s\S]*flipEnabled=\{false\}/);

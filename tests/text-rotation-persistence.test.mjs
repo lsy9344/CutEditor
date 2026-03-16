@@ -12,8 +12,9 @@ test("텍스트 회전 핸들은 회전값을 상태에 저장하고 다시 렌�
 
   assert.match(stageSource, /textAlign:\s*"left" \| "center" \| "right";[\s\S]*rotation:\s*number;/);
   assert.match(stageSource, /rotation=\{textItem\.rotation\}/);
-  assert.match(stageSource, /onTextUpdate\?\.\(textItem\.id,\s*\{[\s\S]*rotation:\s*node\.rotation\(\)/);
-  assert.match(stageSource, /const nextScale = Math\.max\(Math\.abs\(node\.scaleX\(\)\), Math\.abs\(node\.scaleY\(\)\)\);/);
+  assert.match(stageSource, /const nextState = getNextTextTransformState\(\{/);
+  assert.match(stageSource, /rotation: node\.rotation\(\),/);
+  assert.match(stageSource, /onTextUpdate\?\.\(textItem\.id, nextState\);/);
   assert.match(stageSource, /node\.scaleX\(1\);/);
   assert.match(stageSource, /node\.scaleY\(1\);/);
 });
