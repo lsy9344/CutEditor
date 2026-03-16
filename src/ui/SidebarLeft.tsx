@@ -164,15 +164,8 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
                 <div
                   key={option.value}
-                  className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''}`}
+                  className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''} ${selectedFrame === option.value ? 'frame-gallery-card--selected' : ''}`}
                   onClick={() => handleFrameSelect(option.value)}
-                  style={{
-                    backgroundColor: selectedFrame === option.value ? 'var(--linear-primary-500)' : 'var(--linear-neutral-600)',
-                    boxShadow: selectedFrame === option.value ? 'var(--shadow-lg)' : 'var(--shadow-base)',
-                    transform: selectedFrame === option.value ? 'translate(-4px, -4px)' : 'none',
-                    zIndex: selectedFrame === option.value ? 2 : 1,
-                    position: 'relative'
-                  }}
                 >
                   <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`}>
                     <img

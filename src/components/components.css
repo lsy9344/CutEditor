@@ -717,14 +717,18 @@ p {
   box-shadow: var(--shadow-base);
   background-color: var(--linear-neutral-600);
   cursor: pointer;
-  transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
+  transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out, background-color 0.1s ease-in-out;
   display: flex;
   flex-direction: column;
 }
 
+.frame-gallery-card:not(.frame-gallery-card--selected):hover {
+  background-color: var(--linear-neutral-900);
+}
+
 /* 모바일에서는 터치 즉시 선택 효과를 위해 hover 미적용 (어차피 media 조절됨) */
 @media (prefers-reduced-motion: no-preference) {
-  .frame-gallery-card:hover {
+  .frame-gallery-card:not(.frame-gallery-card--selected):hover {
     transform: translate(-2px, -2px);
     box-shadow: var(--shadow-hover);
   }
@@ -733,6 +737,14 @@ p {
 .frame-gallery-card:active {
   transform: translate(2px, 2px);
   box-shadow: var(--shadow-active);
+}
+
+.frame-gallery-card--selected {
+  background-color: var(--linear-primary-500);
+  box-shadow: var(--shadow-lg);
+  transform: translate(-4px, -4px);
+  z-index: 2;
+  position: relative;
 }
 
 .frame-gallery-card.span-2 {

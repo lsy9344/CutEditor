@@ -702,7 +702,6 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                           onClick={() => setSelectedStickerCategory(category.id)}
                           style={{
                             borderColor: 'var(--linear-neutral-400)',
-                            backgroundColor: 'var(--linear-neutral-700)',
                           }}
                         >
                           <div className={`frame-gallery-image-container ${loadedCategoryPreviews[category.id] ? 'loaded' : 'loading'}`} style={{
