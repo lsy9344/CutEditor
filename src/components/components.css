@@ -206,6 +206,7 @@ p {
 .linear-button:hover {
   transform: translate(-2px, -2px);
   box-shadow: var(--shadow-base);
+  z-index: 1;
 }
 
 .linear-button:active {
@@ -469,14 +470,13 @@ p {
 }
 
 .app-main {
-  display: grid;
-  grid-template-columns: 260px 1fr 420px;
+  display: flex;
+  flex-direction: row;
   flex: 1;
   min-height: 0;
   gap: var(--linear-space-3);
   padding: var(--linear-space-3);
   background-color: var(--linear-neutral-700);
-  /* sub background for main body */
   overflow: hidden;
 }
 
@@ -576,12 +576,6 @@ p {
   overscroll-behavior: contain;
 }
 
-/* 중앙 캔버스 영역: grid 1fr 컬럼이 콘텐츠에 의해 확장되지 않도록 제한 */
-.app-main> :nth-child(2) {
-  min-width: 0;
-  overflow: hidden;
-}
-
 /* Canvas Stage Responsive Adjustments */
 .canvas-stage-layout {
   display: flex;
@@ -642,28 +636,10 @@ p {
 }
 
 /* Responsive */
-@media (max-width: 1200px) {
-  .app-main {
-    grid-template-columns: 240px 1fr 380px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .app-main {
-    grid-template-columns: 220px 1fr 360px;
-  }
-}
-
 @media (max-width: 768px) {
   .app-container {
     height: auto;
     min-height: 100dvh;
-  }
-
-  .app-main {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-    overflow: auto;
   }
 
   .canvas-stage-layout {
@@ -686,7 +662,6 @@ p {
     justify-content: center;
     align-items: center;
   }
-
 }
 
 /* 모바일 가로모드 최적화 */

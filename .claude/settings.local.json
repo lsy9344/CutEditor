@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/Code/Project/CutEditor/src/index.* 2>/dev/null || echo \"No index file found\")",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}
