@@ -771,6 +771,16 @@ function App() {
           className="app-mobile-sheet-backdrop linear-fade-in"
           role="dialog"
           aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'var(--linear-backdrop)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+            zIndex: 9998,
+          }}
           onClick={() => setMobilePanel(null)}
         >
           <div
