@@ -120,6 +120,7 @@ function App() {
       : false
   ));
   const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
+  const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>('frames');
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -144,8 +145,7 @@ function App() {
   }, []);
 
   const isResponsiveMobile = useMemo(() => {
-    const touchPoints = typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints ?? 0;
-    return viewportWidth <= 768 || hasCoarsePointer || touchPoints > 0;
+    return viewportWidth <= 768 || (hasCoarsePointer && viewportWidth <= 1024);
   }, [hasCoarsePointer, viewportWidth]);
 
   const supportsFilePicker = useMemo(() => (
@@ -195,6 +195,7 @@ function App() {
     setSelectedStickerId(null);
     setPendingFrameChange(null);
     setMobilePanel(null);
+    setDesktopPanel(null);
     setCanvasMode('editor');
   };
 
@@ -285,10 +286,10 @@ function App() {
   }
 
   useEffect(() => {
-    if (!isResponsiveMobile || canvasMode !== 'editor') {
+    if (!isResponsiveMobile) {
       setMobilePanel(null);
     }
-  }, [canvasMode, isResponsiveMobile]);
+  }, [isResponsiveMobile]);
 
   const getTextWidth = useCallback((textItem: CanvasText) => {
     if (textItem.isVertical) {
@@ -723,7 +724,7 @@ function App() {
   ) || null;
 
   const availableOptions = activeCategory ? FRAME_OPTIONS_BY_CATEGORY[activeCategory] : [];
-  const isMobileEditor = isResponsiveMobile && canvasMode === 'editor';
+  const isMobileEditor = isResponsiveMobile;
   const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
   const selectedSticker = selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined;
 
@@ -779,27 +780,147 @@ function App() {
       ? '글씨 편집'
       : '스티커 편집';
 
+  const desktopIconButtonStyle = (isActive: boolean): React.CSSProperties => ({
+    background: isActive ? 'var(--linear-neutral-50)' : 'transparent',
+    color: isActive ? 'var(--linear-neutral-600)' : 'var(--linear-secondary-300)',
+    border: 'none',
+    boxShadow: 'none',
+    width: '100%',
+    padding: '12px 0',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '6px',
+    cursor: 'pointer',
+    borderRadius: '8px',
+    transition: 'all 0.2s',
+    fontFamily: 'var(--linear-font-family)',
+  });
+
   return (
     <div className="app-container">
       <div className={`app-main${isMobileEditor ? ' app-main--mobile-editor' : ''}`}>
+
+        {/* 데스크톱: 왼쪽 아이콘 레일 */}
         {!isMobileEditor && (
-          <SidebarLeft
-            selectedFrame={editorState.selectedFrame}
-            onFrameSelect={handleFrameSelect}
-            frameColor={editorState.frameColor}
-            onFrameColorChange={handleFrameColorChange}
-            canvasMode={canvasMode}
-            onCanvasModeChange={setCanvasMode}
-            selectedCategory={selectedCategory}
-            onCategoryChange={setSelectedCategory}
-          />
+          <aside
+            className="linear-card"
+            style={{
+              width: '56px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '16px 8px',
+              flexShrink: 0,
+            }}
+          >
+            {/* 프레임 */}
+            <button
+              type="button"
+              onClick={() => setDesktopPanel((p) => p === 'frames' ? null : 'frames')}
+              style={desktopIconButtonStyle(desktopPanel === 'frames')}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+              </svg>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>프레임</span>
+            </button>
+
+            {/* 글씨 */}
+            <button
+              type="button"
+              onClick={() => setDesktopPanel((p) => p === 'text' ? null : 'text')}
+              style={desktopIconButtonStyle(desktopPanel === 'text')}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="4 7 4 4 20 4 20 7" />
+                <line x1="9" y1="20" x2="15" y2="20" />
+                <line x1="12" y1="4" x2="12" y2="20" />
+              </svg>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>글씨</span>
+            </button>
+
+            {/* 스티커 */}
+            <button
+              type="button"
+              onClick={() => setDesktopPanel((p) => p === 'sticker' ? null : 'sticker')}
+              style={desktopIconButtonStyle(desktopPanel === 'sticker')}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                <line x1="9" y1="9" x2="9.01" y2="9" />
+                <line x1="15" y1="9" x2="15.01" y2="9" />
+              </svg>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
+            </button>
+
+            <div style={{ flex: 1 }} />
+
+            {/* 저장 */}
+            <button
+              type="button"
+              className="linear-button linear-button--primary"
+              onClick={handleExport}
+              style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>저장</span>
+            </button>
+          </aside>
         )}
+
+        {/* 데스크톱: 확장 가능한 왼쪽 패널 */}
+        {!isMobileEditor && desktopPanel && (
+          <div
+            className="linear-fade-in"
+            style={{
+              width: '260px',
+              flexShrink: 0,
+              minHeight: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            {desktopPanel === 'frames' ? (
+              <SidebarLeft
+                selectedFrame={editorState.selectedFrame}
+                onFrameSelect={handleFrameSelect}
+                frameColor={editorState.frameColor}
+                onFrameColorChange={handleFrameColorChange}
+                canvasMode={canvasMode}
+                onCanvasModeChange={setCanvasMode}
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+              />
+            ) : (
+              <SidebarRight
+                {...sharedSidebarRightProps}
+                forcedTab={desktopPanel}
+                showActionRail={false}
+                showExportButton={false}
+              />
+            )}
+          </div>
+        )}
+
+        {/* 캔버스 영역 / 모바일 콘텐츠 */}
         {isMobileEditor ? (
           <>
             <div className="app-mobile-canvas-shell">
               {mainCanvasContent}
             </div>
-            {/* 모바일 액션 바 */}
+            {/* 모바일 하단 툴바 */}
             <div className="app-mobile-toolbar linear-card">
               <button
                 type="button"
@@ -832,14 +953,9 @@ function App() {
             </div>
           </>
         ) : (
-          <>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
             {mainCanvasContent}
-            {!isResponsiveMobile && (
-              <SidebarRight
-                {...sharedSidebarRightProps}
-              />
-            )}
-          </>
+          </div>
         )}
       </div>
 
