@@ -451,10 +451,13 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                 gap: 'var(--linear-space-2)',
                 flex: 1,
                 overflowY: 'auto',
+                overflowX: 'hidden',
                 minHeight: 0,
-                paddingRight: '4px',
-                marginRight: '0',
                 paddingBottom: '16px',
+                paddingLeft: '4px',
+                paddingRight: '4px',
+                marginLeft: '-4px',
+                marginRight: '-4px',
               }}
             >
               {/* 텍스트 내용 작성 파트 */}
@@ -505,14 +508,14 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                     </select>
                   </label>
 
-                  <div className="linear-flex linear-mt-4">
+                  <div className="linear-flex linear-mt-4" style={{ gap: '6px' }}>
                     <button
                       className="linear-button linear-button--secondary"
                       onClick={handleTextDelete}
                       disabled={!selectedText}
                       style={{
                         opacity: selectedText ? 1 : 0.5, cursor: selectedText ? 'pointer' : 'not-allowed',
-                        fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', width: '100%'
+                        fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', flex: 1
                       }}
                     >
                       삭제
@@ -521,7 +524,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                       className="linear-button linear-button--primary"
                       onClick={handleTextInsert}
                       style={{
-                        fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', width: '100%'
+                        fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', flex: 1
                       }}
                     >
                       삽입
@@ -583,35 +586,38 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                 </div>
 
                 {/* 폰트 스타일 */}
-                <label>
+                <div>
                   <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 스타일</p>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
+                      type="button"
                       className={`linear-button ${displayedIsBold ? 'linear-button--primary' : 'linear-button--secondary'}`}
                       onClick={handleBoldToggle}
-                      style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                      style={{ flex: 1, height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap', minWidth: 0, padding: '0 4px' }}
                     >
                       굵게
                     </button>
                     <button
+                      type="button"
                       className={`linear-button ${displayedIsItalic ? 'linear-button--primary' : 'linear-button--secondary'}`}
                       onClick={handleItalicToggle}
-                      style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                      style={{ flex: 1, height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap', minWidth: 0, padding: '0 4px' }}
                     >
                       기울임
                     </button>
                     <button
+                      type="button"
                       className={`linear-button ${displayedIsVertical ? 'linear-button--primary' : 'linear-button--secondary'}`}
                       onClick={handleVerticalToggle}
-                      style={{ width: '100%', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap' }}
+                      style={{ flex: 1, height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', whiteSpace: 'nowrap', minWidth: 0, padding: '0 4px' }}
                     >
                       세로쓰기
                     </button>
                   </div>
-                </label>
+                </div>
 
                 {/* 텍스트 정렬 */}
-                <label>
+                <div>
                   <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>텍스트 정렬</p>
                   <div style={{ display: "flex", gap: "6px" }}>
                     {["left", "center", "right"].map((align) => (
@@ -622,8 +628,9 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                         onClick={() => handleTextAlignChange(align as TextAlign)}
                         disabled={!selectedText}
                         style={{
-                          width: "100%", height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
-                          opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed"
+                          flex: 1, height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
+                          opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed",
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0
                         }}
                       >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -652,7 +659,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                       </button>
                     ))}
                   </div>
-                </label>
+                </div>
               </div>
             </div>
           )}
