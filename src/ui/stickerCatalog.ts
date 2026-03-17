@@ -1,10 +1,8 @@
 export const STICKER_SLOT_COUNT = 20;
 export const STICKER_EXTENSIONS = ["svg", "png", "webp", "jpg", "jpeg"] as const;
 
-const STICKER_CANDIDATE_PRIORITY_OVERRIDES: Record<string, readonly string[]> = {
-  // iOS canvas/Konva can fail to render this masked SVG after insertion, so prefer PNG.
-  "1s_18ss": ["png", "svg", "webp", "jpg", "jpeg"],
-};
+const STICKER_RASTER_FIRST_EXTENSIONS = ["png", "svg", "webp", "jpg", "jpeg"] as const;
+const SVG_STICKER_SLOT_KEY_PATTERN = /^(1s|2s|3s)_\d+ss$/;
 
 export type StickerSlot = {
   key: string;
@@ -20,10 +18,16 @@ export type StickerCategory = {
   stickers: StickerSlot[];
 };
 
-function buildStickerPath(key: string): string[] {
-  const extensions = STICKER_CANDIDATE_PRIORITY_OVERRIDES[key] ?? STICKER_EXTENSIONS;
-
+function buildStickerPath(key: string, extensions: readonly string[] = STICKER_EXTENSIONS): string[] {
   return extensions.map((extension) => `/stickers/${key}.${extension}`);
+}
+
+export function buildStickerCandidates(key: string): string[] {
+  if (SVG_STICKER_SLOT_KEY_PATTERN.test(key)) {
+    return buildStickerPath(key, STICKER_RASTER_FIRST_EXTENSIONS);
+  }
+
+  return buildStickerPath(key);
 }
 
 export function buildStickerSlots(prefix: string): StickerSlot[] {
@@ -32,7 +36,7 @@ export function buildStickerSlots(prefix: string): StickerSlot[] {
 
     return {
       key,
-      candidates: buildStickerPath(key),
+      candidates: buildStickerCandidates(key),
     };
   });
 }

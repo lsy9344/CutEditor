@@ -15,7 +15,7 @@ export type SidebarLeftProps = {
 
 export const FRAME_OPTIONS_BY_CATEGORY: Record<string, FrameOption[]> = {
   "1컷": [
-    { value: "1l", label: "사진에 글씨새기기", image: "1l.png", orientation: "vertical", description: "사진에 직접 텍스트 올리기" },
+    { value: "1l", label: "사진에 글씨새기기", image: "1l.jpg", orientation: "vertical", description: "사진에 직접 텍스트 올리기" },
     { value: "1f", label: "1컷 프레임", image: "1f.png", orientation: "vertical", description: "프레임 안에 사진 넣기" },
   ],
   "2컷": [
