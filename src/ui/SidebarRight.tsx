@@ -7,6 +7,52 @@ import { getDefaultTextPosition } from "./defaultTextPosition";
 
 type TextAlign = "left" | "center" | "right";
 
+const LETTERING_SUGGESTIONS = Array.from(
+  new Set([
+    "다비야, 너의 1000일을 축하해 :)",
+    "평생 함께 해♥",
+    "내 세상은 네가 있어 더 아름다워",
+    "우리집 둘 째",
+    "우리 곧, 결혼해요.",
+    "우리 셋의 세 번째 크리스마스",
+    "곧, 만나",
+    "널 위해 준비 했어",
+    "너는 우리 행복 ♥",
+    "2026년 첫 가족사진",
+    "건강하게 만나자",
+    "*우리의 평생을 약속 한 날*",
+    "우리, 곧 결혼해요",
+    "너를 기다리며",
+    "2024.09.27",
+    "세 번째 생일을 축하해",
+    "손꼽아 기다린 여름날",
+    "쑥쑥이와 엄마랑 아빠랑",
+    "띠용아, 반가워 :)",
+    "찰떡아, 곧 만나자 하트",
+    "반짝이는 2026",
+    "태어난지 1,000일",
+    "오늘, 너의 100일",
+    "이하늬, 두 돌",
+    "시후, 네 번째 생일",
+    "2022.04.21",
+    "세로로",
+    "연두야, 500일 축하해",
+    "2024.05.21",
+    "승아의 두 번째 여름",
+    "다섯번 째, 결혼기념일",
+    "행복한 또이네 하트",
+    "너를 만나기 한달 전",
+    "우리가족, 사랑해",
+    "세상의 모든 사랑을 담아",
+    "25년, 우리의 두 번째 여름",
+    "1+1=3 하트",
+    "평생 함께해*♥*",
+    "우리집 귀염둥이",
+    "우리집 사랑둥이들",
+    "언제나 함께해",
+  ])
+);
+
 export type SidebarRightProps = {
   selectedFrame?: FrameType | null;
   selectedText?: {
@@ -499,12 +545,11 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                       }}
                     >
                       <option value="" disabled>클릭해서 추천받기</option>
-                      <option value="다비야, 너의 1000일을 축하해 :)">다비야, 너의 1000일을 축하해 :)</option>
-                      <option value="평생 함께 해♥">평생 함께 해♥</option>
-                      <option value="내 세상은 네가 있어 더 아름다워">내 세상은 네가 있어 더 아름다워</option>
-                      <option value="우리집 둘 째">우리집 둘 째</option>
-                      <option value="우리 곧, 결혼해요.">우리 곧, 결혼해요.</option>
-                      <option value="우리 셋의 세 번째 크리스마스">우리 셋의 세 번째 크리스마스</option>
+                      {LETTERING_SUGGESTIONS.map((suggestion) => (
+                        <option key={suggestion} value={suggestion}>
+                          {suggestion}
+                        </option>
+                      ))}
                     </select>
                   </label>
 
