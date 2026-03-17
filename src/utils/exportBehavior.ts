@@ -1,9 +1,8 @@
 import type { FrameType } from "../types/frame";
 
-export type ExportExperience = "share-sheet" | "save-file-picker" | "download";
+export type SaveStrategy = "save-file-picker" | "download";
 
-type ExportExperienceArgs = {
-  hasShareFiles: boolean;
+type SaveStrategyArgs = {
   hasFilePicker: boolean;
   prefersTouchExperience: boolean;
 };
@@ -28,24 +27,11 @@ const DEFAULT_FALLBACK_MAX_WIDTH = 3072;
 
 const cmToPx = (cm: number, dpi: number): number => Math.round((cm * dpi) / 2.54);
 
-export function getExportExperience({
-  hasShareFiles,
+export function getSaveStrategy({
   hasFilePicker,
   prefersTouchExperience,
-}: ExportExperienceArgs): ExportExperience {
-  if (prefersTouchExperience) {
-    return "share-sheet";
-  }
-
-  if (hasFilePicker && !prefersTouchExperience) {
-    return "save-file-picker";
-  }
-
-  if (hasShareFiles) {
-    return "share-sheet";
-  }
-
-  if (hasFilePicker) {
+}: SaveStrategyArgs): SaveStrategy {
+  if (!prefersTouchExperience && hasFilePicker) {
     return "save-file-picker";
   }
 

@@ -22,7 +22,7 @@ import {
   loadStickerDimensions,
 } from './utils/stickerSizing'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
-import { getExportExperience, getExportRenderPlan } from './utils/exportBehavior'
+import { getExportRenderPlan, getSaveStrategy } from './utils/exportBehavior'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -490,21 +490,6 @@ function App() {
     });
   }
 
-  const canShareExportFile = useCallback((file: File) => {
-    const nav = navigator as Navigator & {
-      canShare?: (data: { files: File[] }) => boolean;
-    };
-
-    if (typeof navigator === 'undefined') return false;
-    if (typeof nav.canShare !== 'function') return false;
-
-    try {
-      return nav.canShare({ files: [file] });
-    } catch {
-      return false;
-    }
-  }, []);
-
   const exportBlobFromStage = useCallback(async ({
     frameType,
     stage,
@@ -569,57 +554,15 @@ function App() {
 
       const filename = makeSuggestedFilename();
       const blob = await exportBlobFromStage({ frameType, stage });
-      const exportFile = new File([blob], filename, { type: 'image/png' });
-      const exportExperience = getExportExperience({
-        hasShareFiles: canShareExportFile(exportFile),
-        hasFilePicker: supportsFilePicker,
-        prefersTouchExperience: isResponsiveMobile,
-      });
-
-      if (exportExperience === 'share-sheet') {
-        const url = URL.createObjectURL(blob);
-        setExportBlob(blob);
-        setExportObjectUrl(url);
-        setExportFilename(filename);
-        setExportOverlayOpen(true);
-        return;
+      if (exportObjectUrl) {
+        URL.revokeObjectURL(exportObjectUrl);
       }
 
-      if (exportExperience === 'save-file-picker' && supportsFilePicker && window.showSaveFilePicker) {
-        try {
-          const fileHandle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            excludeAcceptAllOption: true,
-            startIn: 'desktop',
-            types: [
-              {
-                description: 'PNG 이미지',
-                accept: { 'image/png': ['.png'] },
-              },
-            ],
-          });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          return;
-        } catch (error) {
-          const isAbort = error instanceof DOMException && error.name === 'AbortError';
-          if (!isAbort) {
-            console.warn('파일 저장 위치 선택 실패', error);
-            alert('파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.');
-          }
-        }
-      }
-
-      // 파일 시스템 접근 API 미지원 또는 취소 시 기본 다운로드로 폴백
-      const downloadUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+      const url = URL.createObjectURL(blob);
+      setExportBlob(blob);
+      setExportObjectUrl(url);
+      setExportFilename(filename);
+      setExportOverlayOpen(true);
     } catch (e) {
       console.error('Export 실패:', e);
       alert('내보내기에 실패했습니다. 다시 시도해주세요.');
@@ -628,44 +571,59 @@ function App() {
     }
   }
 
-  // 모바일: '사진에 저장' 버튼 핸들러 (사용자 제스처 컨텍스트 내)
-  const handleMobileSaveToPhotos = async () => {
+  // 오버레이: '사진에 저장' 버튼 핸들러 (사용자 제스처 컨텍스트 내)
+  const handleSaveToPhotos = async () => {
     if (!exportBlob) return;
-    try {
-      const file = new File([exportBlob], exportFilename || 'cut_export.png', { type: 'image/png' });
-      const nav = navigator as unknown as { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title: string }) => Promise<void> };
-      if (canShareExportFile(file) && 'share' in navigator) {
-        await nav.share?.({ files: [file], title: '컷 내보내기' });
-        // 공유 완료 후 오버레이 닫기
-        handleCloseExportOverlay();
+    const filename = exportFilename || 'cut_export.png';
+    const saveStrategy = getSaveStrategy({
+      hasFilePicker: supportsFilePicker,
+      prefersTouchExperience: isResponsiveMobile,
+    });
+    const url = exportObjectUrl || URL.createObjectURL(exportBlob);
+
+    if (saveStrategy === 'save-file-picker' && supportsFilePicker && window.showSaveFilePicker) {
+      try {
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: filename,
+          excludeAcceptAllOption: true,
+          startIn: 'desktop',
+          types: [
+            {
+              description: 'PNG 이미지',
+              accept: { 'image/png': ['.png'] },
+            },
+          ],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(exportBlob);
+        await writable.close();
         return;
+      } catch (error) {
+        const isAbort = error instanceof DOMException && error.name === 'AbortError';
+        if (isAbort) return;
+        console.warn('파일 저장 위치 선택 실패, 다운로드로 전환', error);
       }
-    } catch {
-      console.warn('Web Share API 실패 또는 미지원');
     }
 
     // 폴백 1: 다운로드 시도
     try {
-      const url = exportObjectUrl || URL.createObjectURL(exportBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = exportFilename || 'cut_export.png';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       return;
-    } catch {
-      console.warn('모바일 다운로드 폴백 실패');
+    } catch (error) {
+      console.warn('다운로드 폴백 실패', error);
     }
 
-    // 폴백 2: 같은 탭에서 이미지 열기 → 사용자 공유/저장 유도
+    // 폴백 2: 같은 탭에서 이미지 열기 → 사용자 수동 저장 유도
     try {
-      const url = exportObjectUrl || (exportBlob ? URL.createObjectURL(exportBlob) : undefined);
-      if (url) {
-        window.location.href = url;
-      }
-    } catch {
-      console.warn('이미지 열기 폴백 실패');
+      window.location.href = url;
+    } catch (error) {
+      console.warn('이미지 열기 폴백 실패', error);
+      alert('저장에 실패했습니다. 다시 시도해주세요.');
     }
   };
 
@@ -909,8 +867,8 @@ function App() {
         </div>
       )}
 
-      {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
-      {isResponsiveMobile && exportOverlayOpen && (
+      {/* 플랫폼 공통: 내보내기 오버레이 (사진에 저장) */}
+      {exportOverlayOpen && (
         <div
           role="dialog"
           aria-modal="true"
@@ -941,7 +899,7 @@ function App() {
               </button>
             </div>
             <p style={{ marginBottom: 12 }}>
-              공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.
+              사진 앱에 저장하려면 아래 버튼을 눌러 주세요.
             </p>
             {exportObjectUrl && (
               <img
@@ -966,7 +924,7 @@ function App() {
               <button
                 type="button"
                 className="linear-button linear-button--primary"
-                onClick={handleMobileSaveToPhotos}
+                onClick={handleSaveToPhotos}
               >
                 사진에 저장
               </button>

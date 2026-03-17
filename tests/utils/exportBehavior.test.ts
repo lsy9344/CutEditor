@@ -1,5 +1,5 @@
 import {
-  getExportExperience,
+  getSaveStrategy,
   getExportRenderPlan,
 } from "../../src/utils/exportBehavior.js";
 
@@ -16,28 +16,25 @@ function assertApproxEqual(actual: number, expected: number, message: string) {
 }
 
 assertEqual(
-  getExportExperience({
-    hasShareFiles: true,
+  getSaveStrategy({
     hasFilePicker: true,
     prefersTouchExperience: true,
   }),
-  "share-sheet",
-  "coarse pointer 환경에서는 공유 시트를 우선해야 한다",
+  "download",
+  "터치 기반 환경에서는 파일 선택창 대신 다운로드를 우선해야 한다",
 );
 
 assertEqual(
-  getExportExperience({
-    hasShareFiles: false,
+  getSaveStrategy({
     hasFilePicker: false,
     prefersTouchExperience: true,
   }),
-  "share-sheet",
-  "터치 환경에서는 공유 가능 여부와 관계없이 모바일 저장 시트를 유지해야 한다",
+  "download",
+  "터치 기반 환경에서 파일 선택창이 없어도 다운로드를 유지해야 한다",
 );
 
 assertEqual(
-  getExportExperience({
-    hasShareFiles: false,
+  getSaveStrategy({
     hasFilePicker: true,
     prefersTouchExperience: false,
   }),
@@ -46,8 +43,7 @@ assertEqual(
 );
 
 assertEqual(
-  getExportExperience({
-    hasShareFiles: false,
+  getSaveStrategy({
     hasFilePicker: false,
     prefersTouchExperience: false,
   }),
