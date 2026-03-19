@@ -20,7 +20,7 @@ export const FRAME_OPTIONS_BY_CATEGORY: Record<string, FrameOption[]> = {
   ],
   "2컷": [
     { value: "2h", label: "2컷 가로", image: "2h.png", orientation: "horizontal" },
-    { value: "2v", label: "2컷 세로", image: "2v.png", orientation: "vertical" },
+    { value: "2v_1", label: "2컷 세로 1", image: "2v.png", orientation: "vertical" },
   ],
   "3컷": [
     { value: "3v_1", label: "3컷 세로 1", image: "3v_1.png", orientation: "vertical" },
@@ -42,7 +42,7 @@ export const FRAME_OPTIONS_BY_CATEGORY: Record<string, FrameOption[]> = {
     { value: "8v_2", label: "8컷 세로 2", image: "8v_2.png", orientation: "vertical" },
   ],
   "9컷": [
-    { value: "9v", label: "9컷 세로", image: "9v.png", orientation: "vertical" },
+    { value: "9v_1", label: "9컷 세로 1", image: "9v.png", orientation: "vertical" },
   ]
 };
 
@@ -79,19 +79,13 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   };
 
   const handleCategoryClick = (category: string) => {
-    const options = FRAME_OPTIONS_BY_CATEGORY[category] ?? [];
     const outcome = getCategorySelectionOutcome({
       selectedCategory,
       category,
-      options: options.map((option) => option.value),
     });
 
     onCategoryChange(outcome.nextCategory);
     onCanvasModeChange(outcome.nextCanvasMode);
-
-    if (outcome.autoSelectFrame) {
-      onFrameSelect(outcome.autoSelectFrame);
-    }
   };
 
   const handleFrameSelect = (frame: FrameType) => {
@@ -150,17 +144,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               {activeCategory} 상세 스타일을 선택하세요.
             </p>
 
-            <div style={{ flexShrink: 0, marginBottom: '16px' }}>
-              <button
-                className="linear-button linear-button--secondary"
-                onClick={() => onCanvasModeChange('gallery')}
-                style={{ width: "100%" }}
-              >
-                ← 다른 프레임 갤러리 보기
-              </button>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, alignContent: "start", paddingRight: "12px", marginRight: "-4px" }}>
+<div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, alignContent: "start", paddingRight: "12px", marginRight: "-4px" }}>
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
                 <div
                   key={option.value}
@@ -198,12 +182,12 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                     )}
                   </div>
                   <div className="frame-gallery-label" style={{ padding: '8px' }}>
-                    <span className="label-text" style={{ 
-                      fontSize: '12px', 
-                      color: 'var(--linear-neutral-50)', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'center', 
+                    <span className="label-text" style={{
+                      fontSize: '12px',
+                      color: 'var(--linear-neutral-50)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
                       gap: '4px'
                     }}>
                       {option.label}

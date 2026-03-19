@@ -798,6 +798,7 @@ function App() {
       onTextMove={handleTextMove}
       onTextUpdate={handleTextUpdate}
       onImageDelete={handleImageDelete}
+      onTextDelete={handleTextDelete}
       onStickerDelete={handleStickerDelete}
       onStickerUpdate={handleStickerUpdate}
     />

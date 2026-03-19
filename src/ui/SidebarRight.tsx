@@ -713,7 +713,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)', flex: 1, minHeight: 0 }}>
               {!selectedStickerCategory ? (
                 <>
-                  <h3>스티커 카테고리 선택</h3>
+                  <h3>스티커 선택</h3>
                   <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>
                     클릭하여 스티커 목록을 확인하세요.
                   </p>
@@ -752,19 +752,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                                 onLoad={() => handleCategoryPreviewLoad(category.id)}
                                 onError={() => handleCategoryPreviewError(category.id, category.previewCandidates.length)}
                               />
-                            ) : (
-                              <div style={{
-                                width: '100%',
-                                height: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: 'var(--linear-secondary-400)',
-                                fontSize: '12px'
-                              }}>
-                                준비 중
-                              </div>
-                            )}
+                            ) : null}
                           </div>
                           <div className="frame-gallery-label" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                             <span className="label-text" style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--linear-neutral-50)' }}>
@@ -836,12 +824,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                             opacity: isInsertable ? 1 : 0.5,
                           }}
                         >
-                          {!isReady ? (
-                            <>
-                              <span style={{ fontSize: '10px', color: 'var(--linear-secondary-400)' }}>{slot.key}</span>
-                              <span style={{ fontSize: '10px', color: 'var(--linear-secondary-400)' }}>준비 중</span>
-                            </>
-                          ) : (
+                          {!isReady ? null : (
                             <img
                               src={previewSrc}
                               alt={`${slot.key} sticker`}

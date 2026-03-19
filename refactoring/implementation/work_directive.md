@@ -79,7 +79,7 @@
 - **대상 파일:** `src/ui/SidebarLeft.tsx`
 - **구체적 작업 내용:**
   - **편집 중 뱃지:** `canvasMode === 'editor'`일 때 현재 활성화된 프레임 라벨 옆에 `[✏️ 편집 중]` 형태의 브루탈리즘 스타일 뱃지 컴포넌트 노출.
-  - **돌아가기 버튼:** 2Depth 프레임 리스트 상단이나 하단에 `<button>← 다른 프레임 갤러리 보기</button>` 형태의 버튼 추가. 클릭 시 `setCanvasMode('gallery')` 트리거.
+  - **돌아가기 버튼:** 2Depth 프레임 리스트 상단이나 하단에 `<button>← 다른 프레임 보기</button>` 형태의 버튼 추가. 클릭 시 `setCanvasMode('gallery')` 트리거.
 
 ### 2-4. 프레임 전환 시 컨텍스트 보존 로직 및 경고창
 - **대상 파일:** `src/App.tsx` (`handleFrameSelect` 및 돌아가기 핸들러)

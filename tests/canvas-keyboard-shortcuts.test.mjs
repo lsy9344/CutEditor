@@ -130,12 +130,28 @@ test("캔버스 키보드 삭제는 스티커 삭제 콜백도 지원한다", ()
   assert.match(source, /onStickerDelete\?\.\(selectedSticker\.id\)/);
 });
 
+test("캔버스 키보드 삭제는 텍스트 삭제 콜백도 지원한다", () => {
+  const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+
+  assert.match(source, /onTextDelete\?: \(textId: string\) => void;/);
+  assert.match(source, /onTextDelete\?\.\(selectedText\.id\)/);
+});
+
 test("App은 스티커 삭제 콜백을 CanvasStage에 전달한다", () => {
   const source = readFileSync("src/App.tsx", "utf8");
 
   assert.match(
     source,
     /<CanvasStage[\s\S]*onStickerDelete=\{handleStickerDelete\}[\s\S]*\/>/
+  );
+});
+
+test("App은 텍스트 삭제 콜백을 CanvasStage에 전달한다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(
+    source,
+    /<CanvasStage[\s\S]*onTextDelete=\{handleTextDelete\}[\s\S]*\/>/
   );
 });
 

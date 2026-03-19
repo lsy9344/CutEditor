@@ -15,14 +15,18 @@ type FrameSelectionParams = {
 type CategorySelectionOutcome = {
   nextCategory: string | null;
   nextCanvasMode: "gallery";
-  autoSelectFrame: FrameType | null;
+  autoSelectFrame: null;
 };
 
 const LEGACY_FRAME_MAP: Record<string, FrameType> = {
-  "2": "2v",
-  "4": "4v",
-  "6": "6v",
-  "9": "9v",
+  "2": "2v_1",
+  "2v": "2v_1",
+  "4": "4v_1",
+  "4v": "4v_1",
+  "6": "6v_1",
+  "6v": "6v_1",
+  "9": "9v_1",
+  "9v": "9v_1",
 };
 
 export const normalizeFrameType = (rawFrameType: string | null): FrameType | null => {
@@ -70,11 +74,9 @@ export const hasFrameContent = ({
 export const getCategorySelectionOutcome = ({
   selectedCategory,
   category,
-  options,
 }: {
   selectedCategory: string | null;
   category: string;
-  options: FrameType[];
 }): CategorySelectionOutcome => {
   if (selectedCategory === category) {
     return {
@@ -87,6 +89,6 @@ export const getCategorySelectionOutcome = ({
   return {
     nextCategory: category,
     nextCanvasMode: "gallery",
-    autoSelectFrame: options.length === 1 ? options[0] : null,
+    autoSelectFrame: null,
   };
 };

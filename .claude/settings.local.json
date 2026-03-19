@@ -3,7 +3,14 @@
     "allow": [
       "Bash(ls -la /c/Code/Project/CutEditor/src/index.* 2>/dev/null || echo \"No index file found\")",
       "Bash(npm run:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:code.claude.com)",
+      "WebSearch",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(/Users/sooyeol/Desktop/code/CutEditor/src/components/components.css:*)",
+      "Bash(npx eslint:*)",
+      "Bash(git push:*)"
     ]
   }
 }

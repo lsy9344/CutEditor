@@ -105,13 +105,7 @@ export const StickerGallery: React.FC<StickerGalleryProps> = ({
                                         onError={() => handleStickerPreviewError(slot.key, slot.candidates.length)}
                                         style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
                                     />
-                                ) : (
-                                    <span style={{ fontSize: '12px', lineHeight: 1.3, color: 'var(--linear-secondary-300)', textAlign: 'center' }}>
-                                        {slot.key}
-                                        <br />
-                                        준비 중
-                                    </span>
-                                )}
+                                ) : null}
                             </div>
                         </button>
                     );

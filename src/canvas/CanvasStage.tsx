@@ -89,6 +89,7 @@ export type CanvasStageProps = {
     rotation: number;
   }>) => void;
   onImageDelete?: (imageId: string) => void;
+  onTextDelete?: (textId: string) => void;
   onStickerDelete?: (stickerId: string) => void;
   onStickerUpdate?: (stickerId: string, updates: Partial<{
     x: number;
@@ -150,6 +151,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onTextUpdate,
   onZoomChange,
   onImageDelete,
+  onTextDelete,
   onStickerDelete,
   onStickerUpdate
 }) => {
@@ -187,6 +189,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
+  const selectedText = selection ? texts.find((text) => text.id === selection) ?? null : null;
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isTouchManipulationActive = Boolean(selection);
@@ -273,7 +276,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isBold: boolean, isItalic: boolean, isVertical: boolean) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    
+
     const formattedText = isVertical ? text.replace(/\n/g, ' ').split('').join('\n') : text;
     const lines = formattedText.split('\n');
 
@@ -285,7 +288,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         height: fontSize * (isVertical ? 1.2 : 1) * lines.length
       };
     }
-    
+
     // 폴백: 근사치 계산
     const maxLength = Math.max(1, ...lines.map(line => line.length));
     return {
@@ -635,6 +638,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
+      if (selectedText) {
+        onTextDelete?.(selectedText.id);
+        return;
+      }
       if (selectedSticker) {
         onStickerDelete?.(selectedSticker.id);
         return;
@@ -716,10 +723,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     onImageDelete,
     onSelect,
     onSlotSelect,
+    onTextDelete,
     onStickerDelete,
     onStickerUpdate,
     selectImage,
     selectedImage,
+    selectedText,
     selectedSticker,
     selectedSlot,
     selection,
@@ -2032,7 +2041,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>스티커 편집</h4>
 
               {/* 반전 버튼 */}
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <button
                   type="button"
                   className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
@@ -2054,7 +2063,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     <polyline points="17 2 21 6 17 10" />
                     <line x1="3" y1="6" x2="21" y2="6" />
                   </svg>
-                  좌우
+                  좌우 반전
                 </button>
                 <button
                   type="button"
@@ -2077,7 +2086,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     <polyline points="2 17 6 21 10 17" />
                     <line x1="6" y1="3" x2="6" y2="21" />
                   </svg>
-                  상하
+                  상하 반전
                 </button>
               </div>
 
