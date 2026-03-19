@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 type Step = {
   title: string;
@@ -25,8 +25,7 @@ const STEPS: Step[] = [
 ];
 
 const TOOLTIP_WIDTH = 224;
-const TOOLTIP_HEIGHT = 178;
-const MARGIN = 12;
+const MARGIN = 16;
 
 type Props = {
   step: number;
@@ -38,27 +37,24 @@ type Props = {
 
 export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, mobile = false }) => {
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: MARGIN, left: 85 });
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const el = buttonRefs[step]?.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    const tooltipH = tooltipRef.current?.offsetHeight ?? 200;
 
     if (mobile) {
-      // 버튼 위쪽에 툴팁 배치
-      const rawTop = rect.top - TOOLTIP_HEIGHT - 16;
+      const rawTop = rect.top - tooltipH - 16;
       const top = Math.max(MARGIN, rawTop);
-
-      // 버튼 중앙 기준 수평 정렬, 뷰포트 안으로 clamp
       const rawLeft = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
       const maxLeft = window.innerWidth - TOOLTIP_WIDTH - MARGIN;
       const left = Math.max(MARGIN, Math.min(rawLeft, maxLeft));
-
       setTooltipPos({ top, left });
     } else {
-      // 버튼 오른쪽에 툴팁 배치
-      const centered = rect.top + rect.height / 2 - TOOLTIP_HEIGHT / 2;
-      const maxTop = window.innerHeight - TOOLTIP_HEIGHT - MARGIN;
+      const centered = rect.top + rect.height / 2 - tooltipH / 2;
+      const maxTop = window.innerHeight - tooltipH - MARGIN;
       setTooltipPos({ top: Math.max(MARGIN, Math.min(centered, maxTop)), left: 85 });
     }
   }, [step, buttonRefs, mobile]);
@@ -130,6 +126,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
 
       {/* 툴팁 박스 */}
       <div
+        ref={tooltipRef}
         style={{
           position: 'fixed',
           left: `${tooltipPos.left}px`,
