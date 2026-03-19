@@ -3,6 +3,7 @@ import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
 import { SidebarRight } from './ui/SidebarRight'
+import { TutorialOverlay } from './ui/TutorialOverlay'
 import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
@@ -121,6 +122,12 @@ function App() {
   ));
   const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
   const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
+  const [tutorialStep, setTutorialStep] = useState<number | null>(() =>
+    localStorage.getItem('tutorial-v1-done') ? null : 0
+  );
+  const tutorialRef0 = useRef<HTMLButtonElement>(null);
+  const tutorialRef1 = useRef<HTMLButtonElement>(null);
+  const tutorialRef2 = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -731,6 +738,21 @@ function App() {
 
   const availableOptions = activeCategory ? FRAME_OPTIONS_BY_CATEGORY[activeCategory] : [];
   const isMobileEditor = isResponsiveMobile;
+
+  const handleTutorialNext = () => {
+    if (tutorialStep === null) return;
+    if (tutorialStep >= 2) {
+      localStorage.setItem('tutorial-v1-done', '1');
+      setTutorialStep(null);
+    } else {
+      setTutorialStep(tutorialStep + 1);
+    }
+  };
+
+  const handleTutorialSkip = () => {
+    localStorage.setItem('tutorial-v1-done', '1');
+    setTutorialStep(null);
+  };
   const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
   const selectedSticker = selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined;
 
@@ -806,6 +828,16 @@ function App() {
 
   return (
     <div className="app-container">
+      {/* 튜토리얼 오버레이 (데스크톱 최초 실행 시) */}
+      {!isMobileEditor && tutorialStep !== null && (
+        <TutorialOverlay
+          step={tutorialStep}
+          buttonRefs={[tutorialRef0, tutorialRef1, tutorialRef2]}
+          onNext={handleTutorialNext}
+          onSkip={handleTutorialSkip}
+        />
+      )}
+
       <div className={`app-main${isMobileEditor ? ' app-main--mobile-editor' : ''}`}>
 
         {/* 데스크톱: 왼쪽 아이콘 레일 */}
@@ -824,9 +856,11 @@ function App() {
           >
             {/* 프레임 */}
             <button
+              ref={tutorialRef0}
               type="button"
               onClick={() => setDesktopPanel((p) => p === 'frames' ? null : 'frames')}
               style={desktopIconButtonStyle(desktopPanel === 'frames')}
+              className={tutorialStep === 0 ? 'tutorial-highlight' : undefined}
             >
               <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="7" />
@@ -839,9 +873,11 @@ function App() {
 
             {/* 글씨 */}
             <button
+              ref={tutorialRef1}
               type="button"
               onClick={() => setDesktopPanel((p) => p === 'text' ? null : 'text')}
               style={desktopIconButtonStyle(desktopPanel === 'text')}
+              className={tutorialStep === 1 ? 'tutorial-highlight' : undefined}
             >
               <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="4 7 4 4 20 4 20 7" />
@@ -853,9 +889,11 @@ function App() {
 
             {/* 스티커 */}
             <button
+              ref={tutorialRef2}
               type="button"
               onClick={() => setDesktopPanel((p) => p === 'sticker' ? null : 'sticker')}
               style={desktopIconButtonStyle(desktopPanel === 'sticker')}
+              className={tutorialStep === 2 ? 'tutorial-highlight' : undefined}
             >
               <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />

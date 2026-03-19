@@ -842,3 +842,22 @@ p {
     grid-column: span 2;
   }
 }
+
+/* Tutorial Highlight */
+@keyframes tutorial-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px var(--linear-primary-500), 0 0 0 5px #000;
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--linear-primary-500), 0 0 0 8px #000;
+  }
+}
+
+.tutorial-highlight {
+  animation: tutorial-pulse 1.2s ease-in-out infinite !important;
+  background: var(--linear-primary-500) !important;
+  color: #000 !important;
+  border-radius: 4px;
+  position: relative;
+  z-index: 999;
+}
