@@ -126,6 +126,9 @@ function App() {
   const tutorialRef0 = useRef<HTMLButtonElement>(null);
   const tutorialRef1 = useRef<HTMLButtonElement>(null);
   const tutorialRef2 = useRef<HTMLButtonElement>(null);
+  const mobileTutorialRef0 = useRef<HTMLButtonElement>(null);
+  const mobileTutorialRef1 = useRef<HTMLButtonElement>(null);
+  const mobileTutorialRef2 = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -824,13 +827,17 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* 튜토리얼 오버레이 (데스크톱 최초 실행 시) */}
-      {!isMobileEditor && tutorialStep !== null && (
+      {/* 튜토리얼 오버레이 */}
+      {tutorialStep !== null && (
         <TutorialOverlay
           step={tutorialStep}
-          buttonRefs={[tutorialRef0, tutorialRef1, tutorialRef2]}
+          buttonRefs={isMobileEditor
+            ? [mobileTutorialRef0, mobileTutorialRef1, mobileTutorialRef2]
+            : [tutorialRef0, tutorialRef1, tutorialRef2]
+          }
           onNext={handleTutorialNext}
           onSkip={handleTutorialSkip}
+          mobile={isMobileEditor}
         />
       )}
 
@@ -963,22 +970,25 @@ function App() {
             {/* 모바일 하단 툴바 */}
             <div className="app-mobile-toolbar linear-card">
               <button
+                ref={mobileTutorialRef0}
                 type="button"
-                className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 0 ? ' tutorial-highlight' : ''}`}
                 onClick={() => setMobilePanel((prev) => prev === 'frames' ? null : 'frames')}
               >
                 프레임
               </button>
               <button
+                ref={mobileTutorialRef1}
                 type="button"
-                className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 1 ? ' tutorial-highlight' : ''}`}
                 onClick={() => setMobilePanel((prev) => prev === 'text' ? null : 'text')}
               >
                 글씨
               </button>
               <button
+                ref={mobileTutorialRef2}
                 type="button"
-                className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 2 ? ' tutorial-highlight' : ''}`}
                 onClick={() => setMobilePanel((prev) => prev === 'sticker' ? null : 'sticker')}
               >
                 스티커

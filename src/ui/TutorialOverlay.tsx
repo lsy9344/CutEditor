@@ -22,7 +22,6 @@ const STEPS: Step[] = [
 
 const TOOLTIP_WIDTH = 224;
 const TOOLTIP_HEIGHT = 178;
-const TOOLTIP_LEFT = 85;
 const MARGIN = 12;
 
 type Props = {
@@ -30,22 +29,87 @@ type Props = {
   buttonRefs: React.RefObject<HTMLButtonElement | null>[];
   onNext: () => void;
   onSkip: () => void;
+  mobile?: boolean;
 };
 
-export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip }) => {
-  const [tooltipTop, setTooltipTop] = useState<number>(MARGIN);
+export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, mobile = false }) => {
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number }>({ top: MARGIN, left: 85 });
 
   useEffect(() => {
     const el = buttonRefs[step]?.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const centered = rect.top + rect.height / 2 - TOOLTIP_HEIGHT / 2;
-    const maxTop = window.innerHeight - TOOLTIP_HEIGHT - MARGIN;
-    setTooltipTop(Math.max(MARGIN, Math.min(centered, maxTop)));
-  }, [step, buttonRefs]);
+
+    if (mobile) {
+      // 버튼 위쪽에 툴팁 배치
+      const rawTop = rect.top - TOOLTIP_HEIGHT - 16;
+      const top = Math.max(MARGIN, rawTop);
+
+      // 버튼 중앙 기준 수평 정렬, 뷰포트 안으로 clamp
+      const rawLeft = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
+      const maxLeft = window.innerWidth - TOOLTIP_WIDTH - MARGIN;
+      const left = Math.max(MARGIN, Math.min(rawLeft, maxLeft));
+
+      setTooltipPos({ top, left });
+    } else {
+      // 버튼 오른쪽에 툴팁 배치
+      const centered = rect.top + rect.height / 2 - TOOLTIP_HEIGHT / 2;
+      const maxTop = window.innerHeight - TOOLTIP_HEIGHT - MARGIN;
+      setTooltipPos({ top: Math.max(MARGIN, Math.min(centered, maxTop)), left: 85 });
+    }
+  }, [step, buttonRefs, mobile]);
 
   const currentStep = STEPS[step];
   const isLast = step === STEPS.length - 1;
+
+  // 모바일: 아래 화살표, 데스크톱: 왼쪽 화살표
+  const arrowOuter = mobile
+    ? {
+        position: 'absolute' as const,
+        bottom: '-11px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 0,
+        height: 0,
+        borderLeft: '10px solid transparent',
+        borderRight: '10px solid transparent',
+        borderTop: '10px solid #000',
+      }
+    : {
+        position: 'absolute' as const,
+        left: '-11px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: 0,
+        height: 0,
+        borderTop: '10px solid transparent',
+        borderBottom: '10px solid transparent',
+        borderRight: '10px solid #000',
+      };
+
+  const arrowInner = mobile
+    ? {
+        position: 'absolute' as const,
+        bottom: '-7px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 0,
+        height: 0,
+        borderLeft: '8px solid transparent',
+        borderRight: '8px solid transparent',
+        borderTop: '8px solid #fff',
+      }
+    : {
+        position: 'absolute' as const,
+        left: '-7px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        width: 0,
+        height: 0,
+        borderTop: '8px solid transparent',
+        borderBottom: '8px solid transparent',
+        borderRight: '8px solid #fff',
+      };
 
   return (
     <>
@@ -64,8 +128,8 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
       <div
         style={{
           position: 'fixed',
-          left: `${TOOLTIP_LEFT}px`,
-          top: `${tooltipTop}px`,
+          left: `${tooltipPos.left}px`,
+          top: `${tooltipPos.top}px`,
           zIndex: 1000,
           width: `${TOOLTIP_WIDTH}px`,
           background: 'var(--linear-neutral-600)',
@@ -73,36 +137,11 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           boxShadow: '4px 4px 0px 0px #000',
           padding: '16px',
           fontFamily: 'var(--linear-font-family)',
-          transition: 'top 0.25s cubic-bezier(0.4,0,0.2,1)',
+          transition: 'top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        {/* 왼쪽 화살표 */}
-        <div
-          style={{
-            position: 'absolute',
-            left: '-11px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: 0,
-            height: 0,
-            borderTop: '10px solid transparent',
-            borderBottom: '10px solid transparent',
-            borderRight: '10px solid #000',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            left: '-7px',
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: 0,
-            height: 0,
-            borderTop: '8px solid transparent',
-            borderBottom: '8px solid transparent',
-            borderRight: '8px solid #fff',
-          }}
-        />
+        <div style={arrowOuter} />
+        <div style={arrowInner} />
 
         {/* 단계 표시 */}
         <div
