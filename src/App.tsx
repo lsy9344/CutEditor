@@ -933,14 +933,10 @@ function App() {
         {/* 데스크톱: 확장 가능한 왼쪽 패널 */}
         {!isMobileEditor && desktopPanel && (
           <div
-            className="linear-fade-in"
+            className="app-desktop-side-panel linear-fade-in"
             style={{
               width: '260px',
               flexShrink: 0,
-              minHeight: 0,
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column',
             }}
           >
             {desktopPanel === 'frames' ? (
@@ -971,7 +967,7 @@ function App() {
             <div className="app-mobile-canvas-shell">
               {mainCanvasContent}
             </div>
-            {/* 모바일 하단 툴바 */}
+            {/* 모바일 액션 바 */}
             <div className="app-mobile-toolbar linear-card">
               <button
                 ref={mobileTutorialRef0}
@@ -1008,7 +1004,7 @@ function App() {
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+          <div className="app-desktop-center-panel">
             {canvasMode === 'editor' && (
               <button
                 type="button"

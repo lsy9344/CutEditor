@@ -144,7 +144,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
               {activeCategory} 상세 스타일을 선택하세요.
             </p>
 
-<div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", overflowY: "auto", flex: 1, minHeight: 0, alignContent: "start", paddingRight: "12px", marginRight: "-4px" }}>
+<div className="frame-gallery-scroll" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", flex: 1, minHeight: 0, alignContent: "start" }}>
               {FRAME_OPTIONS_BY_CATEGORY[activeCategory].map((option) => (
                 <div
                   key={option.value}
