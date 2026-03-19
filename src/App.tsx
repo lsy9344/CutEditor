@@ -120,7 +120,7 @@ function App() {
       : false
   ));
   const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
-  const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>('frames');
+  const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -179,18 +179,22 @@ function App() {
   }
 
   const applyFrameChange = (frameType: FrameType) => {
+    const newFrameLayout = FRAME_LAYOUTS[frameType];
+    const validSlotIds = new Set(newFrameLayout.slots.map(s => s.id));
+
     setEditorState(prev => {
+      // Retain images that fit into the new frame's slots
+      const newUserImages = prev.userImages.filter(img => validSlotIds.has(img.slotId));
+
       return {
         ...prev,
         selectedFrame: frameType,
-        userImages: [],
+        userImages: newUserImages,
         selectedSlot: null,
         selection: null,
       };
     });
-    // 텍스트 및 스티커 선택 상태 초기화
-    setTexts([]);
-    setStickers([]);
+    // 텍스트 및 스티커는 삭제하지 않고 선택 상태만 초기화합니다.
     setSelectedTextId(null);
     setSelectedStickerId(null);
     setPendingFrameChange(null);
@@ -809,7 +813,7 @@ function App() {
           <aside
             className="linear-card"
             style={{
-              width: '56px',
+              width: '75px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -824,13 +828,13 @@ function App() {
               onClick={() => setDesktopPanel((p) => p === 'frames' ? null : 'frames')}
               style={desktopIconButtonStyle(desktopPanel === 'frames')}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="7" height="7" />
                 <rect x="14" y="3" width="7" height="7" />
                 <rect x="14" y="14" width="7" height="7" />
                 <rect x="3" y="14" width="7" height="7" />
               </svg>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>프레임</span>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>프레임</span>
             </button>
 
             {/* 글씨 */}
@@ -839,12 +843,12 @@ function App() {
               onClick={() => setDesktopPanel((p) => p === 'text' ? null : 'text')}
               style={desktopIconButtonStyle(desktopPanel === 'text')}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="4 7 4 4 20 4 20 7" />
                 <line x1="9" y1="20" x2="15" y2="20" />
                 <line x1="12" y1="4" x2="12" y2="20" />
               </svg>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>글씨</span>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>글씨</span>
             </button>
 
             {/* 스티커 */}
@@ -853,13 +857,13 @@ function App() {
               onClick={() => setDesktopPanel((p) => p === 'sticker' ? null : 'sticker')}
               style={desktopIconButtonStyle(desktopPanel === 'sticker')}
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M8 14s1.5 2 4 2 4-2 4-2" />
                 <line x1="9" y1="9" x2="9.01" y2="9" />
                 <line x1="15" y1="9" x2="15.01" y2="9" />
               </svg>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
+              <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
             </button>
 
             <div style={{ flex: 1 }} />
@@ -955,7 +959,17 @@ function App() {
             </div>
           </>
         ) : (
-          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative' }}>
+            {canvasMode === 'editor' && (
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => setCanvasMode('gallery')}
+                style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}
+              >
+                ← 다른 프레임 갤러리 보기
+              </button>
+            )}
             {mainCanvasContent}
           </div>
         )}
