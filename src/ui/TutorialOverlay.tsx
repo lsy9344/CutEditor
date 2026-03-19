@@ -20,6 +20,11 @@ const STEPS: Step[] = [
   },
 ];
 
+const TOOLTIP_WIDTH = 224;
+const TOOLTIP_HEIGHT = 178;
+const TOOLTIP_LEFT = 85;
+const MARGIN = 12;
+
 type Props = {
   step: number;
   buttonRefs: React.RefObject<HTMLButtonElement | null>[];
@@ -28,14 +33,15 @@ type Props = {
 };
 
 export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip }) => {
-  const [tooltipTop, setTooltipTop] = useState<number>(100);
-  const tooltipHeight = 170;
+  const [tooltipTop, setTooltipTop] = useState<number>(MARGIN);
 
   useEffect(() => {
     const el = buttonRefs[step]?.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    setTooltipTop(rect.top + rect.height / 2 - tooltipHeight / 2);
+    const centered = rect.top + rect.height / 2 - TOOLTIP_HEIGHT / 2;
+    const maxTop = window.innerHeight - TOOLTIP_HEIGHT - MARGIN;
+    setTooltipTop(Math.max(MARGIN, Math.min(centered, maxTop)));
   }, [step, buttonRefs]);
 
   const currentStep = STEPS[step];
@@ -43,25 +49,25 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
 
   return (
     <>
-      {/* 반투명 배경 오버레이 (클릭 방지) */}
+      {/* 앱 전체 차단 오버레이 — 클릭해도 닫히지 않음 */}
       <div
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(0,0,0,0.18)',
+          background: 'rgba(0,0,0,0.45)',
           zIndex: 998,
+          cursor: 'default',
         }}
-        onClick={onSkip}
       />
 
       {/* 툴팁 박스 */}
       <div
         style={{
           position: 'fixed',
-          left: '85px',
+          left: `${TOOLTIP_LEFT}px`,
           top: `${tooltipTop}px`,
           zIndex: 1000,
-          width: '220px',
+          width: `${TOOLTIP_WIDTH}px`,
           background: 'var(--linear-neutral-600)',
           border: '3px solid #000',
           boxShadow: '4px 4px 0px 0px #000',
@@ -70,7 +76,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           transition: 'top 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        {/* 왼쪽 화살표 (버튼 방향) */}
+        {/* 왼쪽 화살표 */}
         <div
           style={{
             position: 'absolute',

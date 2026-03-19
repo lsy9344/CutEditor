@@ -122,9 +122,7 @@ function App() {
   ));
   const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
   const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
-  const [tutorialStep, setTutorialStep] = useState<number | null>(() =>
-    localStorage.getItem('tutorial-v1-done') ? null : 0
-  );
+  const [tutorialStep, setTutorialStep] = useState<number | null>(0);
   const tutorialRef0 = useRef<HTMLButtonElement>(null);
   const tutorialRef1 = useRef<HTMLButtonElement>(null);
   const tutorialRef2 = useRef<HTMLButtonElement>(null);
@@ -742,7 +740,6 @@ function App() {
   const handleTutorialNext = () => {
     if (tutorialStep === null) return;
     if (tutorialStep >= 2) {
-      localStorage.setItem('tutorial-v1-done', '1');
       setTutorialStep(null);
     } else {
       setTutorialStep(tutorialStep + 1);
@@ -750,7 +747,6 @@ function App() {
   };
 
   const handleTutorialSkip = () => {
-    localStorage.setItem('tutorial-v1-done', '1');
     setTutorialStep(null);
   };
   const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
@@ -1005,7 +1001,7 @@ function App() {
                 onClick={() => setCanvasMode('gallery')}
                 style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}
               >
-                ← 다른 프레임 갤러리 보기
+                ← 돌아가기
               </button>
             )}
             {mainCanvasContent}
