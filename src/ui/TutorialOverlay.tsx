@@ -18,6 +18,10 @@ const STEPS: Step[] = [
     title: '③ 스티커 꾸미기',
     description: '귀여운 스티커로 사진을 꾸며요.\n드래그해서 원하는 위치에 놓으세요.',
   },
+  {
+    title: '④ 저장',
+    description: '완성된 이미지를 저장해요.\n편집이 끝나면 저장 버튼을 눌러보세요.',
+  },
 ];
 
 const TOOLTIP_WIDTH = 224;

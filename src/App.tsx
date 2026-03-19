@@ -126,9 +126,11 @@ function App() {
   const tutorialRef0 = useRef<HTMLButtonElement>(null);
   const tutorialRef1 = useRef<HTMLButtonElement>(null);
   const tutorialRef2 = useRef<HTMLButtonElement>(null);
+  const tutorialRef3 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef0 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef1 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef2 = useRef<HTMLButtonElement>(null);
+  const mobileTutorialRef3 = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -742,7 +744,7 @@ function App() {
 
   const handleTutorialNext = () => {
     if (tutorialStep === null) return;
-    if (tutorialStep >= 2) {
+    if (tutorialStep >= 3) {
       setTutorialStep(null);
     } else {
       setTutorialStep(tutorialStep + 1);
@@ -832,8 +834,8 @@ function App() {
         <TutorialOverlay
           step={tutorialStep}
           buttonRefs={isMobileEditor
-            ? [mobileTutorialRef0, mobileTutorialRef1, mobileTutorialRef2]
-            : [tutorialRef0, tutorialRef1, tutorialRef2]
+            ? [mobileTutorialRef0, mobileTutorialRef1, mobileTutorialRef2, mobileTutorialRef3]
+            : [tutorialRef0, tutorialRef1, tutorialRef2, tutorialRef3]
           }
           onNext={handleTutorialNext}
           onSkip={handleTutorialSkip}
@@ -911,8 +913,9 @@ function App() {
 
             {/* 저장 */}
             <button
+              ref={tutorialRef3}
               type="button"
-              className="linear-button linear-button--primary"
+              className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
               onClick={handleExport}
               style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
             >
@@ -994,8 +997,9 @@ function App() {
                 스티커
               </button>
               <button
+                ref={mobileTutorialRef3}
                 type="button"
-                className="linear-button linear-button--primary"
+                className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
                 onClick={handleExport}
               >
                 저장
