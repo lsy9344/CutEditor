@@ -372,8 +372,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     overflowY: 'auto',
     flex: 1,
     minHeight: 0,
-    marginTop: '12px',
+    marginTop: '10px',
+    paddingTop: '2px',
+    paddingLeft: '2px',
     paddingRight: 'var(--linear-space-3)',
+    marginLeft: '-2px',
   };
 
   return (
@@ -729,12 +732,21 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                       const isReady = currentIndex < category.previewCandidates.length && Boolean(previewSrc);
 
                       return (
-                        <div
+                        <button
                           key={category.id}
-                          className="frame-gallery-card"
+                          type="button"
+                          className="linear-button"
                           onClick={() => setSelectedStickerCategory(category.id)}
                           style={{
                             borderColor: 'var(--linear-neutral-400)',
+                            flexDirection: 'column',
+                            alignItems: 'stretch',
+                            justifyContent: 'flex-start',
+                            backgroundColor: 'var(--linear-neutral-600)',
+                            textTransform: 'none',
+                            width: '100%',
+                            padding: '0',
+                            height: 'auto',
                           }}
                         >
                           <div className={`frame-gallery-image-container ${loadedCategoryPreviews[category.id] ? 'loaded' : 'loading'}`} style={{
@@ -759,7 +771,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                               {category.description}
                             </span>
                           </div>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>

@@ -764,6 +764,7 @@ p {
   transition: transform 0.1s ease-in-out, box-shadow 0.1s ease-in-out, background-color 0.1s ease-in-out;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .frame-gallery-card:not(.frame-gallery-card--selected):hover {
@@ -775,12 +776,14 @@ p {
   .frame-gallery-card:not(.frame-gallery-card--selected):hover {
     transform: translate(-2px, -2px);
     box-shadow: var(--shadow-hover);
+    z-index: 1;
   }
 }
 
 .frame-gallery-card:active {
   transform: translate(2px, 2px);
   box-shadow: var(--shadow-active);
+  z-index: 1;
 }
 
 .frame-gallery-card--selected {

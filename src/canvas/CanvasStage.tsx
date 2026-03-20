@@ -2057,7 +2057,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>스티커 편집</h4>
 
               {/* 반전 버튼 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '6px' }}>
                 <button
                   type="button"
                   className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
@@ -2069,7 +2069,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '4px',
-                    fontSize: '12px',
+                    minWidth: 0,
+                    padding: '0 6px',
+                    fontSize: '11px',
                     border: 'var(--border-width) solid var(--linear-neutral-500)',
                   }}
                   title="좌우 반전"
@@ -2092,7 +2094,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '4px',
-                    fontSize: '12px',
+                    minWidth: 0,
+                    padding: '0 6px',
+                    fontSize: '11px',
                     border: 'var(--border-width) solid var(--linear-neutral-500)',
                   }}
                   title="상하 반전"
