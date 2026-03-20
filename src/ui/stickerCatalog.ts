@@ -1,5 +1,7 @@
+import { buildStickerCandidatesForKey } from "../utils/stickerAssetCandidates";
+
 export const STICKER_SLOT_COUNT = 20;
-export const STICKER_EXTENSIONS = ["png", "svg", "webp", "jpg", "jpeg"] as const;
+export const STICKER_EXTENSIONS = ["svg", "png", "webp", "jpg", "jpeg"] as const;
 
 const SVG_STICKER_SLOT_KEY_PATTERN = /^(1s|2s|3s)_\d+ss$/;
 
@@ -23,7 +25,7 @@ function buildStickerPath(key: string, extensions: readonly string[] = STICKER_E
 
 export function buildStickerCandidates(key: string): string[] {
   if (SVG_STICKER_SLOT_KEY_PATTERN.test(key)) {
-    return buildStickerPath(key, STICKER_EXTENSIONS);
+    return buildStickerCandidatesForKey(key);
   }
 
   return buildStickerPath(key);

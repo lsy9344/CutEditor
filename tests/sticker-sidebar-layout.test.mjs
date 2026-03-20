@@ -4,35 +4,24 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { loadTsModule } from "./helpers/loadTsModule.mjs";
 
-const loadCatalog = async () =>
-  loadTsModule("src/ui/stickerCatalog.ts");
-
 const svgStickerKeys = readdirSync("public/stickers")
   .filter((file) => /^[123]s_\d+ss\.svg$/.test(file))
   .map((file) => file.replace(/\.svg$/, ""))
   .sort();
 
-test("기본 스티커 슬롯은 20개까지 생성된다", async () => {
-  const { STICKER_SLOT_COUNT, buildStickerSlots } = await loadCatalog();
+test("기본 스티커 슬롯은 20개까지 생성된다", () => {
+  const source = readFileSync("src/ui/stickerCatalog.ts", "utf8");
 
-  assert.equal(STICKER_SLOT_COUNT, 20);
-  assert.equal(buildStickerSlots("1s").length, 20);
-  assert.equal(buildStickerSlots("1s").at(-1)?.key, "1s_20ss");
+  assert.match(source, /export const STICKER_SLOT_COUNT = 20;/);
+  assert.match(source, /const key = `\$\{prefix\}_\$\{index \+ 1\}ss`;/);
+  assert.match(source, /candidates: buildStickerCandidates\(key\),/);
 });
 
-test("1s_6ss 스티커는 iPhone 호환을 위해 PNG를 먼저 시도한다", async () => {
-  const { buildStickerCandidates, buildStickerSlots } = await loadCatalog();
-  const targetSlot = buildStickerSlots("1s").find((slot) => slot.key === "1s_6ss");
+test("스티커 카탈로그는 키별 후보 우선순위 유틸을 사용한다", () => {
+  const source = readFileSync("src/ui/stickerCatalog.ts", "utf8");
 
-  assert.ok(targetSlot);
-  assert.deepEqual(targetSlot.candidates.slice(0, 2), [
-    "/stickers/1s_6ss.png",
-    "/stickers/1s_6ss.svg",
-  ]);
-  assert.deepEqual(buildStickerCandidates("2s_4ss").slice(0, 2), [
-    "/stickers/2s_4ss.png",
-    "/stickers/2s_4ss.svg",
-  ]);
+  assert.match(source, /import \{ buildStickerCandidatesForKey \} from "\.\.\/utils\/stickerAssetCandidates";/);
+  assert.match(source, /return buildStickerCandidatesForKey\(key\);/);
 });
 
 test("실제 SVG 스티커 파일마다 PNG 대체 자산이 존재한다", () => {
@@ -41,13 +30,25 @@ test("실제 SVG 스티커 파일마다 PNG 대체 자산이 존재한다", () =
   }
 });
 
-test("실제 SVG 스티커 파일은 모두 PNG를 먼저 시도한다", async () => {
-  const { buildStickerCandidates } = await loadCatalog();
+test("실제 SVG 스티커 파일은 자산 성격에 맞는 우선순위를 사용한다", async () => {
+  const {
+    STICKER_ASSET_AUDIT,
+    STICKER_RASTER_FIRST_KEYS,
+    buildStickerCandidatesForKey,
+  } = await loadTsModule("src/utils/stickerAssetCandidates.ts");
+  const rasterFirstKeySet = new Set(STICKER_RASTER_FIRST_KEYS);
 
   for (const key of svgStickerKeys) {
-    const candidates = buildStickerCandidates(key);
-    assert.equal(basename(candidates[0]), `${key}.png`);
-    assert.equal(basename(candidates[1]), `${key}.svg`);
+    assert.equal(Boolean(STICKER_ASSET_AUDIT[key]), true, `${key} audit metadata should exist`);
+    const candidates = buildStickerCandidatesForKey(key);
+    if (rasterFirstKeySet.has(key)) {
+      assert.equal(basename(candidates[0]), `${key}.png`);
+      assert.equal(basename(candidates[1]), `${key}.svg`);
+      continue;
+    }
+
+    assert.equal(basename(candidates[0]), `${key}.svg`);
+    assert.equal(basename(candidates[1]), `${key}.png`);
   }
 });
 

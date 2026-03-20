@@ -1,4 +1,5 @@
 import { mmToPx } from "./units.ts";
+import { getStickerAssetCandidates } from "./stickerAssetCandidates.ts";
 
 export type StickerDimensions = {
   width: number;
@@ -24,7 +25,6 @@ export const DEFAULT_STICKER_WIDTH = 100;
 export const DEFAULT_STICKER_HEIGHT = 100;
 export const DEFAULT_STICKER_INSERT_LONGEST_EDGE_MM = 18;
 export const CSS_DPI = 96;
-const STICKER_RASTER_EXTENSIONS = ["png", "webp", "jpg", "jpeg"] as const;
 
 const isValidDimension = (value: number) => Number.isFinite(value) && value > 0;
 
@@ -51,25 +51,6 @@ const loadImageDimensionsInBrowser: StickerImageLoader = async (src) => {
     image.src = src;
   });
 };
-
-export function getStickerAssetCandidates(src: string): string[] {
-  const normalizedSrc = src.trim();
-
-  if (!normalizedSrc) {
-    return [];
-  }
-
-  const lowerSrc = normalizedSrc.toLowerCase();
-  if (!lowerSrc.endsWith(".svg")) {
-    return [normalizedSrc];
-  }
-
-  const rasterCandidates = STICKER_RASTER_EXTENSIONS.map((extension) => (
-    normalizedSrc.replace(/\.svg$/i, `.${extension}`)
-  ));
-
-  return [normalizedSrc, ...rasterCandidates];
-}
 
 export async function loadStickerDimensions(
   src: string,

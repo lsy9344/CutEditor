@@ -23,7 +23,7 @@ import {
   hasStickerEditChanges,
 } from "./stickerEdit";
 import { getZoomToFit } from "./zoomSizing";
-import { getStickerAssetCandidates } from "../utils/stickerSizing";
+import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
