@@ -373,8 +373,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     flex: 1,
     minHeight: 0,
     marginTop: '12px',
-    paddingRight: '4px',
-    marginRight: '0',
+    paddingRight: 'var(--linear-space-3)',
   };
 
   return (
@@ -486,6 +485,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             gap: 'var(--linear-space-2)',
             minHeight: 0,
             overflow: 'hidden',
+            paddingRight: 0,
           }}
         >
 
@@ -500,6 +500,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 overflowX: 'hidden',
                 minHeight: 0,
                 paddingBottom: '16px',
+                paddingRight: 'var(--linear-space-3)',
               }}
             >
               {/* 텍스트 내용 작성 파트 */}
