@@ -26,7 +26,7 @@ test("좌측 프레임 카드 스크롤 영역은 카드 그림자와 hover 이�
   const sidebarSource = readFileSync("src/ui/SidebarLeft.tsx", "utf8");
   const cssSource = readFileSync("src/components/components.css", "utf8");
 
-  assert.match(sidebarSource, /className=\"frame-gallery-scroll\"/);
+  assert.match(sidebarSource, /className="frame-gallery-scroll"/);
   assert.match(
     cssSource,
     /\.frame-gallery-scroll\s*\{[\s\S]*overflow-y:\s*auto;[\s\S]*padding:\s*2px 6px 6px 2px;/

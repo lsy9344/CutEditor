@@ -53,7 +53,7 @@ const LETTERING_SUGGESTIONS = Array.from(
   ])
 );
 
-export type SidebarRightProps = {
+export type EditorPanelProps = {
   selectedFrame?: FrameType | null;
   selectedText?: {
     id: string;
@@ -131,7 +131,7 @@ export type SidebarRightProps = {
   showExportButton?: boolean;
 };
 
-export const SidebarRight: React.FC<SidebarRightProps> = ({
+export const EditorPanel: React.FC<EditorPanelProps> = ({
   selectedFrame,
   selectedText,
   selectedSticker,
@@ -474,7 +474,7 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
         </aside>
       )}
 
-      {/* 펼쳐지는 사이드바 패널 */}
+      {/* 펼쳐지는 편집 패널 */}
       {activeTab && (
         <aside
           className="linear-card linear-fade-in"
@@ -500,10 +500,6 @@ export const SidebarRight: React.FC<SidebarRightProps> = ({
                 overflowX: 'hidden',
                 minHeight: 0,
                 paddingBottom: '16px',
-                paddingLeft: '4px',
-                paddingRight: '4px',
-                marginLeft: '-4px',
-                marginRight: '-4px',
               }}
             >
               {/* 텍스트 내용 작성 파트 */}

@@ -1,7 +1,9 @@
 import {
   getExportExperience,
+  getMobileSaveFallback,
+  isShareAbortError,
   getExportRenderPlan,
-} from "../../src/utils/exportBehavior.js";
+} from "../../src/utils/exportBehavior.ts";
 
 function assertEqual<T>(actual: T, expected: T, message: string) {
   if (actual !== expected) {
@@ -55,6 +57,45 @@ assertEqual(
   "사용 가능한 저장 API가 없으면 다운로드로 폴백해야 한다",
 );
 
+assertEqual(
+  getMobileSaveFallback({
+    userAgent: "Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S921N) AppleWebKit/537.36 SamsungBrowser/24.0 Chrome/120.0 Mobile Safari/537.36",
+    isStandalone: false,
+  }),
+  "manual-preview",
+  "안드로이드 계열 모바일 브라우저는 자동 다운로드 대신 수동 미리보기를 우선해야 한다",
+);
+
+assertEqual(
+  getMobileSaveFallback({
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+    isStandalone: true,
+  }),
+  "manual-preview",
+  "설치형 웹앱에서는 새 탭 이동 대신 현재 화면 미리보기를 유지해야 한다",
+);
+
+assertEqual(
+  getMobileSaveFallback({
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+    isStandalone: false,
+  }),
+  "manual-preview",
+  "iPhone Safari도 blob 다운로드 대신 현재 화면의 수동 미리보기를 우선해야 한다",
+);
+
+assertEqual(
+  isShareAbortError(new DOMException("cancelled", "AbortError")),
+  true,
+  "공유 시트 취소는 AbortError로 식별해야 한다",
+);
+
+assertEqual(
+  isShareAbortError(new Error("share failed")),
+  false,
+  "일반 공유 실패는 취소와 구분해야 한다",
+);
+
 const verticalPlan = getExportRenderPlan({
   frameType: "4v_1",
   logicalCanvasWidth: 480,
@@ -77,7 +118,7 @@ assertApproxEqual(
 assertApproxEqual(
   verticalPlan.fallbackPixelRatio ?? 0,
   6.4,
-  "모바일 폴백은 3072px 기준으로 한 번만 낮춰야 한다",
+  "기본 폴백은 3072px 기준으로 한 번만 낮춰야 한다",
 );
 
 const horizontalPlan = getExportRenderPlan({

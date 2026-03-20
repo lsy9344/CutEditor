@@ -12,6 +12,8 @@ export default defineConfig([
       "**/dist/**",
       "**/build/**",
       "**/coverage/**",
+      "**/.agent/**",
+      "**/.tmp-tests/**",
       "**/.venv/**",
       "**/venv/**",
       "public/**",
@@ -47,7 +49,8 @@ export default defineConfig([
     files: [
       "*.{js,cjs,mjs,ts}",
       ".*.{js,cjs,mjs,ts}",
-      "**/{scripts,config}/**/*.{js,ts}",
+      "**/{scripts,config}/**/*.{js,cjs,mjs,ts}",
+      "**/tests/**/*.{js,cjs,mjs,ts}",
       "**/*.{config,conf,rc}.{js,cjs,mjs,ts}",
       "**/{vite,eslint,tailwind,postcss,rollup,webpack,tsup,babel}.config.{js,cjs,mjs,ts}",
     ],

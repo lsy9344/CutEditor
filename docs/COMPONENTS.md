@@ -1,9 +1,10 @@
 # Components
 
 ## Layout
-- SidebarLeft: 템플릿/옵션
+- DesktopNavigationRail: 데스크톱 프레임/글씨/스티커/저장 네비게이션
+- SidebarLeft: 프레임 카테고리/스타일 선택 패널
 - CanvasStage: 슬롯/가이드/오버레이 렌더
-- SidebarRight: 선택된 객체 속성(텍스트/이미지 모드)
+- EditorPanel: 텍스트/스티커 편집 패널
 - WizardFooter: 이전/다음/내보내기
 
 ## CanvasStage Props/Events (예시)

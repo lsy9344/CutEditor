@@ -2,7 +2,8 @@ import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
-import { SidebarRight } from './ui/SidebarRight'
+import { EditorPanel } from './ui/EditorPanel'
+import { DesktopNavigationRail } from './ui/DesktopNavigationRail'
 import { TutorialOverlay } from './ui/TutorialOverlay'
 import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
@@ -27,7 +28,8 @@ import {
   resolveTextBoxWidth,
 } from './canvas/textBoxWidth'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
-import { getExportExperience, getExportRenderPlan } from './utils/exportBehavior'
+import { getExportExperience, getMobileSaveFallback, isShareAbortError } from './utils/exportBehavior'
+import { exportStageToBlob } from './utils/stageExport'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -112,6 +114,7 @@ function App() {
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
   const [exportObjectUrl, setExportObjectUrl] = useState<string | null>(null);
   const [exportFilename, setExportFilename] = useState<string>("");
+  const [exportManualSaveRequired, setExportManualSaveRequired] = useState<boolean>(false);
   const [viewportWidth, setViewportWidth] = useState<number>(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -545,43 +548,25 @@ function App() {
     frameType: FrameType;
     stage: Konva.Stage;
   }) => {
-    const frameLayout = FRAME_LAYOUTS[frameType];
-    const renderPlan = getExportRenderPlan({
+    return exportStageToBlob({
       frameType,
-      logicalCanvasWidth: frameLayout.canvasWidth,
-      logicalCanvasHeight: frameLayout.canvasHeight,
-      fallbackMaxWidthPx: 3072,
+      stage,
+      initialMaxWidthPx: isResponsiveMobile ? 3072 : undefined,
+      fallbackMaxWidthPx: isResponsiveMobile ? 2048 : 3072,
     });
-    const previousSize = { width: stage.width(), height: stage.height() };
-    const previousScale = { x: stage.scaleX(), y: stage.scaleY() };
+  }, [isResponsiveMobile]);
 
-    const restoreStage = () => {
-      stage.size(previousSize);
-      stage.scale(previousScale);
-      stage.batchDraw();
-    };
-
-    const renderBlob = async (pixelRatio: number) => {
-      stage.size({ width: frameLayout.canvasWidth, height: frameLayout.canvasHeight });
-      stage.scale({ x: 1, y: 1 });
-      stage.batchDraw();
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      const dataUrl = stage.toDataURL({ mimeType: 'image/png', pixelRatio });
-      return fetch(dataUrl).then((response) => response.blob());
-    };
-
-    try {
-      try {
-        return await renderBlob(renderPlan.initialPixelRatio);
-      } catch (initialError) {
-        if (renderPlan.fallbackPixelRatio == null) {
-          throw initialError;
-        }
-        return await renderBlob(renderPlan.fallbackPixelRatio);
-      }
-    } finally {
-      restoreStage();
+  const isStandaloneDisplayMode = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return false;
     }
+
+    const nav = navigator as Navigator & { standalone?: boolean };
+    const isStandaloneMedia = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(display-mode: standalone)').matches
+      : false;
+
+    return isStandaloneMedia || nav.standalone === true;
   }, []);
 
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
@@ -614,6 +599,7 @@ function App() {
         setExportBlob(blob);
         setExportObjectUrl(url);
         setExportFilename(filename);
+        setExportManualSaveRequired(false);
         setExportOverlayOpen(true);
         return;
       }
@@ -680,6 +666,8 @@ function App() {
 
   const handleMobileSaveToPhotos = async () => {
     if (!exportBlob) return;
+    setExportManualSaveRequired(false);
+
     try {
       const file = new File([exportBlob], exportFilename || 'cut_export.png', { type: 'image/png' });
       const nav = navigator as unknown as { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title: string }) => Promise<void> };
@@ -689,8 +677,22 @@ function App() {
         handleCloseExportOverlay();
         return;
       }
-    } catch {
+    } catch (error) {
+      if (isShareAbortError(error)) {
+        return;
+      }
+
       console.warn('Web Share API 실패 또는 미지원');
+    }
+
+    const mobileSaveFallback = getMobileSaveFallback({
+      userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+      isStandalone: isStandaloneDisplayMode(),
+    });
+
+    if (mobileSaveFallback === 'manual-preview') {
+      setExportManualSaveRequired(true);
+      return;
     }
 
     // 폴백 1: 다운로드 시도
@@ -699,8 +701,6 @@ function App() {
       const a = document.createElement('a');
       a.href = url;
       a.download = exportFilename || 'cut_export.png';
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -733,6 +733,7 @@ function App() {
     setExportBlob(null);
     setExportObjectUrl(null);
     setExportFilename("");
+    setExportManualSaveRequired(false);
   };
 
   const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
@@ -757,7 +758,7 @@ function App() {
   const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
   const selectedSticker = selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined;
 
-  const sharedSidebarRightProps = {
+  const sharedEditorPanelProps = {
     selectedFrame: editorState.selectedFrame,
     selectedText,
     selectedSticker,
@@ -810,24 +811,6 @@ function App() {
       ? '글씨 편집'
       : '스티커 편집';
 
-  const desktopIconButtonStyle = (isActive: boolean): React.CSSProperties => ({
-    background: isActive ? 'var(--linear-neutral-50)' : 'transparent',
-    color: isActive ? 'var(--linear-neutral-600)' : 'var(--linear-secondary-300)',
-    border: 'none',
-    boxShadow: 'none',
-    width: '100%',
-    padding: '12px 0',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '6px',
-    cursor: 'pointer',
-    borderRadius: '8px',
-    transition: 'all 0.2s',
-    fontFamily: 'var(--linear-font-family)',
-  });
-
   return (
     <div className="app-container">
       {/* 튜토리얼 오버레이 */}
@@ -848,86 +831,16 @@ function App() {
 
         {/* 데스크톱: 왼쪽 아이콘 레일 */}
         {!isMobileEditor && (
-          <aside
-            className="linear-card"
-            style={{
-              width: '75px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '16px 8px',
-              flexShrink: 0,
-            }}
-          >
-            {/* 프레임 */}
-            <button
-              ref={tutorialRef0}
-              type="button"
-              onClick={() => setDesktopPanel((p) => p === 'frames' ? null : 'frames')}
-              style={desktopIconButtonStyle(desktopPanel === 'frames')}
-              className={tutorialStep === 0 ? 'tutorial-highlight' : undefined}
-            >
-              <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="7" height="7" />
-                <rect x="14" y="3" width="7" height="7" />
-                <rect x="14" y="14" width="7" height="7" />
-                <rect x="3" y="14" width="7" height="7" />
-              </svg>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>프레임</span>
-            </button>
-
-            {/* 글씨 */}
-            <button
-              ref={tutorialRef1}
-              type="button"
-              onClick={() => setDesktopPanel((p) => p === 'text' ? null : 'text')}
-              style={desktopIconButtonStyle(desktopPanel === 'text')}
-              className={tutorialStep === 1 ? 'tutorial-highlight' : undefined}
-            >
-              <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="4 7 4 4 20 4 20 7" />
-                <line x1="9" y1="20" x2="15" y2="20" />
-                <line x1="12" y1="4" x2="12" y2="20" />
-              </svg>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>글씨</span>
-            </button>
-
-            {/* 스티커 */}
-            <button
-              ref={tutorialRef2}
-              type="button"
-              onClick={() => setDesktopPanel((p) => p === 'sticker' ? null : 'sticker')}
-              style={desktopIconButtonStyle(desktopPanel === 'sticker')}
-              className={tutorialStep === 2 ? 'tutorial-highlight' : undefined}
-            >
-              <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                <line x1="9" y1="9" x2="9.01" y2="9" />
-                <line x1="15" y1="9" x2="15.01" y2="9" />
-              </svg>
-              <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
-            </button>
-
-            <div style={{ flex: 1 }} />
-
-            {/* 저장 */}
-            <button
-              ref={tutorialRef3}
-              type="button"
-              className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
-              onClick={handleExport}
-              style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>저장</span>
-            </button>
-          </aside>
+          <DesktopNavigationRail
+            activePanel={desktopPanel}
+            onTogglePanel={(panel) => setDesktopPanel((current) => current === panel ? null : panel)}
+            onExport={handleExport}
+            tutorialStep={tutorialStep}
+            frameButtonRef={tutorialRef0}
+            textButtonRef={tutorialRef1}
+            stickerButtonRef={tutorialRef2}
+            saveButtonRef={tutorialRef3}
+          />
         )}
 
         {/* 데스크톱: 확장 가능한 왼쪽 패널 */}
@@ -951,8 +864,8 @@ function App() {
                 onCategoryChange={setSelectedCategory}
               />
             ) : (
-              <SidebarRight
-                {...sharedSidebarRightProps}
+              <EditorPanel
+                {...sharedEditorPanelProps}
                 forcedTab={desktopPanel}
                 showActionRail={false}
                 showExportButton={false}
@@ -1064,8 +977,8 @@ function App() {
                   onCategoryChange={setSelectedCategory}
                 />
               ) : (
-                <SidebarRight
-                  {...sharedSidebarRightProps}
+                <EditorPanel
+                  {...sharedEditorPanelProps}
                   forcedTab={mobilePanel}
                   showActionRail={false}
                   showExportButton={false}
@@ -1163,12 +1076,15 @@ function App() {
               </button>
             </div>
             <p style={{ marginBottom: 12 }}>
-              공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.
+              {exportManualSaveRequired
+                ? '갤럭시 브라우저나 설치형 웹앱에서는 자동 저장이 불안정할 수 있어요. 아래 미리보기를 길게 눌러 이미지를 저장해 주세요.'
+                : '공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.'}
             </p>
             {exportObjectUrl && (
               <img
                 src={exportObjectUrl}
                 alt="내보낸 이미지 미리보기"
+                draggable={false}
                 style={{ width: '100%', height: 'auto', borderRadius: 8, marginBottom: 12 }}
               />
             )}
@@ -1177,6 +1093,16 @@ function App() {
                 type="button"
                 className="linear-button linear-button--secondary"
                 onClick={() => {
+                  const mobileSaveFallback = getMobileSaveFallback({
+                    userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+                    isStandalone: isStandaloneDisplayMode(),
+                  });
+
+                  if (mobileSaveFallback === 'manual-preview') {
+                    setExportManualSaveRequired(true);
+                    return;
+                  }
+
                   // 이미지 열기(폴백): 새 탭 미리보기로 현재 편집 화면을 유지
                   if (exportObjectUrl) {
                     openExportPreview(exportObjectUrl);

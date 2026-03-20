@@ -1,6 +1,7 @@
 import type { FrameType } from "../types/frame";
 
 export type ExportExperience = "share-sheet" | "save-file-picker" | "download";
+export type MobileSaveFallback = "manual-preview" | "download";
 
 type ExportExperienceArgs = {
   hasShareFiles: boolean;
@@ -13,7 +14,13 @@ type ExportRenderPlanArgs = {
   logicalCanvasWidth: number;
   logicalCanvasHeight: number;
   targetDpi?: number;
+  initialMaxWidthPx?: number;
   fallbackMaxWidthPx?: number;
+};
+
+type MobileSaveFallbackArgs = {
+  userAgent?: string;
+  isStandalone: boolean;
 };
 
 type ExportRenderPlan = {
@@ -57,16 +64,18 @@ export function getExportRenderPlan({
   logicalCanvasWidth,
   logicalCanvasHeight,
   targetDpi = DEFAULT_TARGET_DPI,
+  initialMaxWidthPx,
   fallbackMaxWidthPx = DEFAULT_FALLBACK_MAX_WIDTH,
 }: ExportRenderPlanArgs): ExportRenderPlan {
   const isHorizontal = /h$/i.test(frameType);
   const targetWidthPx = cmToPx(isHorizontal ? 15 : 10, targetDpi);
   const aspectRatio = logicalCanvasHeight / logicalCanvasWidth;
   const targetHeightPx = Math.round(targetWidthPx * aspectRatio);
-  const initialPixelRatio = Number((targetWidthPx / logicalCanvasWidth).toFixed(4));
+  const initialWidthPx = Math.min(targetWidthPx, initialMaxWidthPx ?? targetWidthPx);
+  const initialPixelRatio = Number((initialWidthPx / logicalCanvasWidth).toFixed(4));
 
-  const fallbackWidthPx = Math.min(targetWidthPx, fallbackMaxWidthPx);
-  const fallbackPixelRatio = fallbackWidthPx < targetWidthPx
+  const fallbackWidthPx = Math.min(initialWidthPx, fallbackMaxWidthPx);
+  const fallbackPixelRatio = fallbackWidthPx < initialWidthPx
     ? Number((fallbackWidthPx / logicalCanvasWidth).toFixed(4))
     : null;
 
@@ -76,4 +85,31 @@ export function getExportRenderPlan({
     initialPixelRatio,
     fallbackPixelRatio,
   };
+}
+
+export function getMobileSaveFallback({
+  userAgent = "",
+  isStandalone,
+}: MobileSaveFallbackArgs): MobileSaveFallback {
+  if (isStandalone) {
+    return "manual-preview";
+  }
+
+  const normalizedUserAgent = userAgent.toLowerCase();
+  const isAndroidLikeBrowser = normalizedUserAgent.includes("android")
+    || normalizedUserAgent.includes("samsungbrowser");
+  const isIosLikeBrowser = normalizedUserAgent.includes("iphone")
+    || normalizedUserAgent.includes("ipad")
+    || normalizedUserAgent.includes("ipod")
+    || (normalizedUserAgent.includes("macintosh") && normalizedUserAgent.includes("mobile"));
+
+  if (isAndroidLikeBrowser || isIosLikeBrowser) {
+    return "manual-preview";
+  }
+
+  return "download";
+}
+
+export function isShareAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
 }

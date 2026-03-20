@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-test("스티커 삽입 버튼은 실제로 로드된 미리보기만 허용한다", () => {
-  const source = readFileSync("src/ui/SidebarRight.tsx", "utf8");
+test("편집 패널의 스티커 삽입 버튼은 실제로 로드된 미리보기만 허용한다", () => {
+  const source = readFileSync("src/ui/EditorPanel.tsx", "utf8");
 
   assert.match(source, /loadedStickerPreviews/);
   assert.match(source, /const isInsertable = isReady && loadedStickerPreviews\[slot\.key\] === true;/);

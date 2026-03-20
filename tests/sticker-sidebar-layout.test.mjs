@@ -51,8 +51,8 @@ test("실제 SVG 스티커 파일은 모두 PNG를 먼저 시도한다", async (
   }
 });
 
-test("오른쪽 스티커 grid 간격은 현재 8px을 유지한다", () => {
-  const source = readFileSync("src/ui/SidebarRight.tsx", "utf8");
+test("편집 패널 스티커 grid 간격은 현재 8px을 유지한다", () => {
+  const source = readFileSync("src/ui/EditorPanel.tsx", "utf8");
 
   assert.match(
     source,
@@ -60,8 +60,8 @@ test("오른쪽 스티커 grid 간격은 현재 8px을 유지한다", () => {
   );
 });
 
-test("오른쪽 스티커 사이드바는 카드 높이 안에서 내부 스크롤을 유지한다", () => {
-  const source = readFileSync("src/ui/SidebarRight.tsx", "utf8");
+test("편집 패널 스티커 영역은 카드 높이 안에서 내부 스크롤을 유지한다", () => {
+  const source = readFileSync("src/ui/EditorPanel.tsx", "utf8");
 
   assert.match(
     source,
@@ -69,8 +69,8 @@ test("오른쪽 스티커 사이드바는 카드 높이 안에서 내부 스크�
   );
 });
 
-test("오른쪽 스티커 스크롤 영역은 현재 여백 규칙을 유지한다", () => {
-  const source = readFileSync("src/ui/SidebarRight.tsx", "utf8");
+test("편집 패널 스티커 스크롤 영역은 현재 여백 규칙을 유지한다", () => {
+  const source = readFileSync("src/ui/EditorPanel.tsx", "utf8");
 
   assert.match(
     source,

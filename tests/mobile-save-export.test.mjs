@@ -21,6 +21,22 @@ test("모바일 저장 시트의 이미지 열기 버튼도 공통 미리보기 
 test("모바일 다운로드 폴백 앵커는 현재 탭 이탈을 막기 위해 새 탭으로 연다", () => {
   const source = readFileSync("src/App.tsx", "utf8");
 
-  assert.match(source, /a\.target = '_blank';/);
-  assert.match(source, /a\.rel = 'noopener noreferrer';/);
+  assert.match(source, /getMobileSaveFallback\(/);
+  assert.match(source, /if \(mobileSaveFallback === 'manual-preview'\) \{/);
+  assert.match(source, /setExportManualSaveRequired\(true\);/);
+  assert.doesNotMatch(source, /a\.target = '_blank';/);
+});
+
+test("공유 시트 취소는 후속 다운로드로 이어지지 않고 조용히 종료한다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /if \(isShareAbortError\(error\)\) \{/);
+  assert.match(source, /return;\s*\n\s*}\s*\n\s*console\.warn\('Web Share API 실패 또는 미지원'/);
+});
+
+test("모바일 내보내기는 첫 렌더부터 보수적인 해상도 상한을 사용한다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /initialMaxWidthPx: isResponsiveMobile \? 3072 : undefined/);
+  assert.match(source, /fallbackMaxWidthPx: isResponsiveMobile \? 2048 : 3072/);
 });
