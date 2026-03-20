@@ -23,6 +23,7 @@ import {
   hasStickerEditChanges,
 } from "./stickerEdit";
 import { getZoomToFit } from "./zoomSizing";
+import { getStickerAssetCandidates } from "../utils/stickerSizing";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -475,17 +476,31 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
 
       stickerLoadSourcesRef.current.set(sticker.id, sticker.src);
-      const image = new window.Image();
-      image.crossOrigin = "anonymous";
-      image.onload = () => {
-        if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
-        setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, image));
+      const candidates = getStickerAssetCandidates(sticker.src);
+      let candidateIndex = 0;
+
+      const tryLoadStickerImage = () => {
+        const candidateSrc = candidates[candidateIndex];
+        if (!candidateSrc) {
+          if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
+          setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, null));
+          return;
+        }
+
+        const image = new window.Image();
+        image.crossOrigin = "anonymous";
+        image.onload = () => {
+          if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
+          setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, image));
+        };
+        image.onerror = () => {
+          candidateIndex += 1;
+          tryLoadStickerImage();
+        };
+        image.src = candidateSrc;
       };
-      image.onerror = () => {
-        if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
-        setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, null));
-      };
-      image.src = sticker.src;
+
+      tryLoadStickerImage();
     });
   }, [stickers]);
 

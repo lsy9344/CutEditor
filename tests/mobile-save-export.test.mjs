@@ -27,6 +27,14 @@ test("모바일 다운로드 폴백 앵커는 현재 탭 이탈을 막기 위해
   assert.doesNotMatch(source, /a\.target = '_blank';/);
 });
 
+test("갤럭시 계열 모바일 저장 시트는 열리자마자 길게 눌러 저장 안내를 준비한다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /shouldShowManualSaveHintImmediately/);
+  assert.match(source, /setExportManualSaveRequired\(shouldShowManualSaveHintImmediately\(\{/);
+  assert.match(source, /아래 미리보기를 길게 눌러 이미지를 저장해 주세요/);
+});
+
 test("공유 시트 취소는 후속 다운로드로 이어지지 않고 조용히 종료한다", () => {
   const source = readFileSync("src/App.tsx", "utf8");
 
@@ -37,6 +45,8 @@ test("공유 시트 취소는 후속 다운로드로 이어지지 않고 조용�
 test("모바일 내보내기는 첫 렌더부터 보수적인 해상도 상한을 사용한다", () => {
   const source = readFileSync("src/App.tsx", "utf8");
 
-  assert.match(source, /initialMaxWidthPx: isResponsiveMobile \? 3072 : undefined/);
-  assert.match(source, /fallbackMaxWidthPx: isResponsiveMobile \? 2048 : 3072/);
+  assert.match(source, /const mobileExportLimits = isResponsiveMobile/);
+  assert.match(source, /getMobileExportLimits\(\{ userAgent: getCurrentUserAgent\(\) \}\)/);
+  assert.match(source, /initialMaxWidthPx: mobileExportLimits\?\.initialMaxWidthPx/);
+  assert.match(source, /fallbackMaxWidthPx: mobileExportLimits\?\.fallbackMaxWidthPx \?\? 3072/);
 });

@@ -1,8 +1,10 @@
 import {
   getExportExperience,
+  getMobileExportLimits,
   getMobileSaveFallback,
   isShareAbortError,
   getExportRenderPlan,
+  shouldShowManualSaveHintImmediately,
 } from "../../src/utils/exportBehavior.ts";
 
 function assertEqual<T>(actual: T, expected: T, message: string) {
@@ -82,6 +84,56 @@ assertEqual(
   }),
   "manual-preview",
   "iPhone Safari도 blob 다운로드 대신 현재 화면의 수동 미리보기를 우선해야 한다",
+);
+
+assertEqual(
+  shouldShowManualSaveHintImmediately({
+    userAgent: "Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S921N) AppleWebKit/537.36 SamsungBrowser/24.0 Chrome/120.0 Mobile Safari/537.36",
+    isStandalone: false,
+  }),
+  true,
+  "갤럭시 계열 모바일 브라우저는 저장 시트가 열릴 때 즉시 수동 저장 안내를 보여야 한다",
+);
+
+assertEqual(
+  shouldShowManualSaveHintImmediately({
+    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+    isStandalone: false,
+  }),
+  false,
+  "iPhone Safari는 저장 시트 진입 직후에는 공유 저장 흐름을 유지할 수 있어야 한다",
+);
+
+const iosMobileExportLimits = getMobileExportLimits({
+  userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+});
+
+assertEqual(
+  iosMobileExportLimits.initialMaxWidthPx,
+  2048,
+  "iPhone Safari는 초기 내보내기 폭을 더 낮게 시작해야 한다",
+);
+
+assertEqual(
+  iosMobileExportLimits.fallbackMaxWidthPx,
+  1536,
+  "iPhone Safari는 실패 시 더 낮은 폭으로 한 번 더 폴백해야 한다",
+);
+
+const androidMobileExportLimits = getMobileExportLimits({
+  userAgent: "Mozilla/5.0 (Linux; Android 14; SAMSUNG SM-S921N) AppleWebKit/537.36 SamsungBrowser/24.0 Chrome/120.0 Mobile Safari/537.36",
+});
+
+assertEqual(
+  androidMobileExportLimits.initialMaxWidthPx,
+  3072,
+  "안드로이드 계열 모바일 브라우저는 기존 초기 해상도 상한을 유지해야 한다",
+);
+
+assertEqual(
+  androidMobileExportLimits.fallbackMaxWidthPx,
+  2048,
+  "안드로이드 계열 모바일 브라우저는 기존 폴백 해상도 상한을 유지해야 한다",
 );
 
 assertEqual(

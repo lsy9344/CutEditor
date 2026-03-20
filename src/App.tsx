@@ -28,7 +28,13 @@ import {
   resolveTextBoxWidth,
 } from './canvas/textBoxWidth'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
-import { getExportExperience, getMobileSaveFallback, isShareAbortError } from './utils/exportBehavior'
+import {
+  getExportExperience,
+  getMobileExportLimits,
+  getMobileSaveFallback,
+  isShareAbortError,
+  shouldShowManualSaveHintImmediately,
+} from './utils/exportBehavior'
 import { exportStageToBlob } from './utils/stageExport'
 
 type FileSystemWritableFileStream = {
@@ -541,6 +547,10 @@ function App() {
     }
   }, []);
 
+  const getCurrentUserAgent = useCallback(() => (
+    typeof navigator === 'undefined' ? '' : navigator.userAgent
+  ), []);
+
   const exportBlobFromStage = useCallback(async ({
     frameType,
     stage,
@@ -548,13 +558,17 @@ function App() {
     frameType: FrameType;
     stage: Konva.Stage;
   }) => {
+    const mobileExportLimits = isResponsiveMobile
+      ? getMobileExportLimits({ userAgent: getCurrentUserAgent() })
+      : null;
+
     return exportStageToBlob({
       frameType,
       stage,
-      initialMaxWidthPx: isResponsiveMobile ? 3072 : undefined,
-      fallbackMaxWidthPx: isResponsiveMobile ? 2048 : 3072,
+      initialMaxWidthPx: mobileExportLimits?.initialMaxWidthPx,
+      fallbackMaxWidthPx: mobileExportLimits?.fallbackMaxWidthPx ?? 3072,
     });
-  }, [isResponsiveMobile]);
+  }, [getCurrentUserAgent, isResponsiveMobile]);
 
   const isStandaloneDisplayMode = useCallback(() => {
     if (typeof window === 'undefined') {
@@ -588,6 +602,8 @@ function App() {
       const filename = makeSuggestedFilename();
       const blob = await exportBlobFromStage({ frameType, stage });
       const exportFile = new File([blob], filename, { type: 'image/png' });
+      const userAgent = getCurrentUserAgent();
+      const isStandalone = isStandaloneDisplayMode();
       const exportExperience = getExportExperience({
         hasShareFiles: canShareExportFile(exportFile),
         hasFilePicker: supportsFilePicker,
@@ -599,7 +615,10 @@ function App() {
         setExportBlob(blob);
         setExportObjectUrl(url);
         setExportFilename(filename);
-        setExportManualSaveRequired(false);
+        setExportManualSaveRequired(shouldShowManualSaveHintImmediately({
+          userAgent,
+          isStandalone,
+        }));
         setExportOverlayOpen(true);
         return;
       }
@@ -686,7 +705,7 @@ function App() {
     }
 
     const mobileSaveFallback = getMobileSaveFallback({
-      userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+      userAgent: getCurrentUserAgent(),
       isStandalone: isStandaloneDisplayMode(),
     });
 
@@ -1077,7 +1096,7 @@ function App() {
             </div>
             <p style={{ marginBottom: 12 }}>
               {exportManualSaveRequired
-                ? '갤럭시 브라우저나 설치형 웹앱에서는 자동 저장이 불안정할 수 있어요. 아래 미리보기를 길게 눌러 이미지를 저장해 주세요.'
+                ? '이 브라우저에서는 자동 저장이 불안정할 수 있어요. 아래 미리보기를 길게 눌러 이미지를 저장해 주세요.'
                 : '공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.'}
             </p>
             {exportObjectUrl && (
@@ -1094,7 +1113,7 @@ function App() {
                 className="linear-button linear-button--secondary"
                 onClick={() => {
                   const mobileSaveFallback = getMobileSaveFallback({
-                    userAgent: typeof navigator === 'undefined' ? '' : navigator.userAgent,
+                    userAgent: getCurrentUserAgent(),
                     isStandalone: isStandaloneDisplayMode(),
                   });
 

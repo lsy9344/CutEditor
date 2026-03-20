@@ -20,14 +20,14 @@ test("기본 스티커 슬롯은 20개까지 생성된다", async () => {
   assert.equal(buildStickerSlots("1s").at(-1)?.key, "1s_20ss");
 });
 
-test("1s_18ss 스티커는 모바일 호환을 위해 PNG를 먼저 시도한다", async () => {
+test("1s_6ss 스티커는 iPhone 호환을 위해 PNG를 먼저 시도한다", async () => {
   const { buildStickerCandidates, buildStickerSlots } = await loadCatalog();
-  const targetSlot = buildStickerSlots("1s").find((slot) => slot.key === "1s_18ss");
+  const targetSlot = buildStickerSlots("1s").find((slot) => slot.key === "1s_6ss");
 
   assert.ok(targetSlot);
   assert.deepEqual(targetSlot.candidates.slice(0, 2), [
-    "/stickers/1s_18ss.png",
-    "/stickers/1s_18ss.svg",
+    "/stickers/1s_6ss.png",
+    "/stickers/1s_6ss.svg",
   ]);
   assert.deepEqual(buildStickerCandidates("2s_4ss").slice(0, 2), [
     "/stickers/2s_4ss.png",
