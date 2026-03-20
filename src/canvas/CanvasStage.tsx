@@ -1953,7 +1953,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 )}
               </div>
               {/* 쉬운 팔레트: 외부 설정 기반 스와치 */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 4 }}>
                 {presetColors.map((color) => {
                   const isSelected = color.toLowerCase() === frameColor.toLowerCase();
                   return (
@@ -1964,13 +1964,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       className="linear-button linear-button--secondary"
                       onClick={() => onFrameColorChange?.(color)}
                       style={{
-                        width: 28,
-                        height: 28,
+                        width: 22,
+                        height: 22,
                         borderRadius: '0',
                         padding: 0,
                         backgroundColor: color,
                         border: isSelected ? 'var(--border-width) solid var(--linear-primary-500)' : 'var(--border-width) solid var(--linear-neutral-500)',
-                        boxShadow: color.toLowerCase() === '#ffffff' ? 'var(--shadow-sm)' : 'var(--shadow-sm)',
+                        boxShadow: 'var(--shadow-sm)',
+                        flexShrink: 0,
                       }}
                       title={color}
                     />
