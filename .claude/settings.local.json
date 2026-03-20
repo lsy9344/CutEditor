@@ -10,7 +10,9 @@
       "Bash(git commit:*)",
       "Bash(/Users/sooyeol/Desktop/code/CutEditor/src/components/components.css:*)",
       "Bash(npx eslint:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(python3:*)",
+      "Bash(sips -g all /Users/sooyeol/Desktop/code/CutEditor/public/stickers/2s_10ss.png)"
     ]
   }
 }

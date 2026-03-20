@@ -842,7 +842,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 </>
               )}
 
-              <div className="linear-mt-4">
+              <div className="linear-mt-4" style={{ display: 'flex', justifyContent: 'center', paddingRight: 'var(--linear-space-3)' }}>
                 <button
                   className="linear-button linear-button--secondary"
                   onClick={() => {
@@ -854,7 +854,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   }}
                   disabled={!selectedSticker}
                   style={{
-                    width: '100%',
                     opacity: selectedSticker ? 1 : 0.5,
                     borderColor: selectedSticker ? 'var(--linear-accent-error)' : 'var(--linear-neutral-500)',
                     color: selectedSticker ? 'var(--linear-accent-error)' : 'inherit'
