@@ -235,8 +235,8 @@ const RAW_FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     slots: [
       { id: "slot-1", x: 32, y: 20, width: 205, height: 305 },
       { id: "slot-2", x: 245, y: 20, width: 205, height: 305 },
-      { id: "slot-3", x: 32, y: 335, width: 205, height: 305 },
-      { id: "slot-4", x: 245, y: 335, width: 205, height: 305 }
+      { id: "slot-3", x: 32, y: 332, width: 205, height: 305 },
+      { id: "slot-4", x: 245, y: 332, width: 205, height: 305 }
     ]
   },
   "4v_2": {
@@ -247,10 +247,10 @@ const RAW_FRAME_LAYOUTS: Record<FrameType, FrameLayout> = {
     canvasHeight: VERTICAL.height,
     frameColor: "#ffffff",
     slots: [
-      { id: "slot-1", x: 20, y: 33, width: 215, height: 320 },
-      { id: "slot-2", x: 20, y: 361, width: 215, height: 320 },
-      { id: "slot-3", x: 248, y: 48, width: 215, height: 320 },
-      { id: "slot-4", x: 248, y: 375, width: 215, height: 320 }
+      { id: "slot-1", x: 21, y: 33, width: 214, height: 319 },
+      { id: "slot-2", x: 21, y: 361, width: 214, height: 319 },
+      { id: "slot-3", x: 247, y: 47, width: 215, height: 319 },
+      { id: "slot-4", x: 247, y: 376, width: 215, height: 319 }
     ]
   },
   "4v_3": {
