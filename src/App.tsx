@@ -117,6 +117,54 @@ type BoothySaveFailedMessage = {
   type: 'editor.save_failed';
 };
 
+type BoothyImportRequestMessage = {
+  correlationId: string;
+  sessionId?: string;
+  type: 'editor.import_requested';
+};
+
+type BoothyImportSelectedMessage = {
+  asset: {
+    displayLabel: string;
+    photoId: string;
+    previewDataUrl: string;
+  };
+  correlationId: string;
+  responseId: string;
+  sessionId: string;
+  type: 'editor.import_selected';
+};
+
+type BoothyImportCancelledMessage = {
+  correlationId: string;
+  responseId: string;
+  sessionId: string;
+  type: 'editor.import_cancelled';
+};
+
+type BoothyImportFailedMessage = {
+  code: string;
+  correlationId: string;
+  message: string;
+  nextAction: string;
+  responseId: string;
+  retryable: boolean;
+  sessionId: string;
+  type: 'editor.import_failed';
+};
+
+type BoothyImportResponseMessage =
+  | BoothyImportSelectedMessage
+  | BoothyImportCancelledMessage
+  | BoothyImportFailedMessage;
+
+type PendingBoothyImportState = {
+  correlationId: string;
+  slotId: string;
+};
+
+type BoothySaveNoticeState = 'idle' | 'saving' | 'saved';
+
 type TextAlign = 'left' | 'center' | 'right';
 
 type CanvasText = {
@@ -152,6 +200,8 @@ type CanvasSticker = {
 
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
+const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
+const BOOTHY_SAVE_NOTICE_AUTO_CLOSE_MS = 1_500;
 
 declare global {
   interface Window {
@@ -221,6 +271,37 @@ function notifyBoothyHostReady(launchContext: BoothyLaunchContext | null) {
   }
 }
 
+function resolveBoothyHostTargetWindow() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  if (window.parent && window.parent !== window) {
+    return window.parent;
+  }
+
+  if (window.opener) {
+    return window.opener;
+  }
+
+  return null;
+}
+
+async function createImportedFileFromDataUrl(dataUrl: string, photoId: string) {
+  const response = await fetch(dataUrl);
+
+  if (!response.ok) {
+    throw new Error('세션 사진 데이터를 편집기로 가져오지 못했습니다.');
+  }
+
+  const blob = await response.blob();
+  const safePhotoId = photoId.trim() || `session-photo-${Date.now()}`;
+
+  return new File([blob], safePhotoId, {
+    type: blob.type || 'image/jpeg',
+  });
+}
+
 function trySaveToBoothyHost(
   payload: BoothySaveRequestPayload,
 ): Promise<boolean> {
@@ -249,7 +330,11 @@ function trySaveToBoothyHost(
     };
 
     const handleMessage = (event: MessageEvent<BoothySaveSucceededMessage | BoothySaveFailedMessage>) => {
-      if (event.source !== window.parent || !event.data || typeof event.data !== 'object') {
+      if (event.source && event.source !== window.parent) {
+        return;
+      }
+
+      if (!event.data || typeof event.data !== 'object') {
         return;
       }
 
@@ -271,7 +356,7 @@ function trySaveToBoothyHost(
 
     const timeoutId = window.setTimeout(() => {
       finishWith(() => resolve(false));
-    }, 5000);
+    }, BOOTHY_HOST_SAVE_TIMEOUT_MS);
 
     window.addEventListener('message', handleMessage);
     window.parent.postMessage(
@@ -349,6 +434,8 @@ function App() {
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
+  const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
+  const [boothySaveNoticeState, setBoothySaveNoticeState] = useState<BoothySaveNoticeState>('idle');
   const stageRef = useRef<Konva.Stage | null>(null);
   // 모바일 내보내기 오버레이 상태
   const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
@@ -406,6 +493,26 @@ function App() {
     typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function'
   ), []);
   const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
+  const isBoothyImportBridgeAvailable = useMemo(() => {
+    return Boolean(
+      boothyLaunchContext?.sessionId?.trim()
+      && resolveBoothyHostTargetWindow(),
+    );
+  }, [boothyLaunchContext]);
+
+  useEffect(() => {
+    if (boothySaveNoticeState !== 'saved') {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setBoothySaveNoticeState('idle');
+    }, BOOTHY_SAVE_NOTICE_AUTO_CLOSE_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [boothySaveNoticeState]);
 
   useEffect(() => {
     const readyTimer = window.setTimeout(() => {
@@ -493,7 +600,7 @@ function App() {
     applyFrameChange(decision.frameType);
   }
 
-  const handleImageUpload = (file: File, slotId: string) => {
+  const handleImageUpload = useCallback((file: File, slotId: string) => {
     console.log('🔥 App.handleImageUpload called with:', file.name, slotId);
     const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const url = URL.createObjectURL(file);
@@ -527,7 +634,121 @@ function App() {
 
     setSelectedTextId(null);
     setSelectedStickerId(null);
-  }
+  }, []);
+
+  const handleBoothyImportRequest = useCallback((slotId: string) => {
+    if (!isBoothyImportBridgeAvailable) {
+      return false;
+    }
+
+    const targetWindow = resolveBoothyHostTargetWindow();
+
+    if (!targetWindow) {
+      return false;
+    }
+
+    if (pendingBoothyImport) {
+      // Recover from a missed host response by retrying the same correlation.
+      setPendingBoothyImport({
+        correlationId: pendingBoothyImport.correlationId,
+        slotId,
+      });
+      targetWindow.postMessage(
+        {
+          correlationId: pendingBoothyImport.correlationId,
+          sessionId: boothyLaunchContext?.sessionId?.trim() || undefined,
+          type: 'editor.import_requested',
+        } satisfies BoothyImportRequestMessage,
+        '*',
+      );
+      return true;
+    }
+
+    const request: BoothyImportRequestMessage = {
+      correlationId: `editor-import-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      sessionId: boothyLaunchContext?.sessionId?.trim() || undefined,
+      type: 'editor.import_requested',
+    };
+
+    setPendingBoothyImport({
+      correlationId: request.correlationId,
+      slotId,
+    });
+    targetWindow.postMessage(request, '*');
+
+    return true;
+  }, [boothyLaunchContext, isBoothyImportBridgeAvailable, pendingBoothyImport]);
+
+  useEffect(() => {
+    if (!pendingBoothyImport) {
+      return;
+    }
+
+    let isDisposed = false;
+
+    const handleMessage = (event: MessageEvent<BoothyImportResponseMessage>) => {
+      const targetWindow = resolveBoothyHostTargetWindow();
+
+      if (event.source && targetWindow && event.source !== targetWindow) {
+        return;
+      }
+
+      if (!event.data || typeof event.data !== 'object') {
+        return;
+      }
+
+      if (event.data.correlationId !== pendingBoothyImport.correlationId) {
+        return;
+      }
+
+      if (event.data.type === 'editor.import_cancelled') {
+        setPendingBoothyImport(null);
+        return;
+      }
+
+      if (event.data.type === 'editor.import_failed') {
+        setPendingBoothyImport(null);
+        alert(`${event.data.message}\n\n${event.data.nextAction}`);
+        return;
+      }
+
+      if (event.data.type !== 'editor.import_selected') {
+        return;
+      }
+
+      void createImportedFileFromDataUrl(
+        event.data.asset.previewDataUrl,
+        event.data.asset.photoId,
+      )
+        .then((file) => {
+          if (isDisposed) {
+            return;
+          }
+
+          handleImageUpload(file, pendingBoothyImport.slotId);
+          setPendingBoothyImport(null);
+        })
+        .catch((error) => {
+          if (isDisposed) {
+            return;
+          }
+
+          setPendingBoothyImport(null);
+          alert(
+            error instanceof Error && error.message.trim()
+              ? error.message
+              : '세션 사진을 편집기로 가져오지 못했습니다.',
+          );
+        });
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      isDisposed = true;
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [handleImageUpload, pendingBoothyImport]);
 
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
@@ -910,7 +1131,16 @@ function App() {
       return;
     }
 
+    const expectsBoothySessionSave = Boolean(
+      boothyLaunchContext?.completion?.saveUrl?.trim()
+      && boothyLaunchContext?.sessionId?.trim()
+      && boothyLaunchContext?.launchId?.trim(),
+    );
+
     // Stage 준비 및 오버레이 제거
+    if (expectsBoothySessionSave) {
+      setBoothySaveNoticeState('saving');
+    }
     setExportMode(true);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
@@ -929,7 +1159,14 @@ function App() {
       });
 
       if (savedToBoothySession) {
+        if (expectsBoothySessionSave) {
+          setBoothySaveNoticeState('saved');
+        }
         return;
+      }
+
+      if (expectsBoothySessionSave) {
+        setBoothySaveNoticeState('idle');
       }
 
       const exportExperience = getExportExperience({
@@ -988,6 +1225,9 @@ function App() {
       setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
     } catch (e) {
       console.error('Export 실패:', e);
+      if (expectsBoothySessionSave) {
+        setBoothySaveNoticeState('idle');
+      }
       alert(
         e instanceof Error && e.message.trim()
           ? e.message
@@ -1145,6 +1385,7 @@ function App() {
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}
       onImageUpload={handleImageUpload}
+      onRequestImageImport={handleBoothyImportRequest}
       onImageTransform={handleImageTransform}
       onFrameColorChange={handleFrameColorChange}
       onTextMove={handleTextMove}
@@ -1164,6 +1405,102 @@ function App() {
 
   return (
     <div className="app-container">
+      {boothySaveNoticeState !== 'idle' && (
+        <div
+          aria-live="polite"
+          role="status"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.32)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+            zIndex: 10000,
+          }}
+        >
+          <div
+            className="linear-card"
+            style={{
+              width: 'min(360px, 100%)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '12px',
+              textAlign: 'center',
+              boxShadow: 'var(--shadow-lg)',
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '999px',
+                backgroundColor:
+                  boothySaveNoticeState === 'saving'
+                    ? '#fef3c7'
+                    : '#dcfce7',
+                color:
+                  boothySaveNoticeState === 'saving'
+                    ? '#92400e'
+                    : '#15803d',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {boothySaveNoticeState === 'saving' ? (
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.25"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M6 2h12" />
+                  <path d="M6 22h12" />
+                  <path d="M8 2v6a4 4 0 0 0 1.17 2.83L12 13.66l2.83-2.83A4 4 0 0 0 16 8V2" />
+                  <path d="M16 22v-6a4 4 0 0 0-1.17-2.83L12 10.34l-2.83 2.83A4 4 0 0 0 8 16v6" />
+                </svg>
+              ) : (
+                <span style={{ fontSize: '24px', fontWeight: 700 }}>✓</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <strong
+                style={{
+                  fontSize: '18px',
+                  color:
+                    boothySaveNoticeState === 'saving'
+                      ? '#92400e'
+                      : '#15803d',
+                }}
+              >
+                {boothySaveNoticeState === 'saving'
+                  ? '편집 사진 저장중..'
+                  : '저장 완료'}
+              </strong>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '14px',
+                  lineHeight: 1.5,
+                  color: 'var(--linear-secondary-500)',
+                }}
+              >
+                {boothySaveNoticeState === 'saving'
+                  ? '편집 결과를 현재 세션에 반영하고 있어요. 잠시만 기다려 주세요.'
+                  : '현재 세션 폴더에 저장 완료됐어요. 잠시 후 이 안내는 자동으로 닫혀요.'}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 튜토리얼 오버레이 */}
       {tutorialStep !== null && (
         <TutorialOverlay

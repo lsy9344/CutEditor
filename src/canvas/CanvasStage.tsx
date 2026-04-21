@@ -72,6 +72,7 @@ export type CanvasStageProps = {
   onSlotSelect?: (slotId: string | null) => void;
   onZoomChange?: (zoom: number) => void;
   onImageUpload?: (file: File, slotId: string) => void;
+  onRequestImageImport?: (slotId: string) => boolean;
   onImageTransform?: (imageId: string, transform: Partial<UserImage>) => void;
   onFrameColorChange?: (color: string) => void;
   onTextMove?: (textId: string, x: number, y: number) => void;
@@ -146,6 +147,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onSelect,
   onSlotSelect,
   onImageUpload,
+  onRequestImageImport,
   onImageTransform,
   onFrameColorChange,
   onTextMove,
@@ -569,6 +571,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     setDraggedSlotId(slotId);
     currentSlotIdRef.current = slotId; // ref에도 저장
     console.log('🔥 currentSlotIdRef.current set to:', currentSlotIdRef.current);
+
+    if (onRequestImageImport?.(slotId)) {
+      return;
+    }
+
     // 모바일/Safari에서도 사용자 제스처 내에서 동작하도록 즉시 트리거
     fileInputRef.current?.click();
     console.log('🔥 fileInputRef.current.click() executed');
@@ -1657,7 +1664,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
                       {/* 슬롯 레이블 */}
                       {!hasImage && !exportMode && (() => {
-                        let labelText = "클릭해서 이미지 추가";
+                        let labelText = onRequestImageImport
+                          ? "클릭해서 세션 사진 선택"
+                          : "클릭해서 이미지 추가";
                         if (userImage && loadedImages.get(userImage.id) === null) {
                           labelText = "이미지 로딩 실패";
                         } else if (userImage && !loadedImages.get(userImage.id)) {

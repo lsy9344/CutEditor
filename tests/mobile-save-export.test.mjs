@@ -60,7 +60,10 @@ test("Boothy 내재화 저장은 saveUrl 브리지를 먼저 사용하고 파일
   assert.match(source, /const saveUrl = boothyLaunchContext\?\.completion\?\.saveUrl\?\.trim\(\) \?\? '';/);
   assert.match(source, /const response = await fetch\(saveUrl, \{/);
   assert.match(source, /const savedToBoothySession = await saveToBoothySession\(\{/);
-  assert.match(source, /if \(savedToBoothySession\) \{\s*return;\s*}/);
+  assert.match(
+    source,
+    /if \(savedToBoothySession\) \{\s*if \(expectsBoothySessionSave\) \{\s*setBoothySaveNoticeState\('saved'\);\s*}\s*return;\s*}/,
+  );
 });
 
 test("Boothy 내재화 편집기는 마운트 직후 host ready 메시지를 보낸다", () => {
@@ -69,4 +72,15 @@ test("Boothy 내재화 편집기는 마운트 직후 host ready 메시지를 보
   assert.match(source, /type: 'editor\.host_ready'/);
   assert.match(source, /window\.parent\.postMessage\(message, '\*'\);/);
   assert.match(source, /notifyBoothyHostReady\(boothyLaunchContext\);/);
+});
+
+test("Boothy 가져오기 재시도는 남아 있는 같은 correlationId를 다시 보내 재열기를 복구한다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /if \(pendingBoothyImport\) \{/);
+  assert.match(source, /correlationId: pendingBoothyImport\.correlationId,\s*\n\s*slotId,/);
+  assert.match(
+    source,
+    /targetWindow\.postMessage\(\s*\{\s*\n\s*correlationId: pendingBoothyImport\.correlationId,\s*\n\s*sessionId: boothyLaunchContext\?\.sessionId\?\.trim\(\) \|\| undefined,\s*\n\s*type: 'editor\.import_requested',/,
+  );
 });
