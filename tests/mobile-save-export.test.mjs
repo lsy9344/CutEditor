@@ -50,3 +50,23 @@ test("모바일 내보내기는 첫 렌더부터 보수적인 해상도 상한�
   assert.match(source, /initialMaxWidthPx: mobileExportLimits\?\.initialMaxWidthPx/);
   assert.match(source, /fallbackMaxWidthPx: mobileExportLimits\?\.fallbackMaxWidthPx \?\? 3072/);
 });
+
+test("Boothy 내재화 저장은 saveUrl 브리지를 먼저 사용하고 파일 저장기로 내려가지 않는다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /function trySaveToBoothyHost\(/);
+  assert.match(source, /type: 'editor\.save_requested'/);
+  assert.match(source, /if \(savedViaHostMessage\) \{\s*return true;\s*}/);
+  assert.match(source, /const saveUrl = boothyLaunchContext\?\.completion\?\.saveUrl\?\.trim\(\) \?\? '';/);
+  assert.match(source, /const response = await fetch\(saveUrl, \{/);
+  assert.match(source, /const savedToBoothySession = await saveToBoothySession\(\{/);
+  assert.match(source, /if \(savedToBoothySession\) \{\s*return;\s*}/);
+});
+
+test("Boothy 내재화 편집기는 마운트 직후 host ready 메시지를 보낸다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /type: 'editor\.host_ready'/);
+  assert.match(source, /window\.parent\.postMessage\(message, '\*'\);/);
+  assert.match(source, /notifyBoothyHostReady\(boothyLaunchContext\);/);
+});

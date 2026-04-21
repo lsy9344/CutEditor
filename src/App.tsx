@@ -62,6 +62,61 @@ type SaveFilePickerOptions = {
   startIn?: FileSystemFileHandle | 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
 };
 
+type BoothyLaunchPhoto = {
+  assetId: string;
+  photoId: string;
+};
+
+type BoothyLaunchContext = {
+  launchId?: string;
+  sessionId?: string;
+  photos?: BoothyLaunchPhoto[];
+  initiallySelectedAssetIds?: string[];
+  completion?: {
+    saveUrl?: string;
+    cancelUrl?: string;
+    statusUrl?: string | null;
+    maxPayloadBytes?: number;
+  };
+};
+
+type BoothySaveRequestPayload = {
+  completionStatus: 'saved';
+  composition: {
+    frameId: string;
+    slotAssignments: Array<{
+      photoId?: string;
+      slotId: string;
+    }>;
+  };
+  idempotencyKey: string;
+  launchId: string;
+  occurredAt: string;
+  renderedImage: {
+    kind: 'data-url' | 'binaryUpload' | 'fileToken' | 'appAsset';
+    mimeType: string;
+    value: string;
+    widthPx: number;
+    heightPx: number;
+  };
+  sessionId: string;
+  sourceAssetIds: string[];
+};
+
+type BoothySaveSucceededMessage = {
+  correlationId: string;
+  sessionId: string;
+  type: 'editor.save_succeeded';
+};
+
+type BoothySaveFailedMessage = {
+  correlationId: string;
+  message: string;
+  nextAction?: string;
+  sessionId?: string;
+  type: 'editor.save_failed';
+};
+
 type TextAlign = 'left' | 'center' | 'right';
 
 type CanvasText = {
@@ -102,6 +157,186 @@ declare global {
   interface Window {
     showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
   }
+}
+
+function parseLaunchContextFromLocation(): BoothyLaunchContext | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const url = new URL(window.location.href);
+  const directLaunchContext = url.searchParams.get('launchContext');
+
+  if (directLaunchContext) {
+    return parseLaunchContextValue(directLaunchContext);
+  }
+
+  const hashIndex = url.hash.indexOf('?');
+
+  if (hashIndex === -1) {
+    return null;
+  }
+
+  const hashQuery = url.hash.slice(hashIndex + 1);
+  const hashSearchParams = new URLSearchParams(hashQuery);
+  const hashLaunchContext = hashSearchParams.get('launchContext');
+
+  return hashLaunchContext ? parseLaunchContextValue(hashLaunchContext) : null;
+}
+
+function parseLaunchContextValue(rawValue: string): BoothyLaunchContext | null {
+  const normalizedValue = rawValue.trim();
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(normalizedValue) as BoothyLaunchContext;
+  } catch {
+    try {
+      return JSON.parse(decodeURIComponent(normalizedValue)) as BoothyLaunchContext;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function notifyBoothyHostReady(launchContext: BoothyLaunchContext | null) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const message = {
+    type: 'editor.host_ready',
+    sessionId: launchContext?.sessionId?.trim() || undefined,
+  };
+
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage(message, '*');
+  }
+
+  if (window.opener) {
+    window.opener.postMessage(message, '*');
+  }
+}
+
+function trySaveToBoothyHost(
+  payload: BoothySaveRequestPayload,
+): Promise<boolean> {
+  if (typeof window === 'undefined' || !window.parent || window.parent === window) {
+    return Promise.resolve(false);
+  }
+
+  const correlationId = `editor-save-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return new Promise<boolean>((resolve, reject) => {
+    let finished = false;
+
+    const cleanup = () => {
+      window.removeEventListener('message', handleMessage);
+      window.clearTimeout(timeoutId);
+    };
+
+    const finishWith = (callback: () => void) => {
+      if (finished) {
+        return;
+      }
+
+      finished = true;
+      cleanup();
+      callback();
+    };
+
+    const handleMessage = (event: MessageEvent<BoothySaveSucceededMessage | BoothySaveFailedMessage>) => {
+      if (event.source !== window.parent || !event.data || typeof event.data !== 'object') {
+        return;
+      }
+
+      const response = event.data;
+
+      if (response.correlationId !== correlationId) {
+        return;
+      }
+
+      if (response.type === 'editor.save_succeeded') {
+        finishWith(() => resolve(true));
+        return;
+      }
+
+      if (response.type === 'editor.save_failed') {
+        finishWith(() => reject(new Error(response.message || '세션 저장에 실패했습니다.')));
+      }
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      finishWith(() => resolve(false));
+    }, 5000);
+
+    window.addEventListener('message', handleMessage);
+    window.parent.postMessage(
+      {
+        correlationId,
+        payload,
+        sessionId: payload.sessionId,
+        type: 'editor.save_requested',
+      },
+      '*',
+    );
+  });
+}
+
+function buildSlotAssignments(frameType: FrameType, userImages: UserImage[]) {
+  const frameLayout = FRAME_LAYOUTS[frameType];
+  const imagesBySlotId = new Map(userImages.map((image) => [image.slotId, image] as const));
+
+  return frameLayout.slots.map((slot) => {
+    const slottedImage = imagesBySlotId.get(slot.id);
+
+    return {
+      slotId: slot.id,
+      photoId: slottedImage?.file.name || undefined,
+    };
+  });
+}
+
+function buildSourceAssetIds(input: {
+  launchContext: BoothyLaunchContext | null;
+  sessionId: string;
+  userImages: UserImage[];
+}) {
+  const launchSelectedAssetIds = (input.launchContext?.initiallySelectedAssetIds ?? [])
+    .map((assetId) => assetId.trim())
+    .filter(Boolean);
+
+  if (launchSelectedAssetIds.length > 0) {
+    return [...new Set(launchSelectedAssetIds)];
+  }
+
+  return [...new Set(
+    input.userImages.map((image) => `original:${input.sessionId}:${image.file.name}`),
+  )];
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error('PNG 데이터 URL을 만들지 못했습니다.'));
+    };
+
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('PNG 데이터 URL을 만들지 못했습니다.'));
+    };
+
+    reader.readAsDataURL(blob);
+  });
 }
 
 function App() {
@@ -170,6 +405,17 @@ function App() {
   const supportsFilePicker = useMemo(() => (
     typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function'
   ), []);
+  const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
+
+  useEffect(() => {
+    const readyTimer = window.setTimeout(() => {
+      notifyBoothyHostReady(boothyLaunchContext);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(readyTimer);
+    };
+  }, [boothyLaunchContext]);
 
   const handleSelect = (id: string | null) => {
     const selectedImage = id ? editorState.userImages.find((image) => image.id === id) : null;
@@ -583,6 +829,79 @@ function App() {
     return isStandaloneMedia || nav.standalone === true;
   }, []);
 
+  const saveToBoothySession = useCallback(async ({
+    blob,
+    frameType,
+  }: {
+    blob: Blob;
+    frameType: FrameType;
+  }) => {
+    const saveUrl = boothyLaunchContext?.completion?.saveUrl?.trim() ?? '';
+    const sessionId = boothyLaunchContext?.sessionId?.trim() ?? '';
+    const launchId = boothyLaunchContext?.launchId?.trim() ?? '';
+
+    if (!saveUrl || !sessionId || !launchId) {
+      return false;
+    }
+
+    const sourceAssetIds = buildSourceAssetIds({
+      launchContext: boothyLaunchContext,
+      sessionId,
+      userImages: editorState.userImages,
+    });
+
+    if (sourceAssetIds.length === 0) {
+      throw new Error('세션 저장에 필요한 사진 정보가 없습니다.');
+    }
+
+    const renderedImageDataUrl = await blobToDataUrl(blob);
+    const payload: BoothySaveRequestPayload = {
+      completionStatus: 'saved',
+      composition: {
+        frameId: frameType,
+        slotAssignments: buildSlotAssignments(frameType, editorState.userImages),
+      },
+      idempotencyKey: JSON.stringify({
+        frameId: frameType,
+        launchId,
+        sourceAssetIds,
+        slotAssignments: buildSlotAssignments(frameType, editorState.userImages),
+      }),
+      launchId,
+      occurredAt: new Date().toISOString(),
+      renderedImage: {
+        kind: 'data-url',
+        mimeType: 'image/png',
+        value: renderedImageDataUrl,
+        widthPx: FRAME_LAYOUTS[frameType].canvasWidth,
+        heightPx: FRAME_LAYOUTS[frameType].canvasHeight,
+      },
+      sessionId,
+      sourceAssetIds,
+    };
+
+    const savedViaHostMessage = await trySaveToBoothyHost(payload);
+
+    if (savedViaHostMessage) {
+      return true;
+    }
+
+    const response = await fetch(saveUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      throw new Error(details || `세션 저장 요청 실패 (${response.status})`);
+    }
+
+    return true;
+  }, [boothyLaunchContext, editorState.userImages]);
+
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
   const handleExport = async () => {
     const frameType = editorState.selectedFrame;
@@ -604,6 +923,15 @@ function App() {
       const exportFile = new File([blob], filename, { type: 'image/png' });
       const userAgent = getCurrentUserAgent();
       const isStandalone = isStandaloneDisplayMode();
+      const savedToBoothySession = await saveToBoothySession({
+        blob,
+        frameType,
+      });
+
+      if (savedToBoothySession) {
+        return;
+      }
+
       const exportExperience = getExportExperience({
         hasShareFiles: canShareExportFile(exportFile),
         hasFilePicker: supportsFilePicker,
@@ -660,7 +988,11 @@ function App() {
       setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
     } catch (e) {
       console.error('Export 실패:', e);
-      alert('내보내기에 실패했습니다. 다시 시도해주세요.');
+      alert(
+        e instanceof Error && e.message.trim()
+          ? e.message
+          : '세션 저장 또는 내보내기에 실패했습니다. 다시 시도해주세요.',
+      );
     } finally {
       setExportMode(false);
     }
