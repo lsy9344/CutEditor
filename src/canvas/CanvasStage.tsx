@@ -22,6 +22,10 @@ import {
   getStickerEditResetUpdates,
   hasStickerEditChanges,
 } from "./stickerEdit";
+import {
+  createStickerTintFilter,
+  getStickerTintMode,
+} from "./stickerTint";
 import { getZoomToFit } from "./zoomSizing";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 
@@ -1708,19 +1712,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   const effectiveScaleX = sticker.scaleX * (sticker.flipX ? -1 : 1);
                   const effectiveScaleY = sticker.scaleY * (sticker.flipY ? -1 : 1);
 
-                  const tintFilter = (imageData: ImageData) => {
-                    if (!sticker.tintColor) return;
-                    const hex = sticker.tintColor.replace('#', '');
-                    const tR = parseInt(hex.substring(0, 2), 16) / 255;
-                    const tG = parseInt(hex.substring(2, 4), 16) / 255;
-                    const tB = parseInt(hex.substring(4, 6), 16) / 255;
-                    const data = imageData.data;
-                    for (let i = 0; i < data.length; i += 4) {
-                      data[i] = Math.round(data[i] * tR);
-                      data[i + 1] = Math.round(data[i + 1] * tG);
-                      data[i + 2] = Math.round(data[i + 2] * tB);
-                    }
-                  };
+                  const tintFilter = sticker.tintColor
+                    ? createStickerTintFilter(sticker.tintColor, getStickerTintMode(sticker.src))
+                    : undefined;
 
                   return (
                     <Group key={sticker.id}>
@@ -1749,7 +1743,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                               y: e.target.y()
                             });
                           }}
-                          filters={sticker.tintColor ? [tintFilter] : undefined}
+                          filters={tintFilter ? [tintFilter] : undefined}
                           onDragEnd={(e) => {
                             onStickerUpdate?.(sticker.id, {
                               x: e.target.x(),
