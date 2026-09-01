@@ -5,11 +5,12 @@ import { loadTsModule } from "./helpers/loadTsModule.mjs";
 
 const catalogSource = readFileSync("src/ui/stickerCatalog.ts", "utf8");
 
-test("흑백 일러스트 카테고리가 말풍선으로 변경된다", () => {
+test("흑백 일러스트 카테고리가 말풍선/화살표로 변경된다", () => {
   assert.match(catalogSource, /id: "point",/);
-  assert.match(catalogSource, /label: "말풍선",/);
+  assert.match(catalogSource, /label: "말풍선\/화살표",/);
   assert.match(catalogSource, /assetPrefix: "3s",/);
   assert.doesNotMatch(catalogSource, /label: "흑백 일러스트"/);
+  assert.doesNotMatch(catalogSource, /label: "말풍선",/);
 });
 
 test("4s 말풍선 카테고리는 3s로 이관되어 제거된다", () => {

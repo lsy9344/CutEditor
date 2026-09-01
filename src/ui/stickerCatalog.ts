@@ -64,7 +64,7 @@ export const STICKER_CATEGORIES: StickerCategory[] = [
   },
   {
     id: "point",
-    label: "말풍선",
+    label: "말풍선/화살표",
     description: "말풍선과 손그림 포인트 장식",
     assetPrefix: "3s",
     slotCount: 31,
