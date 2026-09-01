@@ -2,7 +2,7 @@ import { buildStickerCandidatesForKey } from "../utils/stickerAssetCandidates";
 
 export const STICKER_EXTENSIONS = ["svg", "png", "webp", "jpg", "jpeg"] as const;
 
-const SVG_STICKER_SLOT_KEY_PATTERN = /^(1s|2s|3s|4s)_\d+ss$/;
+const SVG_STICKER_SLOT_KEY_PATTERN = /^(1s|2s|3s)_\d+ss$/;
 
 export type StickerSlot = {
   key: string;
@@ -49,9 +49,9 @@ export const STICKER_CATEGORIES: StickerCategory[] = [
     label: "기본 스티커",
     description: "다양한 기본 도형과 기호",
     assetPrefix: "1s",
-    slotCount: 43,
+    slotCount: 49,
     previewCandidates: buildStickerPath("1s"),
-    stickers: buildStickerSlots("1s", 43),
+    stickers: buildStickerSlots("1s", 49),
   },
   {
     id: "deco",
@@ -64,20 +64,11 @@ export const STICKER_CATEGORIES: StickerCategory[] = [
   },
   {
     id: "point",
-    label: "흑백 일러스트",
-    description: "사람이 그린 것 같은 흑백 일러스트",
-    assetPrefix: "3s",
-    slotCount: 30,
-    previewCandidates: buildStickerPath("3s"),
-    stickers: buildStickerSlots("3s", 30),
-  },
-  {
-    id: "bubble",
     label: "말풍선",
-    description: "생각과 대화를 담는 말풍선",
-    assetPrefix: "4s",
-    slotCount: 11,
-    previewCandidates: buildStickerPath("4s"),
-    stickers: buildStickerSlots("4s", 11),
+    description: "말풍선과 손그림 포인트 장식",
+    assetPrefix: "3s",
+    slotCount: 31,
+    previewCandidates: buildStickerPath("3s"),
+    stickers: buildStickerSlots("3s", 31),
   }
 ];

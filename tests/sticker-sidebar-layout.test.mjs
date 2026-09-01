@@ -16,10 +16,11 @@ test("스티커 카탈로그는 카테고리별 슬롯 수로 슬롯을 생성�
   assert.match(source, /export function buildStickerSlots\(prefix: string, slotCount: number\)/);
   assert.match(source, /const key = `\$\{prefix\}_\$\{index \+ 1\}ss`;/);
   assert.match(source, /candidates: buildStickerCandidates\(key\),/);
-  assert.match(source, /slotCount: 43,/);
+  assert.match(source, /slotCount: 49,/);
   assert.match(source, /slotCount: 31,/);
-  assert.match(source, /slotCount: 30,/);
-  assert.match(source, /slotCount: 11,/);
+  assert.doesNotMatch(source, /slotCount: 43,/);
+  assert.doesNotMatch(source, /slotCount: 11,/);
+  assert.doesNotMatch(source, /assetPrefix: "4s"/);
 });
 
 test("스티커 카탈로그는 키별 후보 우선순위 유틸을 사용한다", () => {

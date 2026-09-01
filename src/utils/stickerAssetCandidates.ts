@@ -13,7 +13,8 @@ export type StickerAssetPreference = "png-first" | "svg-first";
 // - SVG 내부 임베디드 래스터 포함 여부
 // - SVG 마스크 사용 여부
 // 를 기준으로 iPhone 비표시 문제와 흰 배경 회귀를 동시에 피한다.
-// 2026-09-01 신규 자산(1s_21ss~43ss, 2s_23ss~31ss, 4s_1ss~11ss)은 투명 PNG 단독 자산으로 검증을 통과했다.
+// 2026-09-01 신규 자산(1s_21ss~43ss, 2s_23ss~31ss)은 투명 PNG 단독 자산으로 검증을 통과했다.
+// 2026-09-02 재배치: 3s 일러스트 일부를 1s로 이동(1s_44ss~49ss 신설), 4s 말풍선 PNG를 3s로 이관(3s_31ss 신설), 2s_1ss/14ss/15ss 삭제.
 const AUDITED_STICKER_KEYS = [
   "1s_1ss",
   "1s_2ss",
@@ -58,7 +59,12 @@ const AUDITED_STICKER_KEYS = [
   "1s_41ss",
   "1s_42ss",
   "1s_43ss",
-  "2s_1ss",
+  "1s_44ss",
+  "1s_45ss",
+  "1s_46ss",
+  "1s_47ss",
+  "1s_48ss",
+  "1s_49ss",
   "2s_2ss",
   "2s_3ss",
   "2s_4ss",
@@ -71,8 +77,6 @@ const AUDITED_STICKER_KEYS = [
   "2s_11ss",
   "2s_12ss",
   "2s_13ss",
-  "2s_14ss",
-  "2s_15ss",
   "2s_16ss",
   "2s_17ss",
   "2s_18ss",
@@ -116,17 +120,7 @@ const AUDITED_STICKER_KEYS = [
   "3s_28ss",
   "3s_29ss",
   "3s_30ss",
-  "4s_1ss",
-  "4s_2ss",
-  "4s_3ss",
-  "4s_4ss",
-  "4s_5ss",
-  "4s_6ss",
-  "4s_7ss",
-  "4s_8ss",
-  "4s_9ss",
-  "4s_10ss",
-  "4s_11ss",
+  "3s_31ss",
 ] as const;
 
 const PNG_TRANSPARENT_KEYS = [
@@ -173,7 +167,12 @@ const PNG_TRANSPARENT_KEYS = [
   "1s_41ss",
   "1s_42ss",
   "1s_43ss",
-  "2s_1ss",
+  "1s_44ss",
+  "1s_45ss",
+  "1s_46ss",
+  "1s_47ss",
+  "1s_48ss",
+  "1s_49ss",
   "2s_2ss",
   "2s_3ss",
   "2s_4ss",
@@ -213,17 +212,7 @@ const PNG_TRANSPARENT_KEYS = [
   "2s_29ss",
   "2s_30ss",
   "2s_31ss",
-  "4s_1ss",
-  "4s_2ss",
-  "4s_3ss",
-  "4s_4ss",
-  "4s_5ss",
-  "4s_6ss",
-  "4s_7ss",
-  "4s_8ss",
-  "4s_9ss",
-  "4s_10ss",
-  "4s_11ss",
+  "3s_31ss",
 ] as const;
 
 const SVG_EMBEDDED_RASTER_KEYS = [
@@ -238,6 +227,7 @@ const SVG_EMBEDDED_RASTER_KEYS = [
   "1s_9ss",
   "1s_10ss",
   "1s_11ss",
+  "1s_12ss",
   "1s_14ss",
   "1s_15ss",
   "1s_16ss",
@@ -245,15 +235,18 @@ const SVG_EMBEDDED_RASTER_KEYS = [
   "1s_18ss",
   "1s_19ss",
   "1s_20ss",
-  "2s_1ss",
+  "1s_44ss",
+  "1s_45ss",
+  "1s_46ss",
+  "1s_47ss",
+  "1s_48ss",
+  "1s_49ss",
   "2s_2ss",
   "2s_3ss",
   "2s_5ss",
   "2s_16ss",
   "2s_19ss",
   "2s_21ss",
-  "3s_1ss",
-  "3s_2ss",
   "3s_3ss",
   "3s_4ss",
   "3s_5ss",
@@ -261,15 +254,7 @@ const SVG_EMBEDDED_RASTER_KEYS = [
   "3s_7ss",
   "3s_8ss",
   "3s_9ss",
-  "3s_10ss",
-  "3s_11ss",
   "3s_12ss",
-  "3s_13ss",
-  "3s_14ss",
-  "3s_15ss",
-  "3s_16ss",
-  "3s_17ss",
-  "3s_18ss",
   "3s_19ss",
   "3s_20ss",
   "3s_21ss",
@@ -293,6 +278,7 @@ const SVG_MASK_KEYS = [
   "1s_9ss",
   "1s_10ss",
   "1s_11ss",
+  "1s_12ss",
   "1s_14ss",
   "1s_15ss",
   "1s_16ss",
@@ -300,7 +286,12 @@ const SVG_MASK_KEYS = [
   "1s_18ss",
   "1s_19ss",
   "1s_20ss",
-  "2s_1ss",
+  "1s_44ss",
+  "1s_45ss",
+  "1s_46ss",
+  "1s_47ss",
+  "1s_48ss",
+  "1s_49ss",
   "2s_2ss",
   "2s_3ss",
   "2s_5ss",
@@ -308,8 +299,6 @@ const SVG_MASK_KEYS = [
   "2s_17ss",
   "2s_19ss",
   "2s_21ss",
-  "3s_1ss",
-  "3s_2ss",
   "3s_3ss",
   "3s_4ss",
   "3s_5ss",
@@ -317,15 +306,7 @@ const SVG_MASK_KEYS = [
   "3s_7ss",
   "3s_8ss",
   "3s_9ss",
-  "3s_10ss",
-  "3s_11ss",
   "3s_12ss",
-  "3s_13ss",
-  "3s_14ss",
-  "3s_15ss",
-  "3s_16ss",
-  "3s_17ss",
-  "3s_18ss",
   "3s_19ss",
   "3s_20ss",
   "3s_21ss",
@@ -352,7 +333,7 @@ export const STICKER_ASSET_AUDIT = Object.fromEntries(
   ]),
 ) as Record<string, StickerAssetAudit>;
 
-const STICKER_KEY_PATTERN = /^([1234]s_\d+ss)$/i;
+const STICKER_KEY_PATTERN = /^([123]s_\d+ss)$/i;
 
 function getStickerAssetPreferenceFromAudit(audit: StickerAssetAudit): StickerAssetPreference {
   if (!audit.pngHasTransparency) {
@@ -409,7 +390,7 @@ export function getStickerAssetCandidates(src: string): string[] {
     return [];
   }
 
-  const match = normalizedSrc.match(/\/stickers\/([1234]s_\d+ss)\.[a-z0-9]+$/i);
+  const match = normalizedSrc.match(/\/stickers\/([123]s_\d+ss)\.[a-z0-9]+$/i);
   if (!match) {
     return [normalizedSrc];
   }
