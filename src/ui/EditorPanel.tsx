@@ -805,7 +805,9 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                       alignContent: "start",
                     }}
                   >
-                    {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.stickers.map((slot) => {
+                    {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.stickers
+                      .filter((slot) => (stickerPreviewIndexes[slot.key] ?? 0) < slot.candidates.length)
+                      .map((slot) => {
                       const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
                       const previewSrc = slot.candidates[currentIndex];
                       const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);

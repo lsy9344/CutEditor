@@ -76,3 +76,12 @@ test("신규 자산 키가 자산 오디트에 등록되어 있다", async () =>
     assert.equal(audit.pngHasTransparency, true, `${key} PNG는 투명 배경이어야 한다`);
   }
 });
+
+test("모든 후보가 실패한 슬롯은 갤러리에서 렌더링하지 않는다", () => {
+  const panelSource = readFileSync("src/ui/EditorPanel.tsx", "utf8");
+  const gallerySource = readFileSync("src/canvas/StickerGallery.tsx", "utf8");
+  const filterPattern = /filter\(\(slot\) => \(stickerPreviewIndexes\[slot\.key\] \?\? 0\) < slot\.candidates\.length\)/;
+
+  assert.match(panelSource, filterPattern, "EditorPanel 슬롯 필터");
+  assert.match(gallerySource, filterPattern, "StickerGallery 슬롯 필터");
+});

@@ -74,7 +74,9 @@ export const StickerGallery: React.FC<StickerGalleryProps> = ({
                 gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
                 gap: '16px'
             }}>
-                {selectedCategory.stickers.map((slot) => {
+                {selectedCategory.stickers
+                    .filter((slot) => (stickerPreviewIndexes[slot.key] ?? 0) < slot.candidates.length)
+                    .map((slot) => {
                     const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
                     const previewSrc = slot.candidates[currentIndex];
                     const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
