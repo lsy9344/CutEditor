@@ -9,12 +9,17 @@ const svgStickerKeys = readdirSync("public/stickers")
   .map((file) => file.replace(/\.svg$/, ""))
   .sort();
 
-test("기본 스티커 슬롯은 20개까지 생성된다", () => {
+test("스티커 카탈로그는 카테고리별 슬롯 수로 슬롯을 생성한다", () => {
   const source = readFileSync("src/ui/stickerCatalog.ts", "utf8");
 
-  assert.match(source, /export const STICKER_SLOT_COUNT = 20;/);
+  assert.match(source, /slotCount: number;/);
+  assert.match(source, /export function buildStickerSlots\(prefix: string, slotCount: number\)/);
   assert.match(source, /const key = `\$\{prefix\}_\$\{index \+ 1\}ss`;/);
   assert.match(source, /candidates: buildStickerCandidates\(key\),/);
+  assert.match(source, /slotCount: 43,/);
+  assert.match(source, /slotCount: 31,/);
+  assert.match(source, /slotCount: 30,/);
+  assert.match(source, /slotCount: 11,/);
 });
 
 test("스티커 카탈로그는 키별 후보 우선순위 유틸을 사용한다", () => {
