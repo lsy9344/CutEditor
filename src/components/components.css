@@ -699,6 +699,21 @@ p {
     flex: 1;
   }
 
+  .app-main--mobile-editor .canvas-stage-layout {
+    align-items: stretch;
+  }
+
+  .app-main--mobile-editor .canvas-stage-area {
+    min-height: 0;
+  }
+
+  .app-main--mobile-editor .canvas-control-panel {
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
   .app-mobile-toolbar {
     grid-template-columns: 1fr;
     width: 72px;

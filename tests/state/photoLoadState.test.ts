@@ -125,7 +125,7 @@ test("App은 직전 렌더에서 알린 사진 목록이 지금 문서와 다르
 test("CanvasStage는 현재 문서 URL 기준으로 사진 로딩 상태를 알리고 늦은 콜백을 버린다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
-  assert.match(source, /const photoImagesState = getPhotoImagesState\(userImages, loadedImages\);/);
+  assert.match(source, /const basePhotoImagesState = getPhotoImagesState\(userImages, loadedImages\);/);
   assert.match(
     source,
     /useEffect\(\(\) => \{\s*onPhotoImagesStateChange\(photoImagesState, userImages\);\s*\}, \[onPhotoImagesStateChange, photoImagesStateKey, userImages\]\);/,

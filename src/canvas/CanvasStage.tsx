@@ -167,6 +167,19 @@ const buildFrameImageCandidates = (frameType: FrameType, primaryPath: string): s
   return Array.from(candidates);
 };
 
+type EditedPhotoDisplay = {
+  key: string;
+  canvas: HTMLCanvasElement | null;
+};
+
+const getPhotoEditDisplayKey = (edits: PhotoEdits, workingMaxSide: number): string => (
+  JSON.stringify({
+    adjust: edits.adjust,
+    erase: edits.erase,
+    workingMaxSide,
+  })
+);
+
 export const CanvasStage: React.FC<CanvasStageProps> = ({
   selection,
   zoom,
@@ -234,23 +247,136 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedImageId = selectedImage?.id ?? null;
   const [isAdjustDetailOpen, setIsAdjustDetailOpen] = useState(false);
+  const [editedPhotoDisplays, setEditedPhotoDisplays] = useState<Map<string, EditedPhotoDisplay>>(new Map());
+  const editedPhotoDisplaysRef = useRef(editedPhotoDisplays);
+  const userImagesRef = useRef(userImages);
+  const loadedImagesRef = useRef(loadedImages);
+  const workingMaxSideRef = useRef(photoEdit.workingMaxSide);
+  const selectedImageIdRef = useRef<string | null>(selectedImageId);
+  editedPhotoDisplaysRef.current = editedPhotoDisplays;
+  userImagesRef.current = userImages;
+  loadedImagesRef.current = loadedImages;
+  workingMaxSideRef.current = photoEdit.workingMaxSide;
+  selectedImageIdRef.current = selectedImageId;
 
   useEffect(() => {
     setIsAdjustDetailOpen(false);
   }, [selectedImageId]);
 
-  const editedPhotoCanvases = useMemo(() => {
-    const canvases = new Map<string, HTMLCanvasElement>();
-    userImages.forEach((userImage) => {
-      const loadedEntry = loadedImages.get(userImage.id);
-      const loadedImage = loadedEntry?.image;
-      if (!loadedImage) return;
-      const keepBase = userImage.id === selectedImageId;
-      const edited = getEditedPhotoCanvas(userImage.id, loadedImage, userImage.edits, photoEdit.workingMaxSide, keepBase);
-      if (edited) canvases.set(userImage.id, edited);
+  useEffect(() => {
+    let cancelled = false;
+    let frameId: number | null = null;
+
+    const imagesById = new Map(userImages.map((userImage) => [userImage.id, userImage] as const));
+    const nextDisplays = new Map(editedPhotoDisplaysRef.current);
+    let displaysChanged = false;
+
+    nextDisplays.forEach((_display, imageId) => {
+      const currentImage = imagesById.get(imageId);
+      if (!currentImage || isDefaultPhotoEdits(currentImage.edits)) {
+        nextDisplays.delete(imageId);
+        displaysChanged = true;
+      }
     });
-    return canvases;
+
+    if (displaysChanged) {
+      editedPhotoDisplaysRef.current = nextDisplays;
+      setEditedPhotoDisplays(nextDisplays);
+    }
+
+    const jobs: Array<{
+      imageId: string;
+      url: string;
+      key: string;
+    }> = [];
+
+    userImages.forEach((userImage) => {
+      if (isDefaultPhotoEdits(userImage.edits)) return;
+      const loadedEntry = loadedImages.get(userImage.id);
+      if (!loadedEntry?.image || loadedEntry.url !== userImage.url) return;
+      const key = getPhotoEditDisplayKey(userImage.edits, photoEdit.workingMaxSide);
+      if (nextDisplays.get(userImage.id)?.key === key) return;
+      jobs.push({ imageId: userImage.id, url: userImage.url, key });
+    });
+
+    let jobIndex = 0;
+
+    const scheduleNext = () => {
+      if (cancelled || jobIndex >= jobs.length) return;
+      frameId = requestAnimationFrame(processNext);
+    };
+
+    const processNext = () => {
+      frameId = null;
+      if (cancelled || jobIndex >= jobs.length) return;
+
+      const job = jobs[jobIndex];
+      jobIndex += 1;
+
+      const currentImage = userImagesRef.current.find((userImage) => userImage.id === job.imageId);
+      const currentLoaded = loadedImagesRef.current.get(job.imageId);
+      if (
+        !currentImage
+        || currentImage.url !== job.url
+        || !currentLoaded?.image
+        || currentLoaded.url !== job.url
+        || getPhotoEditDisplayKey(currentImage.edits, workingMaxSideRef.current) !== job.key
+      ) {
+        scheduleNext();
+        return;
+      }
+
+      const canvas = getEditedPhotoCanvas(
+        job.imageId,
+        currentLoaded.image,
+        currentImage.edits,
+        workingMaxSideRef.current,
+        currentImage.id === selectedImageIdRef.current,
+      );
+
+      if (!cancelled) {
+        const latestImage = userImagesRef.current.find((userImage) => userImage.id === job.imageId);
+        const latestLoaded = loadedImagesRef.current.get(job.imageId);
+        const latestKey = latestImage
+          ? getPhotoEditDisplayKey(latestImage.edits, workingMaxSideRef.current)
+          : null;
+
+        if (
+          latestImage
+          && latestImage.url === job.url
+          && latestLoaded?.url === job.url
+          && latestKey === job.key
+        ) {
+          const latestDisplays = new Map(editedPhotoDisplaysRef.current);
+          latestDisplays.set(job.imageId, { key: job.key, canvas });
+          editedPhotoDisplaysRef.current = latestDisplays;
+          setEditedPhotoDisplays(latestDisplays);
+        }
+      }
+
+      scheduleNext();
+    };
+
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      if (frameId !== null) cancelAnimationFrame(frameId);
+    };
   }, [userImages, loadedImages, photoEdit.workingMaxSide, selectedImageId]);
+
+  const isEditedPhotoDisplayReady = useMemo(() => {
+    for (const userImage of userImages) {
+      if (isDefaultPhotoEdits(userImage.edits)) continue;
+      const loadedEntry = loadedImages.get(userImage.id);
+      if (!loadedEntry?.image || loadedEntry.url !== userImage.url) continue;
+      const display = editedPhotoDisplays.get(userImage.id);
+      if (!display || display.key !== getPhotoEditDisplayKey(userImage.edits, photoEdit.workingMaxSide)) {
+        return false;
+      }
+    }
+    return true;
+  }, [userImages, loadedImages, editedPhotoDisplays, photoEdit.workingMaxSide]);
 
   useEffect(() => {
     pruneEditedPhotoCanvases(new Set(userImages.map((userImage) => userImage.id)), selectedImageId);
@@ -550,7 +676,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     pendingImageLoadsRef.current.clear();
   }, []);
 
-  const photoImagesState = getPhotoImagesState(userImages, loadedImages);
+  const basePhotoImagesState = getPhotoImagesState(userImages, loadedImages);
+  const photoImagesState: PhotoImagesState = basePhotoImagesState.kind === "ready" && !isEditedPhotoDisplayReady
+    ? { kind: "loading" }
+    : basePhotoImagesState;
   const photoImagesStateKey = photoImagesState.kind === "failed"
     ? `failed:${photoImagesState.imageIds.join(",")}`
     : photoImagesState.kind;
@@ -1542,7 +1671,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         />
                         <KonvaImage
                           key={userImage.id}
-                          image={photoEdit.compareHeld ? loadedImg : (editedPhotoCanvases.get(userImage.id) ?? loadedImg)}
+                          image={photoEdit.compareHeld || isDefaultPhotoEdits(userImage.edits)
+                            ? loadedImg
+                            : (editedPhotoDisplays.get(userImage.id)?.canvas ?? loadedImg)}
                           x={centerX}
                           y={centerY}
                           width={displayWidth}
