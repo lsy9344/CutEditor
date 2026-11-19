@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 
 import {
   getPhotoImagesState,
+  getPhotoSaveBlockMessage,
   isCurrentPhotoLoad,
 } from "../../src/state/photoLoadState.ts";
 
@@ -69,24 +70,55 @@ test("isCurrentPhotoLoad는 현재 문서의 같은 id·URL 요청만 유효하�
   assert.equal(isCurrentPhotoLoad("img-2", "blob:new", currentUrls), false);
 });
 
-test("App은 저장을 시작하기 전에 CanvasStage의 사진 로딩 경계를 기다린다", () => {
+test("loading 상태는 저장을 막고 로딩 안내 문구를 돌려준다", () => {
+  assert.equal(
+    getPhotoSaveBlockMessage({ kind: "loading" }),
+    "사진을 불러오는 중이에요. 잠시 후 저장해 주세요.",
+  );
+});
+
+test("failed 상태는 저장을 막고 사진을 다시 넣으라는 안내를 돌려준다", () => {
+  assert.equal(
+    getPhotoSaveBlockMessage({ kind: "failed", imageIds: ["img-1"] }),
+    "사진 한 장을 불러오지 못했어요. 그 사진을 지우고 다시 넣어 주세요.",
+  );
+});
+
+test("ready 상태는 저장을 막지 않는다", () => {
+  assert.equal(getPhotoSaveBlockMessage({ kind: "ready" }), null);
+});
+
+test("App은 저장을 기다리지 않고 프레임 확인 직후 사진 준비 상태를 동기로 막는다", () => {
   const source = readFileSync("src/App.tsx", "utf8");
 
-  assert.match(source, /const photoImagesState = await waitForPhotoImages\(\);/);
-  assert.match(source, /if \(photoImagesState\.kind === "failed"\) \{/);
-  assert.match(source, /alert\('사진을 불러오지 못했어요\. 다시 저장해 주세요\.'\);/);
+  assert.doesNotMatch(source, /waitForPhotoImages|photoImagesWaiters/);
   assert.match(source, /onPhotoImagesStateChange=\{handlePhotoImagesStateChange\}/);
+  assert.match(source, /const photoImagesState = photoImagesStateRef\.current;/);
+  assert.match(source, /const photoSaveBlockMessage = getPhotoSaveBlockMessage\(photoImagesState\);/);
+  assert.match(source, /if \(photoSaveBlockMessage\) \{\s*alert\(photoSaveBlockMessage\);\s*return;\s*\}/);
+
+  const frameCheckIndex = source.indexOf("if (!frameType) {");
+  const photoCheckIndex = source.indexOf("const photoImagesState = photoImagesStateRef.current;");
+  assert.ok(frameCheckIndex !== -1 && frameCheckIndex < photoCheckIndex);
+  [
+    "setExportMode(true);",
+    "const savedToBoothySession = await saveToBoothySession({",
+    "if (exportExperience === 'share-sheet') {",
+    "const fileHandle = await window.showSaveFilePicker({",
+    "const downloadUrl = URL.createObjectURL(blob);",
+  ].forEach((saveBranch) => {
+    assert.ok(photoCheckIndex < source.indexOf(saveBranch), saveBranch);
+  });
+});
+
+test("App은 직전 렌더에서 알린 사진 목록이 지금 문서와 다르면 저장을 막는다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(source, /const photoImagesSourceRef = useRef<UserImage\[\] \| null>\(null\);/);
+  assert.match(source, /photoImagesSourceRef\.current !== editorState\.userImages/);
   assert.ok(
-    source.indexOf("const photoImagesState = await waitForPhotoImages();")
-      < source.indexOf("const blob = await exportBlobFromStage({ frameType, stage });"),
-  );
-  assert.ok(
-    source.indexOf("const photoImagesState = await waitForPhotoImages();")
-      < source.indexOf("const savedToBoothySession = await saveToBoothySession({"),
-  );
-  assert.ok(
-    source.indexOf("const photoImagesState = await waitForPhotoImages();")
-      < source.indexOf("if (exportExperience === 'share-sheet') {"),
+    source.indexOf("photoImagesSourceRef.current !== editorState.userImages")
+      < source.indexOf("const photoSaveBlockMessage = getPhotoSaveBlockMessage(photoImagesState);"),
   );
 });
 
@@ -96,7 +128,7 @@ test("CanvasStage는 현재 문서 URL 기준으로 사진 로딩 상태를 알�
   assert.match(source, /const photoImagesState = getPhotoImagesState\(userImages, loadedImages\);/);
   assert.match(
     source,
-    /useEffect\(\(\) => \{\s*onPhotoImagesStateChange\(photoImagesState\);\s*\}, \[onPhotoImagesStateChange, photoImagesStateKey, userImages\]\);/,
+    /useEffect\(\(\) => \{\s*onPhotoImagesStateChange\(photoImagesState, userImages\);\s*\}, \[onPhotoImagesStateChange, photoImagesStateKey, userImages\]\);/,
   );
   assert.match(source, /if \(!isCurrentPhotoLoad\(userImage\.id, userImage\.url, userImageUrlsRef\.current\)\) return;/);
   assert.match(source, /pendingLoad\.image\.onload = null;/);

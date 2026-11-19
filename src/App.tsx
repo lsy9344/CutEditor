@@ -22,6 +22,7 @@ import {
   undoHistory,
 } from './state/history'
 import type { PhotoImagesState } from './state/photoLoadState'
+import { getPhotoSaveBlockMessage, PHOTO_LOADING_SAVE_MESSAGE } from './state/photoLoadState'
 import {
   beginPointer,
   createPointerPresence,
@@ -434,37 +435,26 @@ function App() {
   currentDocumentRef.current = currentDocument;
   const trackedObjectUrlsRef = useRef(new Set<string>());
   const flushHistory = useCallback(() => {
-    setHistory((previous) => pushHistory(previous, currentDocumentRef.current, isSameEditorDocument));
+    // 호출 시점의 문서를 고정한다. 같은 배치의 후속 setState가 updater 실행 전에 반영되어
+    // 기록 경계가 다음 변경까지 함께 닫히는 일을 막는다.
+    const documentToRecord = currentDocumentRef.current;
+    setHistory((previous) => pushHistory(previous, documentToRecord, isSameEditorDocument));
   }, []);
   const pointerPresenceRef = useRef(createPointerPresence());
   const [isPointerActive, setIsPointerActive] = useState(false);
+  const heldStickerRef = useRef<CanvasSticker[]>([]);
   const photoImagesStateRef = useRef<PhotoImagesState>({ kind: 'ready' });
-  const photoImagesWaitersRef = useRef<Array<(state: PhotoImagesState) => void>>([]);
-  const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState) => {
+  const photoImagesSourceRef = useRef<UserImage[] | null>(null);
+  const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState, userImages: UserImage[]) => {
     photoImagesStateRef.current = state;
-
-    if (state.kind === 'loading') return;
-
-    const waiters = photoImagesWaitersRef.current;
-    photoImagesWaitersRef.current = [];
-    waiters.forEach((resolve) => resolve(state));
+    photoImagesSourceRef.current = userImages;
   }, []);
-  const waitForPhotoImages = useCallback(() => new Promise<PhotoImagesState>((resolve) => {
-    const state = photoImagesStateRef.current;
-
-    if (state.kind !== 'loading') {
-      resolve(state);
-      return;
-    }
-
-    photoImagesWaitersRef.current.push(resolve);
-  }), []);
 
   useEffect(() => {
     const presence = pointerPresenceRef.current;
     const syncPointerActivity = () => setIsPointerActive(hasActivePointers(presence));
     const onPointerDown = (event: PointerEvent) => {
-      if (!beginPointer(presence, event.pointerId)) return;
+      if (!beginPointer(presence, event.pointerId, event.isPrimary)) return;
       syncPointerActivity();
       flushHistory();
     };
@@ -1046,6 +1036,19 @@ function App() {
     }
   }
 
+  const selectInsertedSticker = useCallback((stickerId: string) => {
+    setSelectedStickerId(stickerId);
+    setSelectedTextId(null); // Text 선택 해제
+    setEditorState(prev => ({ ...prev, selection: stickerId }));
+  }, []);
+
+  // 포인터를 누르고 있는 동안 끝난 스티커는 진행 중인 끌기를 끊지 않도록 보류한다.
+  // Phase 4 티켓 13은 이 조건에 '내 사진 스티커 만드는 중'만 더한다.
+  const shouldHoldStickerInsert = useCallback(
+    () => hasActivePointers(pointerPresenceRef.current),
+    [],
+  );
+
   const handleStickerInsert = async (src: string) => {
     const { width, height } = await loadStickerDimensions(src, {
       fallbackWidth: DEFAULT_STICKER_WIDTH,
@@ -1084,13 +1087,25 @@ function App() {
       tintColor: null,
     };
 
+    if (shouldHoldStickerInsert()) {
+      heldStickerRef.current.push(newSticker); // 완료 순서대로 보관했다가 포인터를 뗀 뒤 하나씩 붙임
+      return;
+    }
+
     // 치수를 읽는 동안 끝난 앞선 편집과 섞이지 않도록 삽입 직전에 기록 경계를 닫는다.
     flushHistory();
     setStickers((previous) => [...previous, newSticker]);
-    setSelectedStickerId(newSticker.id);
-    setSelectedTextId(null); // Text 선택 해제
-    setEditorState(prev => ({ ...prev, selection: newSticker.id }));
+    selectInsertedSticker(newSticker.id);
   }
+
+  useEffect(() => {
+    if (shouldHoldStickerInsert()) return;
+    const nextHeldSticker = heldStickerRef.current.shift(); // 완료 순서대로 하나씩
+    if (!nextHeldSticker) return;
+    flushHistory(); // 바로 앞 단계(끌기 종료 등)를 닫아 보류 스티커를 별도 단계로 남김
+    setStickers((previous) => [...previous, nextHeldSticker]);
+    selectInsertedSticker(nextHeldSticker.id);
+  }, [flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers]);
 
   const handleStickerUpdate = (stickerId: string, updates: Partial<CanvasSticker>) => {
     setStickers(prev =>
@@ -1262,10 +1277,15 @@ function App() {
       return;
     }
 
-    // 복원한 사진이 캔버스에 올라오기 전에 저장하면 빈 칸이 찍힌다. 모든 저장 분기가 이 경계를 지난다.
-    const photoImagesState = await waitForPhotoImages();
-    if (photoImagesState.kind === "failed") {
-      alert('사진을 불러오지 못했어요. 다시 저장해 주세요.');
+    // 저장을 기다리지 않는다. 클릭 시점의 문서와 캔버스가 알린 사진 목록이 다르면 아직 최신 상태가 아니다.
+    const photoImagesState = photoImagesStateRef.current;
+    if (photoImagesSourceRef.current !== editorState.userImages) {
+      alert(PHOTO_LOADING_SAVE_MESSAGE);
+      return;
+    }
+    const photoSaveBlockMessage = getPhotoSaveBlockMessage(photoImagesState);
+    if (photoSaveBlockMessage) {
+      alert(photoSaveBlockMessage);
       return;
     }
 

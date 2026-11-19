@@ -11,8 +11,11 @@ export function hasActivePointers(presence: PointerPresence): boolean {
 }
 
 // 첫 포인터가 눌릴 때 true를 돌려준다. 핀치의 둘째 손가락처럼 이미 제스처 중이면 false다.
-export function beginPointer(presence: PointerPresence, pointerId: number): boolean {
-  if (presence.activePointerIds.has(pointerId)) {
+// isPrimary가 true인 새 포인터는 이전 제스처의 종료를 놓쳤다는 뜻이므로 남은 기록을 모두 지우고 새로 시작한다.
+export function beginPointer(presence: PointerPresence, pointerId: number, isPrimary: boolean): boolean {
+  if (isPrimary) {
+    presence.activePointerIds.clear();
+  } else if (presence.activePointerIds.has(pointerId)) {
     return false;
   }
 

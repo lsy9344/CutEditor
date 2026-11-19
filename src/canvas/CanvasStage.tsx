@@ -51,7 +51,7 @@ export type CanvasStageProps = {
   userImages: UserImage[];
   frameColor: string;
   historyControls: CanvasHistoryControls;
-  onPhotoImagesStateChange: (state: PhotoImagesState) => void;
+  onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[]) => void;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
   texts?: Array<{
@@ -509,7 +509,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     : photoImagesState.kind;
 
   useEffect(() => {
-    onPhotoImagesStateChange(photoImagesState);
+    onPhotoImagesStateChange(photoImagesState, userImages);
   }, [onPhotoImagesStateChange, photoImagesStateKey, userImages]);
 
   useEffect(() => {
