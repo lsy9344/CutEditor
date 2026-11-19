@@ -33,6 +33,13 @@ import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 Konva.hitOnDragEnabled = true;
 Konva.capturePointerEventsEnabled = true;
 
+export type CanvasHistoryControls = {
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+};
+
 export type CanvasStageProps = {
   template: Template | null;
   selection: string | null;
@@ -41,6 +48,7 @@ export type CanvasStageProps = {
   selectedFrame: FrameType | null;
   userImages: UserImage[];
   frameColor: string;
+  historyControls: CanvasHistoryControls;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
   texts?: Array<{
@@ -144,6 +152,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   selectedSlot,
   userImages,
   frameColor,
+  historyControls,
   exportMode = false,
   stageRefExternal,
   texts = [],
@@ -432,6 +441,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   // 사용자 이미지 로드
   useEffect(() => {
+    const activeImageIds = new Set(userImages.map((userImage) => userImage.id));
+    setLoadedImages((previous) => {
+      const hasStale = Array.from(previous.keys()).some((imageId) => !activeImageIds.has(imageId));
+      if (!hasStale) return previous;
+      const next = new Map(previous);
+      next.forEach((_image, imageId) => {
+        if (!activeImageIds.has(imageId)) next.delete(imageId);
+      });
+      return next;
+    });
     userImages.forEach(userImage => {
       if (!loadedImages.has(userImage.id)) {
         const img = new Image();
@@ -1902,6 +1921,28 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         </div>
 
         <div className="canvas-control-panel">
+          <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+            <button
+              type="button"
+              className="linear-button linear-button--secondary"
+              onClick={historyControls.onUndo}
+              disabled={!historyControls.canUndo}
+              style={{ flex: 1, height: '32px', fontSize: '12px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canUndo ? 1 : 0.5 }}
+              title="마지막 변경을 되돌립니다 (Ctrl+Z)"
+            >
+              되돌리기
+            </button>
+            <button
+              type="button"
+              className="linear-button linear-button--secondary"
+              onClick={historyControls.onRedo}
+              disabled={!historyControls.canRedo}
+              style={{ flex: 1, height: '32px', fontSize: '12px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canRedo ? 1 : 0.5 }}
+              title="되돌린 변경을 다시 합니다 (Ctrl+Shift+Z)"
+            >
+              다시 하기
+            </button>
+          </div>
           {selectedFrame !== "1l" && (
             <div>
               <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>

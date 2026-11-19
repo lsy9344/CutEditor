@@ -8,6 +8,19 @@ import { TutorialOverlay } from './ui/TutorialOverlay'
 import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
+import type { CanvasSticker, CanvasText, EditorDocument, TextAlign } from './state/editorDocument'
+import { collectObjectUrls, collectUrlsToRevoke, hasEditorObject, isSameEditorDocument } from './state/editorDocument'
+import type { History } from './state/history'
+import {
+  canRedo,
+  canUndo,
+  createHistory,
+  getHistoryShortcut,
+  HISTORY_CAPTURE_DELAY_MS,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+} from './state/history'
 import {
   EXACT_VERTICAL_CANVAS,
   FRAME_LAYOUTS,
@@ -164,39 +177,6 @@ type PendingBoothyImportState = {
 };
 
 type BoothySaveNoticeState = 'idle' | 'saving' | 'saved';
-
-type TextAlign = 'left' | 'center' | 'right';
-
-type CanvasText = {
-  id: string;
-  text: string;
-  x: number;
-  y: number;
-  boxWidth: number;
-  fontSize: number;
-  fontFamily: string;
-  fontColor: string;
-  isBold: boolean;
-  isItalic: boolean;
-  isVertical: boolean;
-  textAlign: TextAlign;
-  rotation: number;
-};
-
-type CanvasSticker = {
-  id: string;
-  src: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  scaleX: number;
-  scaleY: number;
-  rotation: number;
-  flipX: boolean;
-  flipY: boolean;
-  tintColor: string | null;
-};
 
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
@@ -434,6 +414,104 @@ function App() {
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
+  const currentDocument = useMemo<EditorDocument>(() => ({
+    userImages: editorState.userImages,
+    texts,
+    stickers,
+    frameColor: editorState.frameColor,
+  }), [editorState.userImages, editorState.frameColor, texts, stickers]);
+  const [history, setHistory] = useState<History<EditorDocument>>(() => createHistory(currentDocument));
+  const isHistoryPending = !isSameEditorDocument(history.present, currentDocument);
+  const currentDocumentRef = useRef(currentDocument);
+  currentDocumentRef.current = currentDocument;
+  const trackedObjectUrlsRef = useRef(new Set<string>());
+  const flushHistory = useCallback(() => {
+    setHistory((previous) => pushHistory(previous, currentDocumentRef.current, isSameEditorDocument));
+  }, []);
+
+  useEffect(() => {
+    const onPointerDown = () => flushHistory();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      const target = event.target;
+      const isEditableTarget = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      if (isEditableTarget) return;
+      flushHistory();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [flushHistory]);
+
+  useEffect(() => {
+    const timerId = window.setTimeout(flushHistory, HISTORY_CAPTURE_DELAY_MS);
+    return () => window.clearTimeout(timerId);
+  }, [currentDocument, flushHistory]);
+
+  useEffect(() => {
+    const liveDocuments = [...history.past, history.present, ...history.future, currentDocument];
+    liveDocuments.forEach((liveDocument) => {
+      collectObjectUrls(liveDocument).forEach((url) => trackedObjectUrlsRef.current.add(url));
+    });
+    collectUrlsToRevoke(trackedObjectUrlsRef.current, liveDocuments).forEach((url) => {
+      URL.revokeObjectURL(url);
+      trackedObjectUrlsRef.current.delete(url);
+    });
+  }, [history, currentDocument]);
+
+  const applyEditorDocument = (nextDocument: EditorDocument) => {
+    setEditorState((previous) => ({
+      ...previous,
+      userImages: nextDocument.userImages,
+      frameColor: nextDocument.frameColor,
+      selection: previous.selection && !hasEditorObject(nextDocument, previous.selection) ? null : previous.selection,
+    }));
+    setTexts(nextDocument.texts);
+    setStickers(nextDocument.stickers);
+    if (selectedTextId && !hasEditorObject(nextDocument, selectedTextId)) setSelectedTextId(null);
+    if (selectedStickerId && !hasEditorObject(nextDocument, selectedStickerId)) setSelectedStickerId(null);
+  };
+
+  const handleUndo = () => {
+    const flushed = pushHistory(history, currentDocument, isSameEditorDocument);
+    const next = undoHistory(flushed);
+    if (next === flushed) return;
+    setHistory(next);
+    applyEditorDocument(next.present);
+  };
+
+  const handleRedo = () => {
+    const flushed = pushHistory(history, currentDocument, isSameEditorDocument);
+    const next = redoHistory(flushed);
+    if (next === flushed) return;
+    setHistory(next);
+    applyEditorDocument(next.present);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (exportMode) return;
+      const target = event.target;
+      const isEditableTarget = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      const command = getHistoryShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey, isEditableTarget });
+      if (!command) return;
+      event.preventDefault();
+      if (command === "undo") handleUndo();
+      else handleRedo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [exportMode, handleUndo, handleRedo]);
+
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
   const [boothySaveNoticeState, setBoothySaveNoticeState] = useState<BoothySaveNoticeState>('idle');
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -554,18 +632,17 @@ function App() {
     const newFrameLayout = FRAME_LAYOUTS[frameType];
     const validSlotIds = new Set(newFrameLayout.slots.map(s => s.id));
 
-    setEditorState(prev => {
-      // Retain images that fit into the new frame's slots
-      const newUserImages = prev.userImages.filter(img => validSlotIds.has(img.slotId));
-
-      return {
-        ...prev,
-        selectedFrame: frameType,
-        userImages: newUserImages,
-        selectedSlot: null,
-        selection: null,
-      };
-    });
+    // Retain images that fit into the new frame's slots
+    const nextUserImages = editorState.userImages.filter((image) => validSlotIds.has(image.slotId));
+    const nextDocument: EditorDocument = { userImages: nextUserImages, texts, stickers, frameColor: editorState.frameColor };
+    setHistory(createHistory(nextDocument));
+    setEditorState((previous) => ({
+      ...previous,
+      selectedFrame: frameType,
+      userImages: nextUserImages,
+      selectedSlot: null,
+      selection: null,
+    }));
     // 텍스트 및 스티커는 삭제하지 않고 선택 상태만 초기화합니다.
     setSelectedTextId(null);
     setSelectedStickerId(null);
@@ -981,11 +1058,6 @@ function App() {
       // 삭제할 이미지 찾기
       const imageToDelete = prev.userImages.find(img => img.id === imageId);
 
-      // Blob URL 메모리 해제
-      if (imageToDelete?.url) {
-        URL.revokeObjectURL(imageToDelete.url);
-      }
-
       // userImages 배열에서 해당 이미지 제거
       const filteredImages = prev.userImages.filter(img => img.id !== imageId);
 
@@ -1377,6 +1449,12 @@ function App() {
       selectedFrame={editorState.selectedFrame}
       userImages={editorState.userImages}
       frameColor={editorState.frameColor}
+      historyControls={{
+        canUndo: canUndo(history) || isHistoryPending,
+        canRedo: canRedo(history) && !isHistoryPending,
+        onUndo: handleUndo,
+        onRedo: handleRedo,
+      }}
       exportMode={exportMode}
       stageRefExternal={stageRef}
       texts={texts}
