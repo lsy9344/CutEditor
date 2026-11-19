@@ -1,6 +1,6 @@
 import type { PhotoEdits } from "./photoEdits.ts";
 import { isDefaultPhotoEdits } from "./photoEdits.ts";
-import { renderAdjustedPhoto, renderPhotoBase } from "./photoRender.ts";
+import { isPhotoWorkingSizeClamped, renderAdjustedPhoto, renderPhotoBase } from "./photoRender.ts";
 
 type EditedPhotoCacheEntry = {
   baseKey: string;
@@ -19,6 +19,11 @@ export function getEditedPhotoCanvas(
   keepBase: boolean,
 ): HTMLCanvasElement | null {
   if (isDefaultPhotoEdits(edits)) {
+    editedPhotoCache.delete(imageId);
+    return null;
+  }
+
+  if (isPhotoWorkingSizeClamped(source.naturalWidth, source.naturalHeight, maxSide)) {
     editedPhotoCache.delete(imageId);
     return null;
   }
@@ -55,9 +60,12 @@ export function getEditedPhotoCanvas(
 export function pruneEditedPhotoCanvases(
   activeImageIds: Set<string>,
   selectedImageId: string | null,
+  editedImageIds?: Set<string>,
 ): void {
   for (const [imageId, entry] of editedPhotoCache) {
-    if (!activeImageIds.has(imageId)) {
+    const isActiveEditedPhoto = !editedImageIds || editedImageIds.has(imageId);
+
+    if (!activeImageIds.has(imageId) || !isActiveEditedPhoto) {
       editedPhotoCache.delete(imageId);
       continue;
     }
@@ -66,4 +74,19 @@ export function pruneEditedPhotoCanvases(
       entry.base = null;
     }
   }
+}
+
+// E2E에서 보정 캐시가 실제로 비워졌는지 읽기만 하는 통계다.
+export function getEditedPhotoCacheStats(): Array<{
+  imageId: string;
+  width: number;
+  height: number;
+  hasBase: boolean;
+}> {
+  return Array.from(editedPhotoCache, ([imageId, entry]) => ({
+    imageId,
+    width: entry.canvas.width,
+    height: entry.canvas.height,
+    hasBase: entry.base !== null,
+  }));
 }

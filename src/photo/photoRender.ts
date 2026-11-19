@@ -3,6 +3,23 @@ import { applyPhotoAdjust } from "./photoAdjust.ts";
 
 export const PHOTO_WORKING_MAX_SIDE = { desktop: 4096, mobile: 2048 } as const;
 
+const MIN_WORKING_SIDE = 1;
+
+// 작업 크기의 짧은 변이 1px로 잘려야 하는 극단 비율인지 판정한다.
+// 이런 사진은 작업 캔버스를 제대로 만들 수 없으므로 렌더 실패로 다룬다.
+export function isPhotoWorkingSizeClamped(
+  naturalWidth: number,
+  naturalHeight: number,
+  maxSide: number,
+): boolean {
+  const longSide = Math.max(naturalWidth, naturalHeight);
+
+  if (longSide <= maxSide) return false;
+
+  const shortSide = Math.min(naturalWidth, naturalHeight);
+  return Math.round((shortSide * maxSide) / longSide) < MIN_WORKING_SIDE;
+}
+
 export function getWorkingSize(
   naturalWidth: number,
   naturalHeight: number,
@@ -11,18 +28,21 @@ export function getWorkingSize(
   const longSide = Math.max(naturalWidth, naturalHeight);
 
   if (longSide <= maxSide) {
-    return { width: naturalWidth, height: naturalHeight };
+    return {
+      width: Math.max(MIN_WORKING_SIDE, naturalWidth),
+      height: Math.max(MIN_WORKING_SIDE, naturalHeight),
+    };
   }
 
   if (naturalWidth >= naturalHeight) {
     return {
       width: maxSide,
-      height: Math.round((naturalHeight * maxSide) / naturalWidth),
+      height: Math.max(MIN_WORKING_SIDE, Math.round((naturalHeight * maxSide) / naturalWidth)),
     };
   }
 
   return {
-    width: Math.round((naturalWidth * maxSide) / naturalHeight),
+    width: Math.max(MIN_WORKING_SIDE, Math.round((naturalWidth * maxSide) / naturalHeight)),
     height: maxSide,
   };
 }

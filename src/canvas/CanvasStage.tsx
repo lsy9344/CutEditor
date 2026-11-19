@@ -378,8 +378,28 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     return true;
   }, [userImages, loadedImages, editedPhotoDisplays, photoEdit.workingMaxSide]);
 
+  const editedPhotoRenderFailureIds = useMemo(() => {
+    const failedImageIds: string[] = [];
+
+    userImages.forEach((userImage) => {
+      if (isDefaultPhotoEdits(userImage.edits)) return;
+      const loadedEntry = loadedImages.get(userImage.id);
+      if (!loadedEntry?.image || loadedEntry.url !== userImage.url) return;
+      const display = editedPhotoDisplays.get(userImage.id);
+      if (!display || display.key !== getPhotoEditDisplayKey(userImage.edits, photoEdit.workingMaxSide)) return;
+      if (display.canvas === null) failedImageIds.push(userImage.id);
+    });
+
+    return failedImageIds;
+  }, [userImages, loadedImages, editedPhotoDisplays, photoEdit.workingMaxSide]);
+
   useEffect(() => {
-    pruneEditedPhotoCanvases(new Set(userImages.map((userImage) => userImage.id)), selectedImageId);
+    const editedPhotoIds = new Set(
+      userImages
+        .filter((userImage) => !isDefaultPhotoEdits(userImage.edits))
+        .map((userImage) => userImage.id),
+    );
+    pruneEditedPhotoCanvases(new Set(userImages.map((userImage) => userImage.id)), selectedImageId, editedPhotoIds);
   }, [userImages, selectedImageId]);
 
   useEffect(() => () => pruneEditedPhotoCanvases(new Set(), null), []);
@@ -387,8 +407,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedText = selection ? texts.find((text) => text.id === selection) ?? null : null;
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
   const photoEditSections = getPhotoEditSections(PHOTO_EDIT_FEATURES);
+  const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isTouchManipulationActive = Boolean(selection);
+
+  useEffect(() => {
+    if (!photoEditSections.showBox && photoEdit.compareHeld) {
+      photoEdit.onCompareHeldChange(false);
+    }
+  }, [photoEditSections.showBox, photoEdit.compareHeld, photoEdit.onCompareHeldChange]);
+
+  useEffect(() => () => {
+    photoEdit.onCompareHeldChange(false);
+  }, [photoEdit.onCompareHeldChange]);
 
   const focusCanvasArea = useCallback(() => {
     stageWrapperRef.current?.focus({ preventScroll: true });
@@ -677,9 +708,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   }, []);
 
   const basePhotoImagesState = getPhotoImagesState(userImages, loadedImages);
-  const photoImagesState: PhotoImagesState = basePhotoImagesState.kind === "ready" && !isEditedPhotoDisplayReady
-    ? { kind: "loading" }
-    : basePhotoImagesState;
+  const photoImagesState: PhotoImagesState = basePhotoImagesState.kind === "failed"
+    ? basePhotoImagesState
+    : editedPhotoRenderFailureIds.length > 0
+      ? { kind: "failed", imageIds: editedPhotoRenderFailureIds }
+      : basePhotoImagesState.kind === "ready" && !isEditedPhotoDisplayReady
+        ? { kind: "loading" }
+        : basePhotoImagesState;
   const photoImagesStateKey = photoImagesState.kind === "failed"
     ? `failed:${photoImagesState.imageIds.join(",")}`
     : photoImagesState.kind;
@@ -1920,7 +1955,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         }
 
                         return (
-                          <Group>
+                          <Group listening={false}>
                             <Rect
                               x={slot.x + slot.width / 2 - 60}
                               y={slot.y + slot.height / 2 - 10}
@@ -2165,6 +2200,29 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             >
               다시 하기
             </button>
+            {photoEditSections.showBox && (
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                disabled={!hasEditedPhotos}
+                onPointerDown={() => photoEdit.onCompareHeldChange(true)}
+                onPointerUp={() => photoEdit.onCompareHeldChange(false)}
+                onPointerLeave={() => photoEdit.onCompareHeldChange(false)}
+                onPointerCancel={() => photoEdit.onCompareHeldChange(false)}
+                onContextMenu={(event) => event.preventDefault()}
+                style={{
+                  flex: 1.4,
+                  height: '32px',
+                  fontSize: '11px',
+                  border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  opacity: hasEditedPhotos ? 1 : 0.5,
+                  touchAction: 'none',
+                  userSelect: 'none'
+                }}
+              >
+                누르고 있으면 원본
+              </button>
+            )}
           </div>
           {selectedFrame !== "1l" && (
             <div>
@@ -2413,26 +2471,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   })}
                 </>
               )}
-
-              <button
-                type="button"
-                className="linear-button linear-button--secondary"
-                disabled={!userImages.some((image) => !isDefaultPhotoEdits(image.edits))}
-                onPointerDown={() => photoEdit.onCompareHeldChange(true)}
-                onPointerUp={() => photoEdit.onCompareHeldChange(false)}
-                onPointerLeave={() => photoEdit.onCompareHeldChange(false)}
-                onPointerCancel={() => photoEdit.onCompareHeldChange(false)}
-                onContextMenu={(event) => event.preventDefault()}
-                style={{
-                  height: '32px',
-                  fontSize: '12px',
-                  border: 'var(--border-width) solid var(--linear-neutral-500)',
-                  touchAction: 'none',
-                  userSelect: 'none'
-                }}
-              >
-                누르고 있으면 원본
-              </button>
             </div>
           )}
 

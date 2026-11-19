@@ -48,3 +48,19 @@ test("가로모드에서 바텀시트가 중앙 배치로 전환된다", () => {
   );
   assert.match(landscapeSection, /\.app-mobile-sheet-backdrop[\s\S]*?align-items:\s*center/);
 });
+
+test("가로모드 CSS는 패널 스크롤 예외만 남기고 중복·효과 없는 규칙을 두지 않는다", () => {
+  const source = readFileSync("src/components/components.css", "utf8");
+
+  const landscapeBlock = source.match(
+    /@media\s*\(orientation:\s*landscape\)[^{]*\{([\s\S]*?)(?:\n\})/
+  );
+  assert.ok(landscapeBlock, "landscape 미디어 쿼리 블록이 존재해야 합니다");
+
+  assert.doesNotMatch(landscapeBlock[1], /\.app-main--mobile-editor \.canvas-stage-layout/);
+  assert.doesNotMatch(landscapeBlock[1], /\.app-main--mobile-editor \.canvas-stage-area/);
+  assert.match(
+    landscapeBlock[1],
+    /\.app-main--mobile-editor \.canvas-control-panel\s*\{[\s\S]*?overflow-y:\s*auto/,
+  );
+});
