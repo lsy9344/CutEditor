@@ -21,6 +21,14 @@ import {
   redoHistory,
   undoHistory,
 } from './state/history'
+import type { PhotoImagesState } from './state/photoLoadState'
+import {
+  beginPointer,
+  createPointerPresence,
+  endPointer,
+  hasActivePointers,
+  resetPointers,
+} from './state/pointerPresence'
 import {
   EXACT_VERTICAL_CANVAS,
   FRAME_LAYOUTS,
@@ -428,9 +436,49 @@ function App() {
   const flushHistory = useCallback(() => {
     setHistory((previous) => pushHistory(previous, currentDocumentRef.current, isSameEditorDocument));
   }, []);
+  const pointerPresenceRef = useRef(createPointerPresence());
+  const [isPointerActive, setIsPointerActive] = useState(false);
+  const photoImagesStateRef = useRef<PhotoImagesState>({ kind: 'ready' });
+  const photoImagesWaitersRef = useRef<Array<(state: PhotoImagesState) => void>>([]);
+  const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState) => {
+    photoImagesStateRef.current = state;
+
+    if (state.kind === 'loading') return;
+
+    const waiters = photoImagesWaitersRef.current;
+    photoImagesWaitersRef.current = [];
+    waiters.forEach((resolve) => resolve(state));
+  }, []);
+  const waitForPhotoImages = useCallback(() => new Promise<PhotoImagesState>((resolve) => {
+    const state = photoImagesStateRef.current;
+
+    if (state.kind !== 'loading') {
+      resolve(state);
+      return;
+    }
+
+    photoImagesWaitersRef.current.push(resolve);
+  }), []);
 
   useEffect(() => {
-    const onPointerDown = () => flushHistory();
+    const presence = pointerPresenceRef.current;
+    const syncPointerActivity = () => setIsPointerActive(hasActivePointers(presence));
+    const onPointerDown = (event: PointerEvent) => {
+      if (!beginPointer(presence, event.pointerId)) return;
+      syncPointerActivity();
+      flushHistory();
+    };
+    const onPointerEnd = (event: PointerEvent) => {
+      if (!endPointer(presence, event.pointerId)) return;
+      syncPointerActivity();
+    };
+    const onPointerReset = () => {
+      if (!resetPointers(presence)) return;
+      syncPointerActivity();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') onPointerReset();
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat) return;
       const target = event.target;
@@ -442,17 +490,26 @@ function App() {
       flushHistory();
     };
     window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerEnd, true);
+    window.addEventListener("pointercancel", onPointerEnd, true);
+    window.addEventListener("blur", onPointerReset);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("keydown", onKeyDown, true);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerEnd, true);
+      window.removeEventListener("pointercancel", onPointerEnd, true);
+      window.removeEventListener("blur", onPointerReset);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("keydown", onKeyDown, true);
     };
   }, [flushHistory]);
 
   useEffect(() => {
+    if (isPointerActive) return;
     const timerId = window.setTimeout(flushHistory, HISTORY_CAPTURE_DELAY_MS);
     return () => window.clearTimeout(timerId);
-  }, [currentDocument, flushHistory]);
+  }, [currentDocument, flushHistory, isPointerActive]);
 
   useEffect(() => {
     const liveDocuments = [...history.past, history.present, ...history.future, currentDocument];
@@ -1027,7 +1084,9 @@ function App() {
       tintColor: null,
     };
 
-    setStickers(prev => [...prev, newSticker]);
+    // 치수를 읽는 동안 끝난 앞선 편집과 섞이지 않도록 삽입 직전에 기록 경계를 닫는다.
+    flushHistory();
+    setStickers((previous) => [...previous, newSticker]);
     setSelectedStickerId(newSticker.id);
     setSelectedTextId(null); // Text 선택 해제
     setEditorState(prev => ({ ...prev, selection: newSticker.id }));
@@ -1200,6 +1259,13 @@ function App() {
     const frameType = editorState.selectedFrame;
     if (!frameType) {
       alert('프레임을 먼저 선택해주세요.');
+      return;
+    }
+
+    // 복원한 사진이 캔버스에 올라오기 전에 저장하면 빈 칸이 찍힌다. 모든 저장 분기가 이 경계를 지난다.
+    const photoImagesState = await waitForPhotoImages();
+    if (photoImagesState.kind === "failed") {
+      alert('사진을 불러오지 못했어요. 다시 저장해 주세요.');
       return;
     }
 
@@ -1459,6 +1525,7 @@ function App() {
       stageRefExternal={stageRef}
       texts={texts}
       stickers={stickers}
+      onPhotoImagesStateChange={handlePhotoImagesStateChange}
       onSelect={handleSelect}
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}

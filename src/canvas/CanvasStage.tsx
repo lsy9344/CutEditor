@@ -28,6 +28,8 @@ import {
 } from "./stickerTint";
 import { getZoomToFit } from "./zoomSizing";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
+import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
+import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -49,6 +51,7 @@ export type CanvasStageProps = {
   userImages: UserImage[];
   frameColor: string;
   historyControls: CanvasHistoryControls;
+  onPhotoImagesStateChange: (state: PhotoImagesState) => void;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
   texts?: Array<{
@@ -153,6 +156,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   userImages,
   frameColor,
   historyControls,
+  onPhotoImagesStateChange,
   exportMode = false,
   stageRefExternal,
   texts = [],
@@ -184,8 +188,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const customPickButtonRef = useRef<HTMLButtonElement | null>(null);
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
-  const [loadedImages, setLoadedImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
+  const [loadedImages, setLoadedImages] = useState<Map<string, LoadedPhotoImage<HTMLImageElement>>>(new Map());
   const [loadedStickerImages, setLoadedStickerImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
+  const pendingImageLoadsRef = useRef<Map<string, { url: string; image: HTMLImageElement }>>(new Map());
+  const userImageUrlsRef = useRef<Map<string, string>>(new Map());
+  userImageUrlsRef.current = new Map(userImages.map((userImage) => [userImage.id, userImage.url] as const));
   const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
   const currentSlotIdRef = useRef<string | null>(null);
@@ -268,8 +275,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     const slot = frameLayout.slots.find((item) => item.id === image.slotId);
     if (!slot) return null;
 
-    const loadedImage = loadedImages.get(image.id);
-    if (!(loadedImage instanceof HTMLImageElement)) return null;
+    const loadedEntry = loadedImages.get(image.id);
+    const currentUrl = userImageUrlsRef.current.get(image.id);
+    if (!loadedEntry || !currentUrl || loadedEntry.url !== currentUrl || !(loadedEntry.image instanceof HTMLImageElement)) return null;
+    const loadedImage = loadedEntry.image;
 
     return {
       slot,
@@ -441,32 +450,67 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   // 사용자 이미지 로드
   useEffect(() => {
-    const activeImageIds = new Set(userImages.map((userImage) => userImage.id));
-    setLoadedImages((previous) => {
-      const hasStale = Array.from(previous.keys()).some((imageId) => !activeImageIds.has(imageId));
-      if (!hasStale) return previous;
-      const next = new Map(previous);
-      next.forEach((_image, imageId) => {
-        if (!activeImageIds.has(imageId)) next.delete(imageId);
-      });
-      return next;
+    const activeImageUrls = new Map(userImages.map((userImage) => [userImage.id, userImage.url] as const));
+
+    // 지금 문서에 없거나 URL이 바뀐 진행 중 로드만 버린다. 아직 활성인 다른 사진의 로드는 그대로 둔다.
+    pendingImageLoadsRef.current.forEach((pendingLoad, imageId) => {
+      if (activeImageUrls.get(imageId) === pendingLoad.url) return;
+      pendingLoad.image.onload = null;
+      pendingLoad.image.onerror = null;
+      pendingImageLoadsRef.current.delete(imageId);
     });
-    userImages.forEach(userImage => {
-      if (!loadedImages.has(userImage.id)) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          setLoadedImages(prev => new Map(prev).set(userImage.id, img));
-        };
-        img.onerror = () => {
-          console.error(`Failed to load image: ${userImage.id}`);
-          // 로딩 실패한 이미지도 Map에 null로 추가하여 무한 재시도 방지
-          setLoadedImages(prev => new Map(prev).set(userImage.id, null));
-        };
-        img.src = userImage.url;
-      }
+
+    setLoadedImages((previous) => {
+      let hasStale = false;
+      const next = new Map(previous);
+      next.forEach((loadedEntry, imageId) => {
+        if (activeImageUrls.get(imageId) !== loadedEntry.url) {
+          next.delete(imageId);
+          hasStale = true;
+        }
+      });
+      return hasStale ? next : previous;
+    });
+
+    userImages.forEach((userImage) => {
+      if (loadedImages.get(userImage.id)?.url === userImage.url) return;
+      if (pendingImageLoadsRef.current.get(userImage.id)?.url === userImage.url) return;
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        pendingImageLoadsRef.current.delete(userImage.id);
+        if (!isCurrentPhotoLoad(userImage.id, userImage.url, userImageUrlsRef.current)) return;
+        setLoadedImages((previous) => new Map(previous).set(userImage.id, { url: userImage.url, image: img }));
+      };
+      img.onerror = () => {
+        pendingImageLoadsRef.current.delete(userImage.id);
+        if (!isCurrentPhotoLoad(userImage.id, userImage.url, userImageUrlsRef.current)) return;
+        console.error(`Failed to load image: ${userImage.id}`);
+        // 로딩 실패한 이미지도 Map에 null로 추가하여 무한 재시도 방지
+        setLoadedImages((previous) => new Map(previous).set(userImage.id, { url: userImage.url, image: null }));
+      };
+      pendingImageLoadsRef.current.set(userImage.id, { url: userImage.url, image: img });
+      img.src = userImage.url;
     });
   }, [userImages]);
+
+  useEffect(() => () => {
+    pendingImageLoadsRef.current.forEach((pendingLoad) => {
+      pendingLoad.image.onload = null;
+      pendingLoad.image.onerror = null;
+    });
+    pendingImageLoadsRef.current.clear();
+  }, []);
+
+  const photoImagesState = getPhotoImagesState(userImages, loadedImages);
+  const photoImagesStateKey = photoImagesState.kind === "failed"
+    ? `failed:${photoImagesState.imageIds.join(",")}`
+    : photoImagesState.kind;
+
+  useEffect(() => {
+    onPhotoImagesStateChange(photoImagesState);
+  }, [onPhotoImagesStateChange, photoImagesStateKey, userImages]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1398,7 +1442,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <Layer>
                 {frameLayout.slots.map((slot) => {
                   const userImage = userImages.find(img => img.slotId === slot.id);
-                  const loadedImg = userImage ? loadedImages.get(userImage.id) : null;
+                  const loadedEntry = userImage ? loadedImages.get(userImage.id) : undefined;
+                  const loadedImg = userImage && loadedEntry?.url === userImage.url ? loadedEntry.image : null;
 
                   if (userImage && loadedImg && loadedImg !== null) {
                     const isSelectedImage = selection === userImage.id;
@@ -1575,7 +1620,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <Layer>
                 {frameLayout.slots.map((slot) => {
                   const userImage = userImages.find(img => img.slotId === slot.id);
-                  const hasImage = userImage && loadedImages.get(userImage.id);
+                  const loadedEntry = userImage ? loadedImages.get(userImage.id) : undefined;
+                  const hasImage = Boolean(userImage && loadedEntry && loadedEntry.url === userImage.url && loadedEntry.image);
                   const isSelected = selectedSlot === slot.id;
 
                   return (
@@ -1690,9 +1736,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         let labelText = onRequestImageImport
                           ? "클릭해서 세션 사진 선택"
                           : "클릭해서 이미지 추가";
-                        if (userImage && loadedImages.get(userImage.id) === null) {
+                        if (userImage && loadedEntry?.url === userImage.url && loadedEntry.image === null) {
                           labelText = "이미지 로딩 실패";
-                        } else if (userImage && !loadedImages.get(userImage.id)) {
+                        } else if (userImage) {
                           labelText = "이미지 로딩 중...";
                         }
 
