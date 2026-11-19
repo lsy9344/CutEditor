@@ -37,7 +37,7 @@ test("CanvasStage는 선택된 이미지만 모바일에서 직접 조작할 수
 
   assert.match(source, /const isTouchManipulationActive = Boolean\(selection\);/);
   assert.match(source, /const isSelectedImage = selection === userImage\.id;/);
-  assert.match(source, /draggable=\{!exportMode && isSelectedImage\}/);
+  assert.match(source, /draggable=\{!exportMode && isSelectedImage && photoEdit\.toolMode === "none"\}/);
   assert.match(source, /selectImage\(userImage\.id, userImage\.slotId\);/);
   assert.match(source, /if \(e\.evt\.touches\.length < 2\) \{\s*pinchRef\.current = null;\s*return;\s*\}/s);
   assert.match(source, /onTap=\{\(\) => \{\s*selectImage\(userImage\.id, slot\.id\);\s*\}\}/s);

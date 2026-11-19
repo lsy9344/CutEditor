@@ -1,5 +1,7 @@
 import type { BrushStroke, PhotoAdjust } from "./photoEdits.ts";
 import { applyPhotoAdjust } from "./photoAdjust.ts";
+import { rasterizeStroke } from "./brushMask.ts";
+import { inpaintMasked } from "./inpaint.ts";
 
 export const PHOTO_WORKING_MAX_SIDE = { desktop: 4096, mobile: 2048 } as const;
 
@@ -63,9 +65,6 @@ export function renderPhotoBase(
   erase: BrushStroke[],
   maxSide: number,
 ): HTMLCanvasElement {
-  // Phase 2에서는 지우기 획을 아직 적용하지 않습니다.
-  void erase;
-
   const sourceSize = getSourceSize(source);
   const workingSize = getWorkingSize(sourceSize.width, sourceSize.height, maxSide);
   const canvas = document.createElement("canvas");
@@ -79,6 +78,15 @@ export function renderPhotoBase(
   }
 
   context.drawImage(source, 0, 0, workingSize.width, workingSize.height);
+
+  if (erase.length > 0) {
+    const imageData = context.getImageData(0, 0, workingSize.width, workingSize.height);
+    const mask = new Uint8Array(workingSize.width * workingSize.height);
+    erase.forEach((stroke) => rasterizeStroke(stroke, workingSize.width, workingSize.height, mask));
+    inpaintMasked(imageData.data, workingSize.width, workingSize.height, mask);
+    context.putImageData(imageData, 0, 0);
+  }
+
   return canvas;
 }
 

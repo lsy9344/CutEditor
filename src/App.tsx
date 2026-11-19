@@ -52,6 +52,7 @@ import {
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import type { PhotoEdits } from './photo/photoEdits'
 import { copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
+import type { BrushSize, PhotoToolMode } from './photo/photoTool'
 import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
   getExportExperience,
@@ -427,6 +428,9 @@ function App() {
   const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
   const [compareHeld, setCompareHeld] = useState(false);
+  const [photoToolMode, setPhotoToolMode] = useState<PhotoToolMode>("none");
+  const [brushSize, setBrushSize] = useState<BrushSize>("medium");
+  useEffect(() => { setPhotoToolMode("none"); }, [editorState.selection]);
   const currentDocument = useMemo<EditorDocument>(() => ({
     userImages: editorState.userImages,
     texts,
@@ -528,6 +532,7 @@ function App() {
     setStickers(nextDocument.stickers);
     if (selectedTextId && !hasEditorObject(nextDocument, selectedTextId)) setSelectedTextId(null);
     if (selectedStickerId && !hasEditorObject(nextDocument, selectedStickerId)) setSelectedStickerId(null);
+    setPhotoToolMode("none");
   };
 
   const handleUndo = () => {
@@ -1339,6 +1344,7 @@ function App() {
         setBoothySaveNoticeState('saving');
       }
       setCompareHeld(false);
+      setPhotoToolMode("none");
       setExportMode(true);
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
@@ -1587,6 +1593,10 @@ function App() {
         onCompareHeldChange: setCompareHeld,
         onEditsChange: handlePhotoEditsChange,
         onApplyAdjustToAll: handleApplyAdjustToAll,
+        toolMode: photoToolMode,
+        onToolModeChange: setPhotoToolMode,
+        brushSize,
+        onBrushSizeChange: setBrushSize,
       }}
       exportMode={exportMode}
       stageRefExternal={stageRef}

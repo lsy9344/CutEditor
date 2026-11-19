@@ -38,6 +38,14 @@ import {
 } from "../photo/photoEdits";
 import { getEditedPhotoCanvas, pruneEditedPhotoCanvases } from "../photo/photoRenderCache";
 import { getPhotoEditSections, PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
+import type { BrushSize, PhotoToolMode } from "../photo/photoTool";
+import {
+  BRUSH_SCREEN_RADIUS,
+  BRUSH_SIZE_OPTIONS,
+  ERASE_PREVIEW_COLOR,
+  getLocalBrushRadius,
+  toNormalizedStroke,
+} from "../photo/photoTool";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
 
@@ -58,6 +66,10 @@ export type CanvasPhotoEditProps = {
   onCompareHeldChange: (held: boolean) => void;
   onEditsChange: (imageId: string, edits: PhotoEdits) => void;
   onApplyAdjustToAll: (sourceImageId: string) => void;
+  toolMode: PhotoToolMode;
+  onToolModeChange: (mode: PhotoToolMode) => void;
+  brushSize: BrushSize;
+  onBrushSizeChange: (size: BrushSize) => void;
 };
 
 export type CanvasStageProps = {
@@ -420,6 +432,134 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => () => {
     photoEdit.onCompareHeldChange(false);
   }, [photoEdit.onCompareHeldChange]);
+
+  type BrushDraft = {
+    pointerId: number;
+    mode: PhotoToolMode;
+    targetId: string;
+    overlay: Konva.Node;
+    stagePoints: number[];
+    localPoints: number[];
+  };
+
+  const brushLineRef = useRef<Konva.Line | null>(null);
+  const brushDraftRef = useRef<BrushDraft | null>(null);
+
+  const drawBrushPreview = (points: number[]) => {
+    brushLineRef.current?.points(points);
+    brushLineRef.current?.getLayer()?.batchDraw();
+  };
+
+  const cancelBrushStroke = () => {
+    brushDraftRef.current = null;
+    drawBrushPreview([]);
+  };
+
+  const startBrushStroke = (event: Konva.KonvaEventObject<PointerEvent>, targetId: string) => {
+    if (!event.evt.isPrimary || brushDraftRef.current) return;
+    const overlay = event.target;
+    const local = overlay.getRelativePointerPosition();
+    const stagePoint = overlay.getStage()?.getRelativePointerPosition();
+    if (!local || !stagePoint) return;
+    brushDraftRef.current = {
+      pointerId: event.evt.pointerId,
+      mode: photoEdit.toolMode,
+      targetId,
+      overlay,
+      stagePoints: [stagePoint.x, stagePoint.y],
+      localPoints: [local.x, local.y],
+    };
+    drawBrushPreview(brushDraftRef.current.stagePoints);
+  };
+
+  const moveBrushStroke = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    const draft = brushDraftRef.current;
+    if (!draft || event.evt.pointerId !== draft.pointerId) return;
+    const local = draft.overlay.getRelativePointerPosition();
+    const stagePoint = draft.overlay.getStage()?.getRelativePointerPosition();
+    if (!local || !stagePoint) return;
+    draft.localPoints.push(local.x, local.y);
+    draft.stagePoints.push(stagePoint.x, stagePoint.y);
+    drawBrushPreview(draft.stagePoints);
+  };
+
+  const finishBrushStroke = (pointerId: number) => {
+    const draft = brushDraftRef.current;
+    if (!draft || draft.pointerId !== pointerId) return;
+    cancelBrushStroke();
+    if (draft.mode !== photoEdit.toolMode) return;
+    const localRadius = getLocalBrushRadius(BRUSH_SCREEN_RADIUS[photoEdit.brushSize], draft.overlay.getAbsoluteScale().x);
+    if (draft.mode === "erase-photo") {
+      const targetImage = userImages.find((userImage) => userImage.id === draft.targetId);
+      if (!targetImage) return;
+      const stroke = toNormalizedStroke(draft.localPoints, draft.overlay.width(), draft.overlay.height(), localRadius);
+      if (!stroke) return;
+      photoEdit.onEditsChange(targetImage.id, { ...targetImage.edits, erase: [...targetImage.edits.erase, stroke] });
+    }
+    // Phase 5에서 "erase-cutout" 분기를 여기에 추가합니다.
+  };
+
+  const finishBrushStrokeRef = useRef(finishBrushStroke);
+  finishBrushStrokeRef.current = finishBrushStroke;
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      const draft = brushDraftRef.current;
+      if (draft && draft.pointerId !== event.pointerId) cancelBrushStroke(); // 두 번째 손가락
+    };
+    const onPointerUp = (event: PointerEvent) => finishBrushStrokeRef.current(event.pointerId);
+    const onPointerCancel = (event: PointerEvent) => {
+      if (brushDraftRef.current?.pointerId === event.pointerId) cancelBrushStroke();
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerCancel);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, []);
+
+  useEffect(() => {
+    cancelBrushStroke();
+  }, [photoEdit.toolMode, selection]);
+
+  const renderBrushControls = (guideText: string) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <p style={{ margin: 0, fontSize: "11px", color: "var(--linear-secondary-300)" }}>{guideText}</p>
+      <div style={{ display: "flex", gap: "6px" }}>
+        {BRUSH_SIZE_OPTIONS.map((option) => (
+          <button
+            key={option.size}
+            type="button"
+            className={`linear-button ${photoEdit.brushSize === option.size ? "linear-button--primary" : "linear-button--secondary"}`}
+            onClick={() => photoEdit.onBrushSizeChange(option.size)}
+            style={{
+              flex: 1,
+              height: "32px",
+              padding: "0 8px",
+              fontSize: "11px",
+              border: "var(--border-width) solid var(--linear-neutral-500)",
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="linear-button linear-button--primary"
+        onClick={() => photoEdit.onToolModeChange("none")}
+        style={{
+          height: "32px",
+          fontSize: "12px",
+          border: "var(--border-width) solid var(--linear-neutral-500)",
+        }}
+      >
+        완료
+      </button>
+    </div>
+  );
 
   const focusCanvasArea = useCallback(() => {
     stageWrapperRef.current?.focus({ preventScroll: true });
@@ -1619,6 +1759,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               scaleY={zoom}
               onMouseDown={handleStagePointerDown}
               onTouchStart={handleStagePointerDown}
+              onPointerMove={moveBrushStroke}
               onClick={(e) => {
                 if (e.target === e.target.getStage()) {
                   focusCanvasArea();
@@ -1716,7 +1857,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           scaleX={uScaleX}
                           scaleY={uScaleY}
                           rotation={uRotation}
-                          draggable={!exportMode && isSelectedImage}
+                          draggable={!exportMode && isSelectedImage && photoEdit.toolMode === "none"}
                           onClick={() => {
                             selectImage(userImage.id, slot.id);
                           }}
@@ -1764,6 +1905,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             });
                           }}
                         />
+                        {isSelectedImage && photoEdit.toolMode === "erase-photo" && (
+                          <Rect
+                            x={centerX}
+                            y={centerY}
+                            width={displayWidth}
+                            height={displayHeight}
+                            scaleX={uScaleX}
+                            scaleY={uScaleY}
+                            rotation={uRotation}
+                            fill="transparent"
+                            onPointerDown={(event) => startBrushStroke(event, userImage.id)}
+                          />
+                        )}
                       </Group>
                     );
                   }
@@ -1982,7 +2136,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </Layer>
 
               {/* 스티커 레이어 (텍스트 레이어 직전에 표시) */}
-              <Layer>
+              <Layer listening={photoEdit.toolMode !== "erase-photo"}>
                 {stickers.map((sticker) => {
                   const isSelected = selection === sticker.id;
                   const stickerImage = loadedStickerImages.get(sticker.id) ?? null;
@@ -2072,7 +2226,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </Layer>
 
               {/* 텍스트 레이어 (최상위에 표시) */}
-              <Layer>
+              <Layer listening={photoEdit.toolMode === "none"}>
                 {texts.map((textItem) => {
                   const isSelected = selection === textItem.id;
 
@@ -2174,6 +2328,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   return <TextNode key={textItem.id} />;
                 })}
               </Layer>
+
+              {(photoEdit.toolMode === "erase-photo" || photoEdit.toolMode === "erase-cutout") && (
+                <Layer listening={false}>
+                  <Line
+                    ref={brushLineRef}
+                    points={[]}
+                    stroke={ERASE_PREVIEW_COLOR}
+                    strokeWidth={(2 * BRUSH_SCREEN_RADIUS[photoEdit.brushSize]) / zoom}
+                    lineCap="round"
+                    lineJoin="round"
+                  />
+                </Layer>
+              )}
             </Stage>
           </div>
         </div>
@@ -2380,6 +2547,25 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               gap: '10px'
             }}>
               <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>사진 보정</h4>
+
+              {photoEditSections.showErase && (
+                photoEdit.toolMode === "erase-photo"
+                  ? renderBrushControls("지울 곳을 손가락(마우스)으로 칠하세요. 손을 떼면 지워져요.")
+                  : (
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => photoEdit.onToolModeChange("erase-photo")}
+                      style={{
+                        height: '32px',
+                        fontSize: '12px',
+                        border: 'var(--border-width) solid var(--linear-neutral-500)'
+                      }}
+                    >
+                      얼룩 지우기
+                    </button>
+                  )
+              )}
 
               {photoEditSections.showAdjust && (
                 <>
