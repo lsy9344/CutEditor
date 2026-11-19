@@ -443,6 +443,7 @@ function App() {
   const pointerPresenceRef = useRef(createPointerPresence());
   const [isPointerActive, setIsPointerActive] = useState(false);
   const heldStickerRef = useRef<CanvasSticker[]>([]);
+  const lastHeldStickerIdRef = useRef<string | null>(null);
   const photoImagesStateRef = useRef<PhotoImagesState>({ kind: 'ready' });
   const photoImagesSourceRef = useRef<UserImage[] | null>(null);
   const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState, userImages: UserImage[]) => {
@@ -562,6 +563,9 @@ function App() {
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
   const [boothySaveNoticeState, setBoothySaveNoticeState] = useState<BoothySaveNoticeState>('idle');
   const stageRef = useRef<Konva.Stage | null>(null);
+  // 저장이 끝나기 전에 같은 Stage로 두 번째 저장이 들어와 임시 크기·배율을 복원값으로
+  // 기억하지 않도록 동기 ref로 중복 진입을 막는다.
+  const exportInFlightRef = useRef(false);
   // 모바일 내보내기 오버레이 상태
   const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
@@ -1100,9 +1104,20 @@ function App() {
 
   useEffect(() => {
     if (shouldHoldStickerInsert()) return;
-    const nextHeldSticker = heldStickerRef.current.shift(); // 완료 순서대로 하나씩
-    if (!nextHeldSticker) return;
-    flushHistory(); // 바로 앞 단계(끌기 종료 등)를 닫아 보류 스티커를 별도 단계로 남김
+    const nextHeldSticker = heldStickerRef.current[0];
+    if (!nextHeldSticker) {
+      lastHeldStickerIdRef.current = null;
+      return;
+    }
+
+    // 앞서 꺼낸 스티커가 아직 문서에 반영되지 않았으면 기다린다. 반영 전에 다음 항목을
+    // 꺼내면 두 삽입이 한 기록 단계로 묶여 되돌리기 한 번에 함께 사라진다.
+    const lastHeldStickerId = lastHeldStickerIdRef.current;
+    if (lastHeldStickerId && !stickers.some((sticker) => sticker.id === lastHeldStickerId)) return;
+
+    heldStickerRef.current.shift(); // 완료 순서대로 하나씩
+    lastHeldStickerIdRef.current = nextHeldSticker.id;
+    flushHistory(); // 바로 앞 단계(끌기 종료·앞서 붙인 보류 스티커)를 닫아 보류 스티커를 별도 단계로 남김
     setStickers((previous) => [...previous, nextHeldSticker]);
     selectInsertedSticker(nextHeldSticker.id);
   }, [flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers]);
@@ -1295,14 +1310,19 @@ function App() {
       && boothyLaunchContext?.launchId?.trim(),
     );
 
-    // Stage 준비 및 오버레이 제거
-    if (expectsBoothySessionSave) {
-      setBoothySaveNoticeState('saving');
-    }
-    setExportMode(true);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    // 사진 준비 확인을 통과한 저장만 Stage를 사용한다. Stage를 만지기 전에 동기 ref로
+    // 중복 진입을 막아, 두 번째 저장이 첫 저장의 임시 크기·배율을 복원값으로 기억하지 않게 한다.
+    if (exportInFlightRef.current) return;
+    exportInFlightRef.current = true;
 
     try {
+      // Stage 준비 및 오버레이 제거
+      if (expectsBoothySessionSave) {
+        setBoothySaveNoticeState('saving');
+      }
+      setExportMode(true);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
       const stage = stageRef.current;
       if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
 
@@ -1392,6 +1412,7 @@ function App() {
           : '세션 저장 또는 내보내기에 실패했습니다. 다시 시도해주세요.',
       );
     } finally {
+      exportInFlightRef.current = false;
       setExportMode(false);
     }
   }

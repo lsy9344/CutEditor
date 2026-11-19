@@ -74,6 +74,7 @@ test("App은 포인터가 눌려 있으면 완료된 스티커를 보류하고 �
   const source = readFileSync("src/App.tsx", "utf8");
 
   assert.match(source, /const heldStickerRef = useRef<CanvasSticker\[\]>\(\[\]\);/);
+  assert.match(source, /const lastHeldStickerIdRef = useRef<string \| null>\(null\);/);
   assert.match(
     source,
     /const shouldHoldStickerInsert = useCallback\(\s*\(\) => hasActivePointers\(pointerPresenceRef\.current\),\s*\[\],\s*\);/,
@@ -84,12 +85,110 @@ test("App은 포인터가 눌려 있으면 완료된 스티커를 보류하고 �
   );
   assert.match(
     source,
-    /const nextHeldSticker = heldStickerRef\.current\.shift\(\);[^\n]*\n\s*if \(!nextHeldSticker\) return;\s*flushHistory\(\);[^\n]*\n\s*setStickers\(\(previous\) => \[\.\.\.previous, nextHeldSticker\]\);\s*selectInsertedSticker\(nextHeldSticker\.id\);/,
-  );
-  assert.match(
-    source,
     /\}, \[flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers\]\);/,
   );
+});
+
+test("App은 앞서 꺼낸 보류 스티커가 문서에 반영된 뒤에만 다음 항목을 꺼내 기록 경계를 닫는다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+  const effectStart = source.indexOf("const nextHeldSticker = heldStickerRef.current[0];");
+  assert.ok(effectStart >= 0, "보류 스티커를 하나씩 붙이는 effect를 찾지 못했습니다.");
+
+  const effectEnd = source.indexOf("selectInsertedSticker(nextHeldSticker.id);", effectStart);
+  assert.ok(effectEnd > effectStart);
+
+  const effectBody = source.slice(effectStart, effectEnd);
+  const previousCheckIndex = effectBody.indexOf(
+    "lastHeldStickerId && !stickers.some((sticker) => sticker.id === lastHeldStickerId)",
+  );
+  const shiftIndex = effectBody.indexOf("heldStickerRef.current.shift();");
+  const flushIndex = effectBody.indexOf("flushHistory();");
+  const insertIndex = effectBody.indexOf("setStickers((previous) => [...previous, nextHeldSticker]);");
+
+  assert.ok(previousCheckIndex >= 0, "직전 보류 id가 문서에 있는지 확인해야 합니다.");
+  assert.ok(
+    previousCheckIndex < shiftIndex,
+    "반영 확인은 다음 보류 항목을 꺼내기 전에 해야 합니다.",
+  );
+  assert.ok(shiftIndex < flushIndex, "기록 경계는 다음 항목을 꺼낸 뒤 닫아야 합니다.");
+  assert.ok(flushIndex < insertIndex, "기록 경계는 삽입 전에 닫아야 합니다.");
+});
+
+test("보류 스티커 두 건은 앞선 삽입이 문서에 반영된 뒤에만 다음 항목을 꺼내 각각 한 단계가 된다", () => {
+  let history = createHistory("base");
+  let current = "dragged"; // 첫째 스티커를 끌어 놓은 문서
+  const held = ["A", "B"];
+  const reflectedStickerIds: string[] = [];
+  let lastHeldStickerId: string | null = null;
+  let pendingInsert: string | null = null;
+
+  const commitPendingInsert = () => {
+    if (!pendingInsert) return;
+    reflectedStickerIds.push(pendingInsert);
+    current = `${current}+${pendingInsert}`;
+    pendingInsert = null;
+  };
+
+  // 포인터를 뗀 뒤 렌더마다 실행되는 보류 삽입 effect를 흉내 낸다.
+  const runHeldStickerEffect = () => {
+    const nextHeldSticker = held[0];
+    if (!nextHeldSticker) {
+      lastHeldStickerId = null;
+      return;
+    }
+    if (
+      lastHeldStickerId
+      && !reflectedStickerIds.includes(lastHeldStickerId)
+    ) {
+      return; // 앞서 꺼낸 스티커가 아직 문서에 반영되지 않았다.
+    }
+
+    held.shift();
+    lastHeldStickerId = nextHeldSticker;
+    history = pushHistory(history, current, isSame); // flushHistory()
+    pendingInsert = nextHeldSticker; // 함수형 setStickers는 다음 렌더에 반영된다.
+  };
+
+  runHeldStickerEffect();
+  assert.equal(pendingInsert, "A");
+  assert.deepEqual(held, ["B"]);
+
+  // 앞선 삽입이 커밋되기 전에 effect가 다시 실행돼도 다음 항목을 꺼내지 않는다.
+  runHeldStickerEffect();
+  assert.equal(pendingInsert, "A");
+  assert.deepEqual(held, ["B"]);
+
+  commitPendingInsert();
+
+  // 반영 뒤에야 다음 항목을 꺼내고, 그 앞에서 기록 경계를 닫는다.
+  runHeldStickerEffect();
+  assert.equal(pendingInsert, "B");
+  assert.deepEqual(held, []);
+  commitPendingInsert();
+
+  // 마지막 삽입은 다음 누름이나 400ms 뒤에 기록된다.
+  history = pushHistory(history, current, isSame);
+  assert.equal(history.present, "dragged+A+B");
+
+  history = undoHistory(history);
+  assert.equal(history.present, "dragged+A"); // 3 → 2
+  history = undoHistory(history);
+  assert.equal(history.present, "dragged"); // 2 → 1
+  history = undoHistory(history);
+  assert.equal(history.present, "base"); // 1 → 1, 끌기 전 위치 복원
+});
+
+test("보류 두 건 사이에 기록 경계가 없으면 한 번의 되돌리기에 함께 사라진다", () => {
+  let history = createHistory("base");
+  let current = "dragged";
+
+  // 앞선 삽입의 반영을 기다리지 않고 두 건을 꺼내 경계를 한 번만 닫은 경우.
+  history = pushHistory(history, current, isSame);
+  current = "dragged+A+B";
+  history = pushHistory(history, current, isSame);
+
+  history = undoHistory(history);
+  assert.equal(history.present, "dragged"); // 두 스티커가 함께 사라짐
 });
 
 test("App은 기록 경계를 호출 시점 문서로 고정해 같은 배치의 다음 변경과 섞지 않는다", () => {
