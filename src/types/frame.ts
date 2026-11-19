@@ -1,3 +1,5 @@
+import type { PhotoEdits } from "../photo/photoEdits";
+
 export type FrameType =
   | "1l" | "1f"
   | "2h" | "2v_1"
@@ -43,6 +45,7 @@ export type UserImage = {
   scaleX: number;
   scaleY: number;
   rotation: number;
+  edits: PhotoEdits;
 };
 
 type CanvasSize = {

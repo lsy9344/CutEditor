@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line, Transformer } from "react-konva";
 import Konva from "konva";
 import type { Template } from "../state/types";
@@ -28,6 +28,16 @@ import {
 } from "./stickerTint";
 import { getZoomToFit } from "./zoomSizing";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
+import type { PhotoEdits } from "../photo/photoEdits";
+import {
+  applyPresetToEdits,
+  isDefaultPhotoEdits,
+  PHOTO_ADJUST_FIELDS,
+  PHOTO_PRESETS,
+  stepAdjustField,
+} from "../photo/photoEdits";
+import { getEditedPhotoCanvas, pruneEditedPhotoCanvases } from "../photo/photoRenderCache";
+import { getPhotoEditSections, PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
 
@@ -42,6 +52,14 @@ export type CanvasHistoryControls = {
   onRedo: () => void;
 };
 
+export type CanvasPhotoEditProps = {
+  workingMaxSide: number;
+  compareHeld: boolean;
+  onCompareHeldChange: (held: boolean) => void;
+  onEditsChange: (imageId: string, edits: PhotoEdits) => void;
+  onApplyAdjustToAll: (sourceImageId: string) => void;
+};
+
 export type CanvasStageProps = {
   template: Template | null;
   selection: string | null;
@@ -51,6 +69,7 @@ export type CanvasStageProps = {
   userImages: UserImage[];
   frameColor: string;
   historyControls: CanvasHistoryControls;
+  photoEdit: CanvasPhotoEditProps;
   onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[]) => void;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
@@ -156,6 +175,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   userImages,
   frameColor,
   historyControls,
+  photoEdit,
   onPhotoImagesStateChange,
   exportMode = false,
   stageRefExternal,
@@ -212,8 +232,35 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const frameLayout = selectedFrame ? FRAME_LAYOUTS[selectedFrame] : null;
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
+  const selectedImageId = selectedImage?.id ?? null;
+  const [isAdjustDetailOpen, setIsAdjustDetailOpen] = useState(false);
+
+  useEffect(() => {
+    setIsAdjustDetailOpen(false);
+  }, [selectedImageId]);
+
+  const editedPhotoCanvases = useMemo(() => {
+    const canvases = new Map<string, HTMLCanvasElement>();
+    userImages.forEach((userImage) => {
+      const loadedEntry = loadedImages.get(userImage.id);
+      const loadedImage = loadedEntry?.image;
+      if (!loadedImage) return;
+      const keepBase = userImage.id === selectedImageId;
+      const edited = getEditedPhotoCanvas(userImage.id, loadedImage, userImage.edits, photoEdit.workingMaxSide, keepBase);
+      if (edited) canvases.set(userImage.id, edited);
+    });
+    return canvases;
+  }, [userImages, loadedImages, photoEdit.workingMaxSide, selectedImageId]);
+
+  useEffect(() => {
+    pruneEditedPhotoCanvases(new Set(userImages.map((userImage) => userImage.id)), selectedImageId);
+  }, [userImages, selectedImageId]);
+
+  useEffect(() => () => pruneEditedPhotoCanvases(new Set(), null), []);
+
   const selectedText = selection ? texts.find((text) => text.id === selection) ?? null : null;
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
+  const photoEditSections = getPhotoEditSections(PHOTO_EDIT_FEATURES);
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isTouchManipulationActive = Boolean(selection);
 
@@ -1493,10 +1540,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           onTouchMove={(e) => handleImageTouchMove(e as unknown as Konva.KonvaEventObject<TouchEvent>, userImage.id)}
                           onTouchEnd={(e) => handleImageTouchEnd(e as unknown as Konva.KonvaEventObject<TouchEvent>)}
                         />
-                        {console.log('[render] image', { id: userImage.id, slot: slot.id, sx: uScaleX, sy: uScaleY, x: centerX, y: centerY })}
                         <KonvaImage
                           key={userImage.id}
-                          image={loadedImg}
+                          image={photoEdit.compareHeld ? loadedImg : (editedPhotoCanvases.get(userImage.id) ?? loadedImg)}
                           x={centerX}
                           y={centerY}
                           width={displayWidth}
@@ -2129,6 +2175,132 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 title="선택된 이미지를 삭제합니다"
               >
                 선택된 이미지 삭제
+              </button>
+            </div>
+          )}
+
+          {/* 선택된 사진 보정 도구 */}
+          {selectedImage && photoEditSections.showBox && (
+            <div style={{
+              border: 'var(--border-width) solid var(--linear-neutral-500)',
+              padding: '12px',
+              background: 'var(--linear-neutral-700)',
+              marginTop: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>사진 보정</h4>
+
+              {photoEditSections.showAdjust && (
+                <>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {PHOTO_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={`linear-button ${selectedImage.edits.presetId === preset.id ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                        onClick={() => photoEdit.onEditsChange(selectedImage.id, applyPresetToEdits(selectedImage.edits, preset.id))}
+                        style={{
+                          height: '32px',
+                          padding: '0 8px',
+                          fontSize: '11px',
+                          border: 'var(--border-width) solid var(--linear-neutral-500)'
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {userImages.length >= 2 && (
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => photoEdit.onApplyAdjustToAll(selectedImage.id)}
+                      style={{
+                        height: '32px',
+                        fontSize: '12px',
+                        border: 'var(--border-width) solid var(--linear-neutral-500)'
+                      }}
+                    >
+                      모든 사진에 적용
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => setIsAdjustDetailOpen(!isAdjustDetailOpen)}
+                    style={{
+                      height: '32px',
+                      fontSize: '12px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)'
+                    }}
+                  >
+                    {isAdjustDetailOpen ? '접기' : '자세히'}
+                  </button>
+
+                  {isAdjustDetailOpen && PHOTO_ADJUST_FIELDS.map((field) => {
+                    const adjustValue = selectedImage.edits.adjust[field.key];
+                    return (
+                      <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <p style={{ fontSize: '11px', width: '64px', margin: 0, color: 'var(--linear-secondary-300)' }}>{field.label}</p>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          aria-label={`${field.label} 줄이기`}
+                          disabled={adjustValue <= field.min}
+                          onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, -1))}
+                          style={{
+                            width: '32px',
+                            height: '28px',
+                            fontSize: '12px',
+                            border: 'var(--border-width) solid var(--linear-neutral-500)'
+                          }}
+                        >
+                          −
+                        </button>
+                        <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '11px', color: 'var(--linear-neutral-50)' }}>{adjustValue}</span>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          aria-label={`${field.label} 늘리기`}
+                          disabled={adjustValue >= field.max}
+                          onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, 1))}
+                          style={{
+                            width: '32px',
+                            height: '28px',
+                            fontSize: '12px',
+                            border: 'var(--border-width) solid var(--linear-neutral-500)'
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                disabled={!userImages.some((image) => !isDefaultPhotoEdits(image.edits))}
+                onPointerDown={() => photoEdit.onCompareHeldChange(true)}
+                onPointerUp={() => photoEdit.onCompareHeldChange(false)}
+                onPointerLeave={() => photoEdit.onCompareHeldChange(false)}
+                onPointerCancel={() => photoEdit.onCompareHeldChange(false)}
+                onContextMenu={(event) => event.preventDefault()}
+                style={{
+                  height: '32px',
+                  fontSize: '12px',
+                  border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  touchAction: 'none',
+                  userSelect: 'none'
+                }}
+              >
+                누르고 있으면 원본
               </button>
             </div>
           )}

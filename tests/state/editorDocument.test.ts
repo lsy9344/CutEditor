@@ -13,6 +13,7 @@ import type {
   EditorDocument,
 } from "../../src/state/editorDocument.ts";
 import type { UserImage } from "../../src/types/frame.ts";
+import { createDefaultPhotoEdits } from "../../src/photo/photoEdits.ts";
 
 function makeImage(id: string, url: string): UserImage {
   return {
@@ -25,6 +26,7 @@ function makeImage(id: string, url: string): UserImage {
     scaleX: 1,
     scaleY: 1,
     rotation: 0,
+    edits: createDefaultPhotoEdits(),
   };
 }
 

@@ -50,6 +50,9 @@ import {
   resolveTextBoxWidth,
 } from './canvas/textBoxWidth'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
+import type { PhotoEdits } from './photo/photoEdits'
+import { copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
+import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
   getExportExperience,
   getMobileExportLimits,
@@ -423,6 +426,7 @@ function App() {
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
+  const [compareHeld, setCompareHeld] = useState(false);
   const currentDocument = useMemo<EditorDocument>(() => ({
     userImages: editorState.userImages,
     texts,
@@ -743,7 +747,8 @@ function App() {
       y: 0,
       scaleX: 1,
       scaleY: 1,
-      rotation: 0
+      rotation: 0,
+      edits: createDefaultPhotoEdits()
     };
 
     console.log('🔥 Created newImage:', newImage);
@@ -888,6 +893,19 @@ function App() {
       )
     }));
   }
+
+  const handlePhotoEditsChange = (imageId: string, edits: PhotoEdits) => {
+    setEditorState((previous) => ({
+      ...previous,
+      userImages: previous.userImages.map((image) => (image.id === imageId ? { ...image, edits } : image)),
+    }));
+  }
+
+  const handleApplyAdjustToAll = (sourceImageId: string) => {
+    setEditorState((previous) => ({ ...previous, userImages: copyAdjustToAll(previous.userImages, sourceImageId) }));
+  }
+
+  const photoWorkingMaxSide = isResponsiveMobile ? PHOTO_WORKING_MAX_SIDE.mobile : PHOTO_WORKING_MAX_SIDE.desktop;
 
   const handleFrameColorChange = (color: string) => {
     setEditorState(prev => ({ ...prev, frameColor: color }))
@@ -1320,6 +1338,7 @@ function App() {
       if (expectsBoothySessionSave) {
         setBoothySaveNoticeState('saving');
       }
+      setCompareHeld(false);
       setExportMode(true);
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
@@ -1561,6 +1580,13 @@ function App() {
         canRedo: canRedo(history) && !isHistoryPending,
         onUndo: handleUndo,
         onRedo: handleRedo,
+      }}
+      photoEdit={{
+        workingMaxSide: photoWorkingMaxSide,
+        compareHeld,
+        onCompareHeldChange: setCompareHeld,
+        onEditsChange: handlePhotoEditsChange,
+        onApplyAdjustToAll: handleApplyAdjustToAll,
       }}
       exportMode={exportMode}
       stageRefExternal={stageRef}

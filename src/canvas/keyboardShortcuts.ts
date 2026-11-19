@@ -2,10 +2,10 @@ import type { SlotPosition, UserImage } from "../types/frame";
 
 type SelectableImage = Pick<UserImage, "id" | "slotId" | "x" | "y" | "scaleX" | "scaleY" | "rotation">;
 
-type SelectionState = {
+type SelectionState<TImage extends SelectableImage = SelectableImage> = {
   selection: string | null;
   selectedSlot: string | null;
-  userImages: SelectableImage[];
+  userImages: TImage[];
 };
 
 type NextImageSelectionArgs = SelectionState & {
@@ -52,11 +52,11 @@ export const KEYBOARD_MOVE_FAST_STEP = 20;
 export const KEYBOARD_SCALE_FACTOR = 1.1;
 export const KEYBOARD_ROTATE_STEP = 5;
 
-export const getSelectedImageFromState = ({
+export const getSelectedImageFromState = <TImage extends SelectableImage>({
   selection,
   selectedSlot,
   userImages,
-}: SelectionState): SelectableImage | null => {
+}: SelectionState<TImage>): TImage | null => {
   if (selection) {
     const selectedById = userImages.find((image) => image.id === selection);
     if (selectedById) return selectedById;
