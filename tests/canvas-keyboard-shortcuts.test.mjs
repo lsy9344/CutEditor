@@ -192,8 +192,9 @@ test("텍스트 정렬은 캔버스가 아니라 선택 박스 폭을 기준으�
   assert.match(appSource, /newText\.boxWidth = getMinimumTextBoxWidth\(newText\);/);
   assert.doesNotMatch(appSource, /updatedText\.x = getAlignedTextX\(updatedText, updatedText\.textAlign\);/);
 
-  assert.match(stageSource, /width=\{textItem\.boxWidth\}/);
-  assert.match(stageSource, /offsetX=\{textItem\.boxWidth \/ 2\}/);
+  assert.match(stageSource, /const renderedTextWidth = textItem\.isVertical \? dimensions\.width : textItem\.boxWidth;/);
+  assert.match(stageSource, /width=\{renderedTextWidth\}/);
+  assert.match(stageSource, /offsetX=\{renderedTextWidth \/ 2\}/);
   assert.match(stageSource, /onTransformEnd=\{\(\) => \{/);
   assert.match(stageSource, /const nextState = getNextTextTransformState\(\{/);
   assert.match(stageSource, /width: node\.width\(\),/);

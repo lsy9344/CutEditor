@@ -81,6 +81,6 @@ test("편집 패널 스티커 스크롤 영역은 현재 여백 규칙을 유지
 
   assert.match(
     source,
-    /marginTop:\s*'12px',[\s\S]*paddingRight:\s*'4px',[\s\S]*marginRight:\s*'0'/
+    /marginTop:\s*'10px',[\s\S]*paddingRight:\s*'var\(--linear-space-3\)',[\s\S]*marginLeft:\s*'-2px'/
   );
 });

@@ -5,7 +5,7 @@ import {
   getCategorySelectionOutcome,
   getFrameSelectionDecision,
   normalizeFrameType,
-} from '../.tmp-tests/utils/frameChangeFlow.js';
+} from '../src/utils/frameChangeFlow.ts';
 
 test('편집 내용이 있으면 프레임 변경 전에 확인이 필요하다', () => {
   const decision = getFrameSelectionDecision({
