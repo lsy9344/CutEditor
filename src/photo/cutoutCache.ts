@@ -1,6 +1,6 @@
 import type { CutoutTarget } from "./cutoutTypes.ts";
 import { getCutoutTargetKey } from "./cutoutTypes.ts";
-import { segmentEveryone } from "./segmentation.ts";
+import { segmentAtPoint, segmentEveryone } from "./segmentation.ts";
 
 export const CUTOUT_CACHE_MAX_STICKERS = 3;
 export const CUTOUT_CACHE_MAX_MASKS_PER_STICKER = 2;
@@ -65,7 +65,7 @@ export function peekCutoutConfidence(
 }
 
 // 캐시에 없는 마스크를 계산해 돌려줍니다. 캐시에는 넣지 않습니다.
-// 부른 쪽이 유효한 작업으로 확인한 뒤에만 rememberCutoutConfidence로 저장합니다.
+// 부른 쪽이 유효한 작업으로 확인한 뒤에만 캐시에 저장합니다.
 export async function getCutoutConfidence(
   stickerId: string,
   target: CutoutTarget,
@@ -76,7 +76,7 @@ export async function getCutoutConfidence(
   const cached = entry.confidences.get(getCutoutTargetKey(target));
   if (cached) return cached;
   if (target.kind === "point") {
-    throw new Error("point target is added in Phase 5");
+    return segmentAtPoint(entry.workingCanvas, { x: target.x, y: target.y }, isCancelled);
   }
   return segmentEveryone(entry.workingCanvas, isCancelled);
 }

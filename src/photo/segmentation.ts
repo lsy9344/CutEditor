@@ -1,7 +1,8 @@
-import type { ImageSegmenter } from "@mediapipe/tasks-vision";
+import type { ImageSegmenter, InteractiveSegmenter } from "@mediapipe/tasks-vision";
 
 const WASM_BASE_PATH = "/mediapipe/wasm";
 const EVERYONE_MODEL_PATH = "/models/selfie_segmenter.tflite";
+const POINT_MODEL_PATH = "/models/magic_touch.tflite";
 
 export type SegmenterLoader<T extends { close(): void }> = {
   get: () => Promise<T>;
@@ -59,13 +60,30 @@ async function createEveryoneSegmenter(): Promise<ImageSegmenter> {
 
 const everyoneSegmenter = createSegmenterLoader(createEveryoneSegmenter);
 
+async function createPointSegmenter(): Promise<InteractiveSegmenter> {
+  const vision = await import("@mediapipe/tasks-vision"); // 동적 import: 메인 번들에 넣지 않음
+  const fileset = await vision.FilesetResolver.forVisionTasks(WASM_BASE_PATH);
+  return vision.InteractiveSegmenter.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: POINT_MODEL_PATH, delegate: "CPU" },
+    outputConfidenceMasks: true,
+    outputCategoryMask: false,
+  });
+}
+
+const pointSegmenter = createSegmenterLoader(createPointSegmenter);
+
 export async function preloadSegmentation(): Promise<void> {
   await everyoneSegmenter.get();
 }
 
-// '취소'를 누르면 부릅니다. 아직 준비 중인 모델 요청을 버립니다(Phase 5에서 한 사람 고르기 모델도 함께).
+export async function preloadPointSegmentation(): Promise<void> {
+  await pointSegmenter.get();
+}
+
+// '취소'를 누르면 부릅니다. 아직 준비 중인 두 모델 요청을 버립니다.
 export function abandonPendingSegmenters(): void {
   everyoneSegmenter.abandonPending();
+  pointSegmenter.abandonPending();
 }
 
 export async function segmentEveryone(
@@ -78,6 +96,26 @@ export async function segmentEveryone(
   try {
     const masks = result.confidenceMasks;
     const mask = masks ? masks[masks.length - 1] : undefined;
+    if (!mask || mask.width !== image.width || mask.height !== image.height) {
+      throw new Error("confidence mask mismatch");
+    }
+    return mask.getAsFloat32Array().slice();
+  } finally {
+    result.close();
+  }
+}
+
+export async function segmentAtPoint(
+  image: HTMLCanvasElement,
+  point: { x: number; y: number },
+  isCancelled: () => boolean,
+): Promise<Float32Array | null> {
+  const segmenter = await pointSegmenter.get();
+  if (isCancelled()) return null; // 모델을 기다리는 동안 취소됐으면 추론을 시작하지 않음
+  const result = segmenter.segment(image, { keypoint: { x: point.x, y: point.y } });
+  try {
+    const masks = result.confidenceMasks;
+    const mask = masks ? masks[0] : undefined;
     if (!mask || mask.width !== image.width || mask.height !== image.height) {
       throw new Error("confidence mask mismatch");
     }
