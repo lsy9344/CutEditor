@@ -763,6 +763,26 @@ function App() {
   const mobileTutorialRef1 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef2 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef3 = useRef<HTMLButtonElement>(null);
+  const tutorialLayerRef = useRef<HTMLDivElement>(null); // 튜토리얼 덮개(app-container의 직계 자식)
+  const tutorialOpenerRef = useRef<HTMLElement | null>(null); // '사용법'을 누른 버튼
+  const isTutorialOpen = tutorialStep !== null;
+
+  // 튜토리얼이 떠 있는 동안 나머지 화면에 inert를 겁니다. 닫히면 자기가 건 것만 풉니다(설계 6.5).
+  useEffect(() => {
+    const container = appContainerRef.current;
+    const tutorialLayer = tutorialLayerRef.current;
+    if (!isTutorialOpen || !container || !tutorialLayer) return;
+    return setInertOutside({ container, keep: [tutorialLayer, cutoutLockRef.current] });
+  }, [isTutorialOpen]);
+
+  // '사용법'으로 연 튜토리얼이 닫히면 연 곳으로 돌아갑니다. 처음 로드 때 뜬 튜토리얼은 연 곳이 없어 돌려주지 않습니다.
+  useEffect(() => {
+    if (isTutorialOpen || !tutorialOpenerRef.current) return;
+    const candidates = [tutorialOpenerRef.current];
+    tutorialOpenerRef.current = null;
+    const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
+    if (returnIndex >= 0) candidates[returnIndex]?.focus();
+  }, [isTutorialOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1917,6 +1937,13 @@ function App() {
   const handleTutorialSkip = () => {
     setTutorialStep(null);
   };
+
+  const handleTutorialOpen = () => {
+    const activeElement = document.activeElement;
+    tutorialOpenerRef.current = activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null;
+    setMobilePanel(null);
+    setTutorialStep(0);
+  };
   const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
   const selectedSticker = selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined;
 
@@ -2033,18 +2060,20 @@ function App() {
         </div>
       )}
       {/* 튜토리얼 오버레이 */}
-      {tutorialStep !== null && (
-        <TutorialOverlay
-          step={tutorialStep}
-          buttonRefs={isMobileEditor
-            ? [mobileTutorialRef0, mobileTutorialRef1, mobileTutorialRef2, mobileTutorialRef3]
-            : [tutorialRef0, tutorialRef1, tutorialRef2, tutorialRef3]
-          }
-          onNext={handleTutorialNext}
-          onSkip={handleTutorialSkip}
-          mobile={isMobileEditor}
-        />
-      )}
+      <div ref={tutorialLayerRef}>
+        {tutorialStep !== null && (
+          <TutorialOverlay
+            step={tutorialStep}
+            buttonRefs={isMobileEditor
+              ? [mobileTutorialRef0, mobileTutorialRef1, mobileTutorialRef2, mobileTutorialRef3]
+              : [tutorialRef0, tutorialRef1, tutorialRef2, tutorialRef3]
+            }
+            onNext={handleTutorialNext}
+            onSkip={handleTutorialSkip}
+            mobile={isMobileEditor}
+          />
+        )}
+      </div>
 
       <div className={`app-main${isMobileEditor ? ' app-main--mobile-editor' : ''}`}>
 
@@ -2054,6 +2083,7 @@ function App() {
             activePanel={desktopPanel}
             onTogglePanel={(panel) => setDesktopPanel((current) => current === panel ? null : panel)}
             onExport={handleSaveRequest}
+            onOpenTutorial={handleTutorialOpen}
             isSaveDisabled={!editorState.selectedFrame || isExportInFlight}
             saveDisabledReason={editorState.selectedFrame ? undefined : '먼저 프레임을 골라 주세요'}
             tutorialStep={tutorialStep}
@@ -2181,14 +2211,24 @@ function App() {
           >
             <div className="app-mobile-sheet__header">
               <h3>{mobileSheetTitle}</h3>
-              <button
-                type="button"
-                className="linear-button linear-button--secondary"
-                data-focus-return="sheet-close"
-                onClick={() => setMobilePanel(null)}
-              >
-                닫기
-              </button>
+              <div className="linear-flex" style={{ gap: '8px' }}>
+                <button
+                  type="button"
+                  className="linear-button linear-button--secondary"
+                  onClick={handleTutorialOpen}
+                  style={{ minHeight: '44px', fontSize: '14px' }}
+                >
+                  사용법
+                </button>
+                <button
+                  type="button"
+                  className="linear-button linear-button--secondary"
+                  data-focus-return="sheet-close"
+                  onClick={() => setMobilePanel(null)}
+                >
+                  닫기
+                </button>
+              </div>
             </div>
             <div className="app-mobile-sheet__content">
               {mobilePanel === 'frames' ? (

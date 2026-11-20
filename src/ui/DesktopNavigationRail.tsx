@@ -6,6 +6,7 @@ export type DesktopNavigationRailProps = {
   activePanel: DesktopPanel;
   onTogglePanel: (panel: Exclude<DesktopPanel, null>) => void;
   onExport: () => void;
+  onOpenTutorial: () => void;
   isSaveDisabled: boolean;
   saveDisabledReason?: string;
   tutorialStep: number | null;
@@ -37,6 +38,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
   activePanel,
   onTogglePanel,
   onExport,
+  onOpenTutorial,
   isSaveDisabled,
   saveDisabledReason,
   tutorialStep,
@@ -103,6 +105,20 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
           <line x1="15" y1="9" x2="15.01" y2="9" />
         </svg>
         <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={onOpenTutorial}
+        style={railButtonStyle(false)}
+        title="사용법 다시 보기"
+      >
+        <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>사용법</span>
       </button>
 
       <div style={{ flex: 1 }} />
