@@ -11,6 +11,8 @@ import {
   getContainedImageSize,
   getNextImageSelection,
   getNudgedPosition,
+  getScaleFromPercent,
+  getScalePercent,
   getScaledTransform,
   getSelectedImageFromState,
   isActivationKey,
@@ -1890,6 +1892,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     setPalettePreview((p) => ({ ...p, visible: false }));
   };
 
+  const rotateSelectedImageBy = (deltaDegrees: number) => {
+    if (!selectedImage) return;
+    const context = getImageDisplayContext(selectedImage);
+    if (!context) return;
+    handleImageTransform(selectedImage.id, getCenterRotatedTransform({
+      image: selectedImage,
+      displaySize: context.displaySize,
+      deltaDegrees,
+    }));
+  };
+
   return (
     <div
       className="linear-card linear-fade-in"
@@ -2721,31 +2734,45 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             </div>
           )}
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label style={{ color: 'var(--linear-neutral-50)', fontSize: '18px' }}>줌:</label>
-            <>
+          {selectedImage && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <label htmlFor="photo-scale-input" style={{ color: 'var(--linear-neutral-50)', fontSize: '14px' }}>크기</label>
               <input
+                id="photo-scale-input"
                 type="number"
                 className="linear-input"
-                value={Math.round((selectedImage?.scaleX ?? 1) * 10)}
+                value={getScalePercent(selectedImage.scaleX)}
                 onChange={(e) => {
-                  const value = parseFloat(e.target.value);
-                  if (!isNaN(value) && value > 0 && selectedImage) {
-                    const nextScale = Math.max(0.1, value / 10);
-                    handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
-                  }
+                  const nextScale = getScaleFromPercent(parseFloat(e.target.value));
+                  if (nextScale === null) return;
+                  handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
                 }}
-                min="1"
-                step="5"
-                style={{ width: '80px', fontSize: '12px', height: '24px' }}
-                disabled={!selectedImage}
-                title={selectedImage ? '선택된 이미지 줌(%)' : '이미지를 선택하거나 추가하세요'}
+                min="10"
+                step="10"
+                style={{ width: '80px', fontSize: '14px', minHeight: '44px' }}
+                title="사진 크기(%)"
               />
-              <span style={{ color: 'var(--linear-secondary-400)', fontSize: '12px' }}>%</span>
-            </>
-          </div>
+              <span style={{ color: 'var(--linear-secondary-400)', fontSize: '14px' }}>%</span>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => rotateSelectedImageBy(-90)}
+                style={{ minHeight: '44px', fontSize: '14px', padding: '0 12px' }}
+              >
+                왼쪽으로 돌리기
+              </button>
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => rotateSelectedImageBy(90)}
+                style={{ minHeight: '44px', fontSize: '14px', padding: '0 12px' }}
+              >
+                오른쪽으로 돌리기
+              </button>
+            </div>
+          )}
 
-          {/* 선택된 이미지 삭제 버튼 */}
+          {/* 사진 빼기 버튼 */}
           {selectedImage && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
               <button
@@ -2753,16 +2780,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 className="linear-button linear-button--secondary"
                 onClick={() => onImageDelete?.(selectedImage.id)}
                 style={{
-                  height: '24px',
+                  minHeight: '44px',
                   padding: '0 12px',
-                  fontSize: '12px',
+                  fontSize: '14px',
                   backgroundColor: 'var(--linear-accent-error)',
                   color: 'var(--linear-accent-white)',
                   border: 'var(--border-width) solid var(--linear-neutral-500)'
                 }}
-                title="선택된 이미지를 삭제합니다"
               >
-                선택된 이미지 삭제
+                이 사진 빼기
               </button>
             </div>
           )}

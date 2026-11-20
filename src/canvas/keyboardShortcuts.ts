@@ -270,3 +270,13 @@ export const isTabLeavingImages = ({
 
   return direction === 1 ? currentIndex === occupiedImages.length - 1 : currentIndex === 0;
 };
+
+export const getScalePercent = (scaleX: number): number => (Number.isFinite(scaleX) ? Math.round(scaleX * 100) : 100);
+
+export const getScaleFromPercent = (percent: number): number | null => {
+  if (!Number.isFinite(percent) || percent <= 0) return null;
+  return Math.max(0.1, percent / 100);
+};
+
+// 각도 숫자 입력의 값(valueAsNumber)을 적용할 정수 각도로 바꿉니다. 빈 칸이나 숫자가 아닌 입력은 null이라 무시합니다(설계 8.2, UP-6).
+export const getAngleInputDegrees = (value: number): number | null => (Number.isFinite(value) ? Math.round(value) : null);
