@@ -1847,6 +1847,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             style={stageWrapperStyle}
             tabIndex={0}
             role="application"
+            data-focus-return="canvas"
             aria-label="캔버스 편집 영역"
             onDragOver={handleDragOver}
             onDrop={handleDrop}

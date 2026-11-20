@@ -80,6 +80,9 @@ import {
 import { keepStickerCenter } from './photo/cutoutGeometry'
 import { CUTOUT_COPY } from './photo/cutoutCopy'
 import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
+import { countDroppedPhotos, getInlineStatusView, getNoticeView } from './state/appNotice'
+import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
+import { getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -219,6 +222,32 @@ declare global {
     showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
   }
 }
+
+const NOTICE_TONE_CLASS: Record<NoticeTone, string> = {
+  info: '',
+  success: 'linear-status--success',
+  warning: 'linear-status--warning',
+  error: 'linear-status--error',
+};
+
+// container의 직계 자식 가운데 keep에 없고 아직 inert가 아닌 것에 inert를 겁니다. 돌려주는 함수는 자기가 건 것만 풉니다.
+const setInertOutside = ({ container, keep }: { container: HTMLElement; keep: (Element | null)[] }): (() => void) => {
+  const lockedElements = Array.from(container.children).filter(
+    (element): element is HTMLElement => element instanceof HTMLElement && !keep.includes(element) && !element.inert,
+  );
+  lockedElements.forEach((element) => { element.inert = true; });
+  return () => { lockedElements.forEach((element) => { element.inert = false; }); };
+};
+
+const describeFocusCandidate = (element: HTMLElement | null) => {
+  if (!element) return { isConnected: false, isDisabled: false, isInert: false, isHidden: true };
+  return {
+    isConnected: element.isConnected,
+    isDisabled: element.matches(':disabled'),
+    isInert: element.closest('[inert]') !== null,
+    isHidden: element.getClientRects().length === 0,
+  };
+};
 
 function parseLaunchContextFromLocation(): BoothyLaunchContext | null {
   if (typeof window === 'undefined') {
@@ -443,7 +472,6 @@ function App() {
   const [stickers, setStickers] = useState<CanvasSticker[]>([]);
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
-  const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
   const [compareHeld, setCompareHeld] = useState(false);
   const [photoToolMode, setPhotoToolMode] = useState<PhotoToolMode>("none");
@@ -466,6 +494,22 @@ function App() {
   const cutoutRunRef = useRef(0); // 누끼 작업마다 1 올림. '취소'를 누르면 1 올려 그 작업의 결과를 버림
   const cutoutLockRef = useRef<HTMLDivElement>(null);
   const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
+  const [notice, setNotice] = useState<AppNotice | null>(null); // 확인창 하나(설계 4.5)
+  const [inlineStatus, setInlineStatus] = useState<InlineStatus | null>(null); // 상태 줄 하나(설계 4.6)
+  const noticeRef = useRef<HTMLDivElement>(null); // 확인창 배경(app-container의 직계 자식)
+  const noticeCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 카드
+  const noticeOpenerRef = useRef<HTMLElement | null>(null); // 확인창이나 저장을 시작한 요소
+  const isFocusReturnPendingRef = useRef(false); // 확인창·저장이 끝나면 포커스를 돌려줄지
+  // 이어지는 안내(빈 칸 → 진행 → 완료) 동안 처음 연 곳을 지킵니다. 이미 기억 중이면 바꾸지 않습니다.
+  const rememberNoticeOpener = (card: HTMLElement | null) => {
+    if (isFocusReturnPendingRef.current) return;
+    isFocusReturnPendingRef.current = true;
+    const activeElement = document.activeElement;
+    const isUsableOpener = activeElement instanceof HTMLElement
+      && activeElement !== document.body
+      && !(card?.contains(activeElement) ?? false);
+    noticeOpenerRef.current = isUsableOpener ? activeElement : null;
+  };
   const heldBoothyImportRef = useRef<{ file: File; slotId: string } | null>(null); // 잠금 중 도착한 Boothy 사진(마지막 한 건)
   const boothyReleasePendingRef = useRef(false); // 잠금 해제 때 Boothy 사진을 먼저 반영하고, 보류 스티커는 그다음 렌더로 미룸
   const isCutoutLocked = () => cutoutLockRef.current !== null; // 덮개가 떠 있으면 잠금. 옛 클로저의 비동기 콜백에서도 지금 값을 읽음
@@ -576,6 +620,50 @@ function App() {
       if (returnFocusTarget?.isConnected) returnFocusTarget.focus();
     };
   }, [cutoutBusyId]);
+
+  const noticeView = notice ? getNoticeView(notice) : null;
+  const isNoticeOpen = notice !== null;
+  const inlineStatusView = inlineStatus ? getInlineStatusView(inlineStatus) : null;
+
+  // 확인창 배경: 연 곳 기억, 바깥 inert, Ctrl/Meta 단축키 막기
+  useEffect(() => {
+    const container = appContainerRef.current;
+    const noticeElement = noticeRef.current;
+    if (!isNoticeOpen || !container || !noticeElement) return;
+    rememberNoticeOpener(noticeElement);
+    // 확인창, 누끼 잠금 덮개, 이미 inert인 요소는 건드리지 않습니다.
+    const restoreInert = setInertOutside({ container, keep: [noticeElement, cutoutLockRef.current] });
+    const blockShortcutKey = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener('keydown', blockShortcutKey, true);
+    return () => {
+      window.removeEventListener('keydown', blockShortcutKey, true);
+      restoreInert();
+    };
+  }, [isNoticeOpen, cutoutBusyId]);
+
+  // 카드에 포커스. 버튼이 아니라 카드에 줘서 미리 고른 버튼이 없게 합니다. 누끼 잠금이 풀리면 다시 줍니다(UP-5).
+  useEffect(() => {
+    if (!notice || cutoutBusyId) return;
+    noticeCardRef.current?.focus();
+  }, [notice, cutoutBusyId]);
+
+  // 닫힌 뒤 포커스 돌려주기: 연 곳 → 캔버스 → 저장 버튼 가운데 쓸 수 있는 첫 요소
+  useEffect(() => {
+    if (isNoticeOpen || cutoutBusyId || !isFocusReturnPendingRef.current) return;
+    const candidates = [
+      noticeOpenerRef.current,
+      document.querySelector<HTMLElement>('[data-focus-return="canvas"]'),
+      ...Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="save"]')),
+    ];
+    const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
+    isFocusReturnPendingRef.current = false;
+    noticeOpenerRef.current = null;
+    if (returnIndex >= 0) candidates[returnIndex]?.focus();
+  }, [isNoticeOpen, cutoutBusyId, inlineStatus]);
 
   const applyEditorDocument = (nextDocument: EditorDocument) => {
     setEditorState((previous) => ({
@@ -766,7 +854,7 @@ function App() {
     // 텍스트 및 스티커는 삭제하지 않고 선택 상태만 초기화합니다.
     setSelectedTextId(null);
     setSelectedStickerId(null);
-    setPendingFrameChange(null);
+    setInlineStatus(null);
     setMobilePanel(null);
     setDesktopPanel(null);
     setCanvasMode('editor');
@@ -785,12 +873,18 @@ function App() {
 
     if (decision.kind === 'noop') return;
     if (decision.kind === 'activate-editor') {
-      setPendingFrameChange(null);
       setCanvasMode('editor');
       return;
     }
     if (decision.kind === 'confirm') {
-      setPendingFrameChange(decision.frameType);
+      setNotice({
+        kind: 'frame-change',
+        frameType: decision.frameType,
+        droppedPhotoCount: countDroppedPhotos({
+          photoSlotIds: editorState.userImages.map((image) => image.slotId),
+          nextSlotIds: FRAME_LAYOUTS[decision.frameType].slots.map((slot) => slot.id),
+        }),
+      });
       return;
     }
 
@@ -1743,6 +1837,35 @@ function App() {
     setExportMissingStickerCount(0);
   };
 
+  const handleNoticeAction = (actionId: NoticeActionId) => {
+    const currentNotice = notice;
+    setNotice(null);
+    if (actionId === 'change-frame' && currentNotice?.kind === 'frame-change') {
+      applyFrameChange(currentNotice.frameType);
+    }
+  };
+
+  const handleNoticeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!noticeView) return;
+    if (event.key === 'Escape') {
+      if (!noticeView.closeActionId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleNoticeAction(noticeView.closeActionId);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+    const focusMove = getWrappedFocusIndex({
+      focusableCount: buttons.length,
+      activeIndex: buttons.findIndex((button) => button === document.activeElement),
+      isShiftKey: event.shiftKey,
+    });
+    if (focusMove.kind === 'native') return;
+    event.preventDefault();
+    if (focusMove.kind === 'move') buttons[focusMove.index].focus();
+  };
+
   const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
     FRAME_OPTIONS_BY_CATEGORY[cat].some(opt => opt.value === editorState.selectedFrame)
   ) || null;
@@ -2068,6 +2191,7 @@ function App() {
                 type="button"
                 className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
                 onClick={handleExport}
+                data-focus-return="save"
               >
                 저장
               </button>
@@ -2146,10 +2270,40 @@ function App() {
         </div>
       )}
 
-      {pendingFrameChange && (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          position: 'fixed',
+          top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'min(480px, calc(100% - 32px))',
+          zIndex: 9990,
+        }}
+      >
+        {inlineStatusView && (
+          <div className={`linear-card ${NOTICE_TONE_CLASS[inlineStatusView.tone]}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <div style={{ flex: 1 }}>
+              {inlineStatusView.lines.map((line) => (
+                <p key={line} style={{ fontSize: '16px', margin: 0, lineHeight: 1.6 }}>{line}</p>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="linear-button linear-button--secondary"
+              style={{ minHeight: '44px', minWidth: '44px', fontSize: '16px' }}
+              onClick={() => setInlineStatus(null)}
+            >
+              닫기
+            </button>
+          </div>
+        )}
+      </div>
+
+      {noticeView && (
         <div
-          role="dialog"
-          aria-modal="true"
+          ref={noticeRef}
           className="linear-fade-in"
           style={{
             position: 'fixed',
@@ -2161,9 +2315,18 @@ function App() {
             padding: 16,
             zIndex: 9999,
           }}
-          onClick={() => setPendingFrameChange(null)}
+          onClick={() => {
+            if (noticeView.closeActionId) handleNoticeAction(noticeView.closeActionId);
+          }}
         >
           <div
+            ref={noticeCardRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="app-notice-title"
+            aria-describedby="app-notice-body"
+            aria-busy={noticeView.isBusy}
+            tabIndex={-1}
             className="linear-card"
             style={{
               width: 'min(480px, 100%)',
@@ -2172,30 +2335,30 @@ function App() {
               border: 'var(--border-width) solid var(--linear-neutral-500)',
             }}
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={handleNoticeKeyDown}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h3 style={{ margin: 0 }}>프레임 변경 확인</h3>
-              <p style={{ margin: 0, lineHeight: 1.6 }}>
-                프레임을 변경하면 디자인 캔버스의 모든 편집 내용이 초기화됩니다.
-                <br />
-                {FRAME_LAYOUTS[pendingFrameChange].name} 프레임으로 변경하시겠습니까?
-              </p>
-              <div className="linear-flex" style={{ justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  className="linear-button linear-button--secondary"
-                  onClick={() => setPendingFrameChange(null)}
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  className="linear-button linear-button--primary"
-                  onClick={() => applyFrameChange(pendingFrameChange)}
-                >
-                  변경
-                </button>
+              <h3 id="app-notice-title" style={{ margin: 0 }}>{noticeView.title}</h3>
+              <div id="app-notice-body" aria-live="polite" className={NOTICE_TONE_CLASS[noticeView.tone] || undefined}>
+                {noticeView.lines.map((line) => (
+                  <p key={line} style={{ margin: 0, fontSize: '16px', lineHeight: 1.6 }}>{line}</p>
+                ))}
               </div>
+              {noticeView.actions.length > 0 && (
+                <div className="linear-flex" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  {noticeView.actions.map((action) => (
+                    <button
+                      key={action.id}
+                      type="button"
+                      className={`linear-button ${action.isPrimary ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                      onClick={() => handleNoticeAction(action.id)}
+                      style={{ minHeight: '44px', minWidth: '44px', fontSize: '16px' }}
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

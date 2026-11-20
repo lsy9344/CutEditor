@@ -108,6 +108,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         type="button"
         className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
         onClick={onExport}
+        data-focus-return="save"
         style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
