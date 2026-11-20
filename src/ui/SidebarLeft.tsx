@@ -11,6 +11,7 @@ export type SidebarLeftProps = {
   onCanvasModeChange: (mode: 'gallery' | 'editor') => void;
   selectedCategory: string | null;
   onCategoryChange: (category: string | null) => void;
+  onCategoryPicked?: () => void;
 };
 
 export const FRAME_OPTIONS_BY_CATEGORY: Record<string, FrameOption[]> = {
@@ -53,6 +54,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
   onCanvasModeChange,
   selectedCategory,
   onCategoryChange,
+  onCategoryPicked,
 }) => {
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const [previewSources, setPreviewSources] = useState<Record<string, string>>({});
@@ -86,6 +88,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
 
     onCategoryChange(outcome.nextCategory);
     onCanvasModeChange(outcome.nextCanvasMode);
+    onCategoryPicked?.();
   };
 
   const handleFrameSelect = (frame: FrameType) => {
@@ -110,7 +113,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
       <hr style={{ flexShrink: 0, border: 'none', borderTop: 'var(--border-width) solid var(--linear-neutral-500)', margin: '0' }} />
 
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <h3 style={{ flexShrink: 0, marginBottom: "12px" }}>프레임 컷 수 선택</h3>
+        <h3 style={{ flexShrink: 0, marginBottom: "12px" }}>사진 몇 장으로 만들까요?</h3>
         <div style={{ flexShrink: 0, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px", marginBottom: "16px" }}>
           {Object.keys(FRAME_OPTIONS_BY_CATEGORY).map((category) => (
             <button
@@ -138,10 +141,10 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
           ))}
         </div>
 
-        {activeCategory && (
+        {activeCategory && canvasMode !== 'gallery' && (
           <div className="linear-fade-in" style={{ backgroundColor: "var(--linear-neutral-600)", borderRadius: "var(--radius-base)", border: "var(--border-width) solid var(--linear-neutral-500)", padding: "16px", display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
             <p style={{ flexShrink: 0, marginBottom: "12px", color: "var(--linear-secondary-400)", fontSize: "var(--linear-text-sm)", textAlign: "center" }}>
-              {activeCategory} 상세 스타일을 선택하세요.
+              마음에 드는 모양을 골라 주세요
             </p>
 
 <div className="frame-gallery-scroll" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px", flex: 1, minHeight: 0, alignContent: "start" }}>

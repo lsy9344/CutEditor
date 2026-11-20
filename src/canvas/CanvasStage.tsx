@@ -136,6 +136,7 @@ export type CanvasStageProps = {
   onZoomChange?: (zoom: number) => void;
   onImageUpload?: (file: File, slotId: string) => void;
   onRequestImageImport?: (slotId: string) => boolean;
+  onOpenFrameGallery?: () => void;
   onImageTransform?: (imageId: string, transform: Partial<UserImage>) => void;
   onFrameColorChange?: (color: string) => void;
   onTextMove?: (textId: string, x: number, y: number) => void;
@@ -230,6 +231,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onSlotSelect,
   onImageUpload,
   onRequestImageImport,
+  onOpenFrameGallery,
   onImageTransform: onImageTransformProp,
   onFrameColorChange,
   onTextMove: onTextMoveProp,
@@ -1724,14 +1726,23 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         textAlign: 'center'
       }}>
         <div>
-          <h3 style={{ marginBottom: '16px' }}></h3>
           <p style={{
             color: 'var(--linear-secondary-400)',
             fontSize: 'var(--linear-text-lg)',
             fontWeight: 'var(--linear-font-medium)'
           }}>
-            왼쪽 메뉴에서 프레임을 먼저 선택해 주세요.
+            먼저 프레임을 골라 주세요
           </p>
+          {onOpenFrameGallery && (
+            <button
+              type="button"
+              className="linear-button linear-button--primary"
+              onClick={onOpenFrameGallery}
+              style={{ marginTop: '16px', minHeight: '44px', fontSize: '16px' }}
+            >
+              프레임 고르기
+            </button>
+          )}
         </div>
       </div>
     );
