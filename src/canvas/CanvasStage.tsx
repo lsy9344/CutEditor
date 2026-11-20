@@ -44,6 +44,7 @@ import {
   BRUSH_SIZE_OPTIONS,
   ERASE_PREVIEW_COLOR,
   getLocalBrushRadius,
+  isBrushPointerStart,
   toNormalizedStroke,
 } from "../photo/photoTool";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
@@ -456,7 +457,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   const startBrushStroke = (event: Konva.KonvaEventObject<PointerEvent>, targetId: string) => {
-    if (!event.evt.isPrimary || brushDraftRef.current) return;
+    if (!isBrushPointerStart(event.evt.pointerType, event.evt.isPrimary, event.evt.button)) return;
+    if (brushDraftRef.current) cancelBrushStroke();
     const overlay = event.target;
     const local = overlay.getRelativePointerPosition();
     const stagePoint = overlay.getStage()?.getRelativePointerPosition();
@@ -510,13 +512,20 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     const onPointerCancel = (event: PointerEvent) => {
       if (brushDraftRef.current?.pointerId === event.pointerId) cancelBrushStroke();
     };
+    const cancelBrushStrokeOnHidden = () => {
+      if (document.visibilityState === "hidden") cancelBrushStroke();
+    };
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointerup", onPointerUp);
     window.addEventListener("pointercancel", onPointerCancel);
+    window.addEventListener("blur", cancelBrushStroke);
+    document.addEventListener("visibilitychange", cancelBrushStrokeOnHidden);
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerCancel);
+      window.removeEventListener("blur", cancelBrushStroke);
+      document.removeEventListener("visibilitychange", cancelBrushStrokeOnHidden);
     };
   }, []);
 

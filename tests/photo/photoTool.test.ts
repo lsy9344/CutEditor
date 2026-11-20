@@ -5,6 +5,7 @@ import {
   BRUSH_SCREEN_RADIUS,
   BRUSH_SIZE_OPTIONS,
   getLocalBrushRadius,
+  isBrushPointerStart,
   toNormalizedStroke,
 } from "../../src/photo/photoTool.ts";
 
@@ -37,4 +38,13 @@ test("붓 크기 상수와 선택지 문구가 정해진 값이다", () => {
     BRUSH_SIZE_OPTIONS.map((option) => option.label),
     ["작게", "보통", "크게"],
   );
+});
+
+test("마우스는 왼쪽 버튼만 획을 시작하고 펜·터치는 기본 입력을 받는다", () => {
+  assert.equal(isBrushPointerStart("mouse", true, 0), true);
+  assert.equal(isBrushPointerStart("mouse", true, 1), false);
+  assert.equal(isBrushPointerStart("mouse", true, 2), false);
+  assert.equal(isBrushPointerStart("pen", true, 0), true);
+  assert.equal(isBrushPointerStart("touch", true, 0), true);
+  assert.equal(isBrushPointerStart("touch", false, 0), false);
 });

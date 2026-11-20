@@ -21,6 +21,11 @@ export function getLocalBrushRadius(screenRadius: number, absoluteScaleX: number
   return screenRadius / Math.abs(absoluteScaleX);
 }
 
+export function isBrushPointerStart(pointerType: string, isPrimary: boolean, button: number): boolean {
+  if (!isPrimary) return false;
+  return pointerType !== "mouse" || button === 0;
+}
+
 export function toNormalizedStroke(
   localPoints: number[],
   displayWidth: number,

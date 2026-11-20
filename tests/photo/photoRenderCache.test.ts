@@ -14,14 +14,19 @@ type FakeCanvas = {
   getContext: (kind: string) => unknown;
 };
 
+let getImageDataCalls = 0;
+
 const createFakeCanvas = (): FakeCanvas => ({
   width: 0,
   height: 0,
   getContext: () => ({
     drawImage: () => {},
-    getImageData: (_x: number, _y: number, width: number, height: number) => ({
-      data: new Uint8ClampedArray(width * height * 4),
-    }),
+    getImageData: (_x: number, _y: number, width: number, height: number) => {
+      getImageDataCalls += 1;
+      return {
+        data: new Uint8ClampedArray(width * height * 4),
+      };
+    },
     putImageData: () => {},
   }),
 });
@@ -69,6 +74,24 @@ test("보정이 남은 사진은 선택이 바뀌어도 결과를 유지하고 �
   assert.deepEqual(getEditedPhotoCacheStats(), [
     { imageId: "img-1", width: 800, height: 1200, hasBase: false },
     { imageId: "img-2", width: 800, height: 1200, hasBase: true },
+  ]);
+});
+
+test("보정이 기본값이면 지우기 결과 캔버스를 그대로 쓰고 보정 단계를 다시 읽지 않는다", () => {
+  pruneEditedPhotoCanvases(new Set(), null);
+  const source = makeSource(800, 1200);
+  const edits = {
+    ...createDefaultPhotoEdits(),
+    erase: [{ points: [0.5, 0.5], radius: 0.01 }],
+  };
+  getImageDataCalls = 0;
+
+  const canvas = getEditedPhotoCanvas("img-erase", source, edits, 4096, true);
+
+  assert.ok(canvas);
+  assert.equal(getImageDataCalls, 1);
+  assert.deepEqual(getEditedPhotoCacheStats(), [
+    { imageId: "img-erase", width: 800, height: 1200, hasBase: true },
   ]);
 });
 

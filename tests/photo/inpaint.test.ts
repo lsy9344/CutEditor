@@ -121,6 +121,39 @@ test("마스크가 이미지 전체면 아무것도 바꾸지 않는다", () => 
   assert.deepEqual(Array.from(data), Array.from(before));
 });
 
+test("서로 떨어진 마스크는 각자의 주변색으로 따로 메운다", () => {
+  const width = 60;
+  const height = 20;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const isLeft = x < width / 2;
+      data[index] = isLeft ? 220 : 30;
+      data[index + 1] = 30;
+      data[index + 2] = isLeft ? 30 : 220;
+      data[index + 3] = 255;
+    }
+  }
+  const mask = new Uint8Array(width * height);
+  for (let y = 9; y <= 11; y += 1) {
+    for (let x = 0; x <= 2; x += 1) mask[y * width + x] = 1;
+    for (let x = 57; x <= 59; x += 1) mask[y * width + x] = 1;
+  }
+  paintMask(data, mask, [0, 0, 0, 255]);
+
+  inpaintMasked(data, width, height, mask);
+
+  const leftIndex = (10 * width + 1) * 4;
+  const rightIndex = (10 * width + 58) * 4;
+  assert.ok(data[leftIndex] > 200, `왼쪽 R ${data[leftIndex]}`);
+  assert.ok(data[leftIndex + 2] < 60, `왼쪽 B ${data[leftIndex + 2]}`);
+  assert.ok(data[rightIndex + 2] > 200, `오른쪽 B ${data[rightIndex + 2]}`);
+  assert.ok(data[rightIndex] < 60, `오른쪽 R ${data[rightIndex]}`);
+  assert.equal(data[leftIndex + 3], 255);
+  assert.equal(data[rightIndex + 3], 255);
+});
+
 test("멀리 떨어진 두 마스크도 단색으로 정확히 메운다", () => {
   const width = 2048;
   const height = 2048;

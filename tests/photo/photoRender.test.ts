@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getWorkingSize, isPhotoWorkingSizeClamped } from "../../src/photo/photoRender.ts";
+import { getWorkingSize, isStrokeSeparatedFromStrokes, isPhotoWorkingSizeClamped } from "../../src/photo/photoRender.ts";
 
 test("긴 변이 2048을 넘으면 긴 변을 2048로 줄인다", () => {
   assert.deepEqual(getWorkingSize(4000, 3000, 2048), { width: 2048, height: 1536 });
@@ -36,4 +36,14 @@ test("짧은 변을 1px로 잘라야 하는 극단 비율만 렌더 실패로 �
   assert.equal(isPhotoWorkingSizeClamped(2, 8193, 4096), false);
   assert.equal(isPhotoWorkingSizeClamped(1, 4096, 4096), false);
   assert.equal(isPhotoWorkingSizeClamped(4000, 3000, 2048), false);
+});
+
+test("떨어진 새 획만 이전 지우기 결과 위에 따로 메울 수 있다", () => {
+  const previous = [{ points: [0.1, 0.5], radius: 0.01 }];
+  const farStroke = { points: [0.5, 0.5], radius: 0.01 };
+  const nearStroke = { points: [0.12, 0.5], radius: 0.01 };
+
+  assert.equal(isStrokeSeparatedFromStrokes(farStroke, previous, 1000, 1000), true);
+  assert.equal(isStrokeSeparatedFromStrokes(nearStroke, previous, 1000, 1000), false);
+  assert.equal(isStrokeSeparatedFromStrokes(farStroke, [], 1000, 1000), true);
 });

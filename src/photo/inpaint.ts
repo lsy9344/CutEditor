@@ -1,4 +1,4 @@
-const INPAINT_PADDING = 16;
+export const INPAINT_PADDING = 16;
 const COARSEST_SIDE = 24;
 const COARSEST_ITERATIONS = 200;
 const LEVEL_ITERATIONS = 12;
@@ -83,29 +83,16 @@ function inpaintRegion(rgb: Float32Array, mask: Uint8Array, width: number, heigh
   fillLevel(rgb, width, height, maskedIndices, LEVEL_ITERATIONS);
 }
 
-export function inpaintMasked(
+function inpaintMaskRegion(
   rgba: Uint8ClampedArray,
   width: number,
   height: number,
   mask: Uint8Array,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
 ): void {
-  let maskCount = 0;
-  let minX = width;
-  let minY = height;
-  let maxX = -1;
-  let maxY = -1;
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      if (!mask[y * width + x]) continue;
-      maskCount += 1;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-  }
-  if (maskCount === 0 || maskCount === width * height) return;
-
   const startX = Math.max(0, minX - INPAINT_PADDING);
   const startY = Math.max(0, minY - INPAINT_PADDING);
   const endX = Math.min(width - 1, maxX + INPAINT_PADDING);
@@ -137,5 +124,62 @@ export function inpaintMasked(
       rgba[sourceIndex * 4 + 1] = regionRgb[regionIndex * 3 + 1];
       rgba[sourceIndex * 4 + 2] = regionRgb[regionIndex * 3 + 2];
     }
+  }
+}
+
+export function inpaintMasked(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  mask: Uint8Array,
+): void {
+  let maskCount = 0;
+  for (let index = 0; index < mask.length; index += 1) if (mask[index]) maskCount += 1;
+  if (maskCount === 0 || maskCount === width * height) return;
+
+  // 서로 떨어진 마스크(획)는 각각의 경계 상자만 메운다.
+  // 하나의 큰 상자로 묶으면 그 사이의 빈 영역까지 계산해 느려진다.
+  const visited = new Uint8Array(mask.length);
+  const stack = new Int32Array(maskCount);
+
+  for (let start = 0; start < mask.length; start += 1) {
+    if (!mask[start] || visited[start]) continue;
+
+    let stackSize = 0;
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    stack[stackSize++] = start;
+    visited[start] = 1;
+
+    while (stackSize > 0) {
+      const index = stack[--stackSize];
+      const x = index % width;
+      const y = (index - x) / width;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+
+      if (x > 0) {
+        const next = index - 1;
+        if (mask[next] && !visited[next]) { visited[next] = 1; stack[stackSize++] = next; }
+      }
+      if (x < width - 1) {
+        const next = index + 1;
+        if (mask[next] && !visited[next]) { visited[next] = 1; stack[stackSize++] = next; }
+      }
+      if (y > 0) {
+        const next = index - width;
+        if (mask[next] && !visited[next]) { visited[next] = 1; stack[stackSize++] = next; }
+      }
+      if (y < height - 1) {
+        const next = index + width;
+        if (mask[next] && !visited[next]) { visited[next] = 1; stack[stackSize++] = next; }
+      }
+    }
+
+    inpaintMaskRegion(rgba, width, height, mask, minX, minY, maxX, maxY);
   }
 }
