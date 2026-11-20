@@ -55,7 +55,6 @@ import { copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
 import type { BrushSize, PhotoToolMode } from './photo/photoTool'
 import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
-  getExportExperience,
   getMobileExportLimits,
   getMobileSaveFallback,
   isShareAbortError,
@@ -83,6 +82,8 @@ import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
+import { countEmptySlots, getSaveRequestStep, getSaveRoute, makeSaveFilename, runSaveFlow } from './state/saveFlow'
+import type { SaveRetry } from './state/saveFlow'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -496,6 +497,8 @@ function App() {
   const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
   const [notice, setNotice] = useState<AppNotice | null>(null); // 확인창 하나(설계 4.5)
   const [inlineStatus, setInlineStatus] = useState<InlineStatus | null>(null); // 상태 줄 하나(설계 4.6)
+  const [isExportInFlight, setIsExportInFlight] = useState(false); // 저장 버튼 잠금 표시용
+  const retrySaveRef = useRef<SaveRetry<FileSystemFileHandle> | null>(null); // [다시 저장하기]가 쓸 처음 저장의 경로·이름·핸들
   const noticeRef = useRef<HTMLDivElement>(null); // 확인창 배경(app-container의 직계 자식)
   const noticeCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 카드
   const noticeOpenerRef = useRef<HTMLElement | null>(null); // 확인창이나 저장을 시작한 요소
@@ -660,7 +663,7 @@ function App() {
 
   // 닫힌 뒤 포커스 돌려주기: 연 곳 → 열린 시트의 닫기 버튼 → 캔버스 → 저장 버튼 가운데 쓸 수 있는 첫 요소
   useEffect(() => {
-    if (isNoticeOpen || cutoutBusyId || !isFocusReturnPendingRef.current) return;
+    if (isNoticeOpen || isExportInFlight || cutoutBusyId || !isFocusReturnPendingRef.current) return;
     const candidates = getFocusReturnCandidates({
       opener: noticeOpenerRef.current,
       sheetCandidates: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="sheet-close"]')),
@@ -671,7 +674,7 @@ function App() {
     isFocusReturnPendingRef.current = false;
     noticeOpenerRef.current = null;
     if (returnIndex >= 0) candidates[returnIndex]?.focus();
-  }, [isNoticeOpen, cutoutBusyId, inlineStatus]);
+  }, [isNoticeOpen, isExportInFlight, cutoutBusyId, inlineStatus]);
 
   const applyEditorDocument = (nextDocument: EditorDocument) => {
     setEditorState((previous) => ({
@@ -782,9 +785,6 @@ function App() {
     return viewportWidth <= 768 || (hasCoarsePointer && viewportWidth <= 1024);
   }, [hasCoarsePointer, viewportWidth]);
 
-  const supportsFilePicker = useMemo(() => (
-    typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function'
-  ), []);
   const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
   const isBoothyImportBridgeAvailable = useMemo(() => {
     return Boolean(
@@ -1078,12 +1078,6 @@ function App() {
   const handleFrameColorChange = (color: string) => {
     setEditorState(prev => ({ ...prev, frameColor: color }))
   }
-
-  const makeSuggestedFilename = useCallback(() => {
-    const frameType = editorState.selectedFrame ?? 'preview';
-    const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    return `cut_export_${frameType}_${ts}.png`;
-  }, [editorState.selectedFrame]);
 
   const handleZoomChange = (zoom: number) => {
     setEditorState(prev => ({ ...prev, zoom }))
@@ -1599,35 +1593,37 @@ function App() {
     return true;
   }, [boothyLaunchContext, editorState.userImages]);
 
-  // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
+  // 저장: 저장 위치 창을 먼저 열고(설계 5.1 A), UI 오버레이를 뺀 고해상도 PNG를 만듭니다.
   const handleExport = async () => {
     if (isCutoutLocked()) return;
     const frameType = editorState.selectedFrame;
     if (!frameType) {
-      alert('프레임을 먼저 선택해주세요.');
       return;
     }
 
     // 저장을 기다리지 않는다. 클릭 시점의 문서와 캔버스가 알린 사진 목록이 다르면 아직 최신 상태가 아니다.
     const photoImagesState = photoImagesStateRef.current;
     if (photoImagesSourceRef.current !== editorState.userImages) {
-      alert(PHOTO_LOADING_SAVE_MESSAGE);
+      setInlineStatus({ kind: 'save-blocked', message: PHOTO_LOADING_SAVE_MESSAGE });
       return;
     }
     const photoSaveBlockMessage = getPhotoSaveBlockMessage(photoImagesState);
     if (photoSaveBlockMessage) {
-      alert(photoSaveBlockMessage);
+      setInlineStatus({ kind: 'save-blocked', message: photoSaveBlockMessage });
       return;
     }
 
     if (cutoutImagesState.kind === "loading") {
-      alert(CUTOUT_COPY.exportBlocked);
+      setInlineStatus({ kind: 'save-blocked', message: CUTOUT_COPY.exportBlocked });
+      return;
+    }
+    if (!stageRef.current) {
+      console.error('저장할 캔버스를 찾지 못했어요');
+      // 남은 재시도 정보가 있으면 그 핸들을 그대로 알립니다(결정 F).
+      setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
       return;
     }
     const missingStickerCount = cutoutImagesState.kind === "failed" ? cutoutImagesState.stickerIds.length : 0; // 화면에도 그려지지 않는 스티커 수. 저장을 막지 않음
-    const showMissingStickerNotice = () => {
-      if (missingStickerCount > 0) alert(CUTOUT_COPY.missingStickers(missingStickerCount));
-    };
 
     const expectsBoothySessionSave = Boolean(
       boothyLaunchContext?.completion?.saveUrl?.trim()
@@ -1641,110 +1637,87 @@ function App() {
     exportInFlightRef.current = true;
 
     try {
-      // Stage 준비 및 오버레이 제거
-      if (expectsBoothySessionSave) {
-        setBoothySaveNoticeState('saving');
-      }
-      setCompareHeld(false);
-      setPhotoToolMode("none");
-      setExportMode(true);
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-
-      const stage = stageRef.current;
-      if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
-
-      const filename = makeSuggestedFilename();
-      const blob = await exportBlobFromStage({ frameType, stage });
-      const exportFile = new File([blob], filename, { type: 'image/png' });
-      const userAgent = getCurrentUserAgent();
-      const isStandalone = isStandaloneDisplayMode();
-      const savedToBoothySession = await saveToBoothySession({
-        blob,
-        frameType,
+      setIsExportInFlight(true);
+      setInlineStatus(null);
+      const route = getSaveRoute({
+        expectsBoothySessionSave,
+        isMobileLayout: isResponsiveMobile,
+        hasFilePicker: typeof window.showSaveFilePicker === 'function',
       });
-
-      if (savedToBoothySession) {
-        if (expectsBoothySessionSave) {
-          setBoothySaveNoticeState('saved');
-        }
-        showMissingStickerNotice();
-        return;
-      }
-
-      if (expectsBoothySessionSave) {
-        setBoothySaveNoticeState('idle');
-      }
-
-      const exportExperience = getExportExperience({
-        hasShareFiles: canShareExportFile(exportFile),
-        hasFilePicker: supportsFilePicker,
-        prefersTouchExperience: isResponsiveMobile,
-      });
-
-      if (exportExperience === 'share-sheet') {
-        const url = URL.createObjectURL(blob);
-        setExportBlob(blob);
-        setExportObjectUrl(url);
-        setExportFilename(filename);
-        setExportManualSaveRequired(shouldShowManualSaveHintImmediately({
-          userAgent,
-          isStandalone,
-        }));
-        setExportMissingStickerCount(missingStickerCount);
-        setExportOverlayOpen(true);
-        return;
-      }
-
-      if (exportExperience === 'save-file-picker' && supportsFilePicker && window.showSaveFilePicker) {
-        try {
-          const fileHandle = await window.showSaveFilePicker({
-            suggestedName: filename,
+      // 여기부터 pickFile까지 await가 없어야 클릭의 사용자 활성화 안에서 창이 열립니다.
+      // retrySaveRef는 렌더를 거친 저장이 끝날 때까지 비우지 않습니다(결정 F). 그 안의 경로·이름·핸들이 지금 route와 이름보다 앞섭니다.
+      const result = await runSaveFlow(
+        { route, filename: makeSaveFilename(new Date()), retry: retrySaveRef.current },
+        {
+          pickFile: (suggestedName) => window.showSaveFilePicker!({
+            suggestedName,
             excludeAcceptAllOption: true,
             startIn: 'desktop',
-            types: [
-              {
-                description: 'PNG 이미지',
-                accept: { 'image/png': ['.png'] },
-              },
-            ],
-          });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          showMissingStickerNotice();
-          return;
-        } catch (error) {
-          const isAbort = error instanceof DOMException && error.name === 'AbortError';
-          if (!isAbort) {
-            console.warn('파일 저장 위치 선택 실패', error);
-            alert('파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.');
-          }
-        }
-      }
-
-      // 파일 시스템 접근 API 미지원 또는 취소 시 기본 다운로드로 폴백
-      const downloadUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      showMissingStickerNotice();
-      setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
-    } catch (e) {
-      console.error('Export 실패:', e);
-      if (expectsBoothySessionSave) {
-        setBoothySaveNoticeState('idle');
-      }
-      alert(
-        e instanceof Error && e.message.trim()
-          ? e.message
-          : '세션 저장 또는 내보내기에 실패했습니다. 다시 시도해주세요.',
+            types: [{ description: 'PNG 이미지', accept: { 'image/png': ['.png'] } }],
+          }),
+          showProgress: () => setNotice({ kind: 'save-progress' }),
+          render: async () => {
+            setCompareHeld(false);
+            setPhotoToolMode("none");
+            setExportMode(true);
+            await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+            const stage = stageRef.current;
+            if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
+            return exportBlobFromStage({ frameType, stage });
+          },
+          saveToBoothy: (blob) => saveToBoothySession({ blob, frameType }),
+          openWritable: (fileHandle) => fileHandle.createWritable(),
+          download: (blob, name) => {
+            const downloadUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+          },
+          openShareSheet: (blob, name) => {
+            const url = URL.createObjectURL(blob);
+            setExportBlob(blob);
+            setExportObjectUrl(url);
+            setExportFilename(name);
+            setExportManualSaveRequired(shouldShowManualSaveHintImmediately({
+              userAgent: getCurrentUserAgent(),
+              isStandalone: isStandaloneDisplayMode(),
+            }));
+            setExportMissingStickerCount(missingStickerCount);
+            setExportOverlayOpen(true);
+          },
+          warn: (message, error) => console.warn(message, error),
+        },
       );
+
+      if (result.kind === 'failed') {
+        console.error('사진 저장 실패', result.error);
+        retrySaveRef.current = result.retry;
+        setNotice({ kind: 'save-failed', hasPickedFile: result.retry.fileHandle !== null, isWaitingForPhotos: false });
+        return;
+      }
+      retrySaveRef.current = null; // 렌더를 거친 저장이 끝났습니다(성공, 다운로드, 공유 화면). 취소는 retry가 null일 때만 생깁니다
+      if (result.kind === 'cancelled') {
+        setNotice(null);
+        setInlineStatus({ kind: 'save-cancelled' });
+        return;
+      }
+      if (result.kind === 'share-sheet') {
+        setNotice(null);
+        return;
+      }
+      setNotice({ kind: 'save-done', location: result.location, missingStickerCount });
+    } catch (error) {
+      console.error('사진 저장 실패', error);
+      // 예상 밖 오류에도 남은 핸들은 지우지 않습니다. 다시 저장하기가 같은 파일에 씁니다.
+      setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
     } finally {
       exportInFlightRef.current = false;
       setExportMode(false);
+      setIsExportInFlight(false);
     }
   }
 
@@ -1840,10 +1813,21 @@ function App() {
 
   const handleNoticeAction = (actionId: NoticeActionId) => {
     const currentNotice = notice;
+    if (actionId === 'retry-save' && currentNotice?.kind === 'save-failed' && isSaveWaitingForImages()) {
+      // 사진이나 누끼를 아직 불러오는 중입니다. 실패 안내와 [다시 저장하기]를 그대로 두고 기다림 문장만 더합니다(결정 F).
+      setNotice({ ...currentNotice, isWaitingForPhotos: true });
+      return;
+    }
     setNotice(null);
     if (actionId === 'change-frame' && currentNotice?.kind === 'frame-change') {
       applyFrameChange(currentNotice.frameType);
+      return;
     }
+    if (actionId === 'save-anyway' || actionId === 'retry-save') {
+      // 확인창 버튼 클릭도 사용자 활성화를 주므로 저장 위치 창을 열 수 있습니다. retry-save는 retrySaveRef를 그대로 씁니다.
+      void handleExport();
+    }
+    // 'close'는 닫기만 합니다. retrySaveRef는 비우지 않습니다(결정 F, 설계 4.5).
   };
 
   const handleNoticeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1866,6 +1850,44 @@ function App() {
     event.preventDefault();
     if (focusMove.kind === 'move') buttons[focusMove.index].focus();
   };
+
+  const handleSaveRequest = () => {
+    if (cutoutBusyId) return;
+    if (exportInFlightRef.current) return;
+    const frameType = editorState.selectedFrame;
+    if (!frameType) return;
+    rememberNoticeOpener(null); // 저장이 끝나면 이 버튼으로 포커스를 돌려줍니다(잠금 중 포커스를 잃어도)
+    setInlineStatus(null);
+    // retrySaveRef는 비우지 않습니다(결정 F). 남은 재시도 정보가 있으면 handleExport가 그 경로·이름·핸들을 씁니다
+    // 막힐 저장은 빈 칸 확인보다 먼저 첫 클릭에서 알립니다(UP-9). handleExport가 같은 검사를 다시 합니다.
+    const saveBlockedMessage = photoImagesSourceRef.current !== editorState.userImages
+      ? PHOTO_LOADING_SAVE_MESSAGE
+      : getPhotoSaveBlockMessage(photoImagesStateRef.current)
+        ?? (cutoutImagesState.kind === "loading" ? CUTOUT_COPY.exportBlocked : null);
+    const saveRequestStep = getSaveRequestStep({
+      saveBlockedMessage,
+      emptySlotCount: countEmptySlots({
+        slotIds: FRAME_LAYOUTS[frameType].slots.map((slot) => slot.id),
+        photoSlotIds: editorState.userImages.map((image) => image.slotId),
+      }),
+    });
+    if (saveRequestStep.kind === 'blocked') {
+      setInlineStatus({ kind: 'save-blocked', message: saveRequestStep.message });
+      return;
+    }
+    if (saveRequestStep.kind === 'confirm-empty-slots') {
+      setNotice({ kind: 'empty-slots', emptySlotCount: saveRequestStep.emptySlotCount });
+      return;
+    }
+    void handleExport();
+  };
+
+  // 다시 저장하기를 눌렀을 때 기다리면 풀리는 막힘인지 봅니다(결정 F). 새 상태가 아니라 handleExport 앞 검사와 같은 값을 읽습니다.
+  // 사진 실패(failed)는 기다려도 풀리지 않으므로 넣지 않습니다. 그때는 안내를 닫고 handleExport가 상태 줄 save-blocked를 보입니다.
+  const isSaveWaitingForImages = () =>
+    photoImagesSourceRef.current !== editorState.userImages
+    || photoImagesStateRef.current.kind === 'loading'
+    || cutoutImagesState.kind === 'loading';
 
   const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
     FRAME_OPTIONS_BY_CATEGORY[cat].some(opt => opt.value === editorState.selectedFrame)
@@ -1906,7 +1928,7 @@ function App() {
     onStickerInsert: handleStickerInsert,
     onStickerUpdate: handleStickerUpdate,
     onStickerDelete: handleStickerDelete,
-    onExport: handleExport,
+    onExport: handleSaveRequest,
     cutoutSection: {
       images: cutoutCandidateImages,
       errorMessage: cutoutError && cutoutCandidateImages.some((image) => image.id === cutoutError.targetId) ? cutoutError.message : null,
@@ -2115,7 +2137,9 @@ function App() {
           <DesktopNavigationRail
             activePanel={desktopPanel}
             onTogglePanel={(panel) => setDesktopPanel((current) => current === panel ? null : panel)}
-            onExport={handleExport}
+            onExport={handleSaveRequest}
+            isSaveDisabled={!editorState.selectedFrame || isExportInFlight}
+            saveDisabledReason={editorState.selectedFrame ? undefined : '먼저 프레임을 골라 주세요'}
             tutorialStep={tutorialStep}
             frameButtonRef={tutorialRef0}
             textButtonRef={tutorialRef1}
@@ -2191,7 +2215,10 @@ function App() {
                 ref={mobileTutorialRef3}
                 type="button"
                 className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
-                onClick={handleExport}
+                onClick={handleSaveRequest}
+                disabled={!editorState.selectedFrame || isExportInFlight}
+                title={editorState.selectedFrame ? undefined : '먼저 프레임을 골라 주세요'}
+                style={{ opacity: !editorState.selectedFrame || isExportInFlight ? 0.5 : 1 }}
                 data-focus-return="save"
               >
                 저장
@@ -2370,7 +2397,7 @@ function App() {
       )}
 
       {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
-      {isResponsiveMobile && exportOverlayOpen && (
+      {exportOverlayOpen && (
         <div
           role="dialog"
           aria-modal="true"
