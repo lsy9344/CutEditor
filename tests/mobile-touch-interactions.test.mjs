@@ -66,7 +66,7 @@ test("CanvasStage는 배경을 탭하면 현재 선택을 해제한다", () => {
 test("CanvasStage는 스티커 이미지를 상위 캐시에서 읽고 선택된 스티커만 드래그한다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
-  assert.match(source, /draggable=\{!exportMode && isSelected\}/);
+  assert.match(source, /draggable=\{!exportMode && isSelected && photoEdit\.toolMode === "none"\}/);
   assert.match(source, /onDragStart=\{\(\) => selectSticker\(sticker\.id\)\}/);
   assert.match(source, /id=\{`transformer-\$\{sticker\.id\}`\}[\s\S]*flipEnabled=\{false\}/);
 });

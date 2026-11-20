@@ -30,7 +30,10 @@ import { getZoomToFit } from "./zoomSizing";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 import type { PhotoEdits } from "../photo/photoEdits";
 import { getCutoutImagesState } from "../photo/cutoutTypes";
-import type { CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
+import type { CutoutChanges, CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
+import { hasCutoutWorkingCanvas } from "../photo/cutoutCache";
+import { CUTOUT_COPY } from "../photo/cutoutCopy";
+import { stickerLocalToSourceUv, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
 import {
   applyPresetToEdits,
   isDefaultPhotoEdits,
@@ -75,6 +78,12 @@ export type CanvasPhotoEditProps = {
   onBrushSizeChange: (size: BrushSize) => void;
 };
 
+export type CanvasCutoutEditProps = {
+  errorMessage: string | null;
+  onRegenerate: (stickerId: string, changes: CutoutChanges) => void;
+  onPreloadPointModel: () => void;
+};
+
 export type CanvasStageProps = {
   template: Template | null;
   selection: string | null;
@@ -85,6 +94,7 @@ export type CanvasStageProps = {
   frameColor: string;
   historyControls: CanvasHistoryControls;
   photoEdit: CanvasPhotoEditProps;
+  cutoutEdit: CanvasCutoutEditProps;
   onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[]) => void;
   onCutoutImagesStateChange: (state: CutoutImagesState) => void;
   isEditLocked: boolean;
@@ -207,6 +217,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   frameColor,
   historyControls,
   photoEdit,
+  cutoutEdit,
   onPhotoImagesStateChange,
   onCutoutImagesStateChange,
   isEditLocked,
@@ -448,6 +459,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const photoEditSections = getPhotoEditSections(PHOTO_EDIT_FEATURES);
   const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
+  const isCutoutCacheMissing = selectedSticker?.cutout ? !hasCutoutWorkingCanvas(selectedSticker.id) : false;
   const isTouchManipulationActive = Boolean(selection);
 
   useEffect(() => {
@@ -524,7 +536,23 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       if (!stroke) return;
       photoEdit.onEditsChange(targetImage.id, { ...targetImage.edits, erase: [...targetImage.edits.erase, stroke] });
     }
-    // Phase 5에서 "erase-cutout" 분기를 여기에 추가합니다.
+    if (draft.mode === "erase-cutout") {
+      const targetSticker = stickers.find((sticker) => sticker.id === draft.targetId);
+      if (!targetSticker?.cutout) return;
+      const stroke = stickerStrokeToSourceStroke(draft.localPoints, localRadius, { width: targetSticker.width, height: targetSticker.height }, targetSticker.cutout.crop, targetSticker.cutout.workingSize);
+      if (!stroke) return;
+      cutoutEdit.onRegenerate(targetSticker.id, { eraseStrokes: [...targetSticker.cutout.eraseStrokes, stroke] });
+    }
+  };
+
+  const handleCutoutPick = (event: Konva.KonvaEventObject<PointerEvent>, sticker: { id: string; width: number; height: number; cutout?: CutoutSource }) => {
+    if (!sticker.cutout) return;
+    const local = event.target.getRelativePointerPosition();
+    if (!local) return;
+    const point = stickerLocalToSourceUv(local, { width: sticker.width, height: sticker.height }, sticker.cutout.crop, sticker.cutout.workingSize);
+    if (point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1) return;
+    photoEdit.onToolModeChange("none");
+    cutoutEdit.onRegenerate(sticker.id, { target: { kind: "point", x: point.x, y: point.y } });
   };
 
   const finishBrushStrokeRef = useRef(finishBrushStroke);
@@ -2254,7 +2282,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           offsetX={sticker.flipX ? sticker.width : 0}
                           offsetY={sticker.flipY ? sticker.height : 0}
                           rotation={sticker.rotation}
-                          draggable={!exportMode && isSelected}
+                          draggable={!exportMode && isSelected && photoEdit.toolMode === "none"}
                           _useStrictMode={isEditLocked}
                           onClick={() => selectSticker(sticker.id)}
                           onTap={() => selectSticker(sticker.id)}
@@ -2292,7 +2320,28 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           }}
                         />
                       )}
-                      {isSelected && !exportMode && (
+                      {isSelected && sticker.cutout && (photoEdit.toolMode === "pick-point" || photoEdit.toolMode === "erase-cutout") && (
+                        <Rect
+                          x={sticker.x}
+                          y={sticker.y}
+                          width={sticker.width}
+                          height={sticker.height}
+                          scaleX={effectiveScaleX}
+                          scaleY={effectiveScaleY}
+                          offsetX={sticker.flipX ? sticker.width : 0}
+                          offsetY={sticker.flipY ? sticker.height : 0}
+                          rotation={sticker.rotation}
+                          fill="transparent"
+                          onPointerDown={(event) => {
+                            if (photoEdit.toolMode === "pick-point") {
+                              handleCutoutPick(event, sticker);
+                            } else {
+                              startBrushStroke(event, sticker.id);
+                            }
+                          }}
+                        />
+                      )}
+                      {isSelected && !exportMode && photoEdit.toolMode === "none" && (
                         <Transformer
                           id={`transformer-${sticker.id}`}
                           flipEnabled={false}
@@ -2858,6 +2907,94 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   </button>
                 </div>
               </div>
+
+              {selectedSticker.cutout && (() => {
+                const cutoutToolButtonStyle = {
+                  height: '32px',
+                  fontSize: '11px',
+                  border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  opacity: isCutoutCacheMissing ? 0.5 : 1,
+                };
+                const outline = selectedSticker.cutout.outline;
+
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {isCutoutCacheMissing && (
+                      <p style={{ margin: 0, fontSize: '11px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.cacheMissing}</p>
+                    )}
+                    {selectedSticker.cutout.target.kind === "everyone" ? (
+                      <button
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => {
+                          cutoutEdit.onPreloadPointModel();
+                          photoEdit.onToolModeChange("pick-point");
+                        }}
+                        disabled={isCutoutCacheMissing}
+                        style={cutoutToolButtonStyle}
+                      >
+                        {CUTOUT_COPY.pickOne}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => cutoutEdit.onRegenerate(selectedSticker.id, { target: { kind: "everyone" } })}
+                        disabled={isCutoutCacheMissing}
+                        style={cutoutToolButtonStyle}
+                      >
+                        {CUTOUT_COPY.everyone}
+                      </button>
+                    )}
+                    {photoEdit.toolMode === "pick-point" && (
+                      <>
+                        <p style={{ margin: 0, fontSize: '11px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.pickGuide}</p>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          onClick={() => photoEdit.onToolModeChange("none")}
+                          disabled={isCutoutCacheMissing}
+                          style={cutoutToolButtonStyle}
+                        >
+                          {CUTOUT_COPY.cancel}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className={`linear-button ${outline ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                      onClick={() => cutoutEdit.onRegenerate(selectedSticker.id, { outline: !outline })}
+                      disabled={isCutoutCacheMissing}
+                      style={cutoutToolButtonStyle}
+                    >
+                      {outline ? CUTOUT_COPY.outlineOn : CUTOUT_COPY.outlineOff}
+                    </button>
+                    {photoEdit.toolMode !== "erase-cutout" ? (
+                      <button
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => photoEdit.onToolModeChange("erase-cutout")}
+                        disabled={isCutoutCacheMissing}
+                        style={cutoutToolButtonStyle}
+                      >
+                        {CUTOUT_COPY.eraseEdge}
+                      </button>
+                    ) : renderBrushControls(CUTOUT_COPY.eraseEdgeGuide)}
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => cutoutEdit.onRegenerate(selectedSticker.id, { target: { kind: "everyone" }, outline: true, eraseStrokes: [] })}
+                      disabled={isCutoutCacheMissing}
+                      style={cutoutToolButtonStyle}
+                    >
+                      {CUTOUT_COPY.restart}
+                    </button>
+                    {cutoutEdit.errorMessage && (
+                      <p className="linear-status--warning" style={{ margin: 0, fontSize: '11px' }}>{cutoutEdit.errorMessage}</p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

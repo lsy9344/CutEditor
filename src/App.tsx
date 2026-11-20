@@ -62,16 +62,23 @@ import {
   shouldShowManualSaveHintImmediately,
 } from './utils/exportBehavior'
 import { exportStageToBlob } from './utils/stageExport'
-import { abandonPendingSegmenters, preloadSegmentation, segmentEveryone } from './photo/segmentation'
+import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone } from './photo/segmentation'
 import {
   createCutoutWorkingCanvas,
   loadImageElement,
   renderCutoutSticker,
   waitForPaint,
 } from './photo/cutoutRender'
-import { pruneCutoutCache, rememberCutoutConfidence, setCutoutWorkingCanvas } from './photo/cutoutCache'
+import {
+  getCutoutConfidence,
+  getCutoutWorkingCanvas,
+  pruneCutoutCache,
+  rememberCutoutConfidence,
+  setCutoutWorkingCanvas,
+} from './photo/cutoutCache'
+import { keepStickerCenter } from './photo/cutoutGeometry'
 import { CUTOUT_COPY } from './photo/cutoutCopy'
-import type { CutoutImagesState } from './photo/cutoutTypes'
+import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -1293,6 +1300,60 @@ function App() {
     }
   };
 
+  const handleCutoutRegenerate = async (stickerId: string, changes: CutoutChanges) => {
+    if (cutoutBusyId) return;
+    const sticker = stickers.find((item) => item.id === stickerId);
+    if (!sticker?.cutout) return;
+    const workingCanvas = getCutoutWorkingCanvas(stickerId);
+    if (!workingCanvas) {
+      setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.cacheMissing });
+      return;
+    }
+    const nextSource = { ...sticker.cutout, ...changes };
+    cutoutRunRef.current += 1;
+    const runId = cutoutRunRef.current;
+    const isCancelled = () => cutoutRunRef.current !== runId;
+    let pendingUrl: string | null = null; // 바꾸기 전까지 이 함수가 가진 PNG URL
+    setCutoutBusyId(stickerId);
+    setCutoutError(null);
+    try {
+      await waitForPaint();
+      if (isCancelled()) return;
+      const confidence = await getCutoutConfidence(stickerId, nextSource.target, isCancelled); // 모델을 기다린 뒤 segment() 바로 앞에서도 확인
+      if (isCancelled()) return; // 취소됐으면 렌더를 시작하지 않음
+      if (!confidence) throw new Error("cutout cache missing");
+      const result = await renderCutoutSticker(workingCanvas, confidence, { outline: nextSource.outline, eraseStrokes: nextSource.eraseStrokes });
+      if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
+      if (isCancelled()) return;
+      if (result.kind === "not-found") {
+        setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.notFound });
+        return;
+      }
+      await loadImageElement(result.url); // 바꾸기 전에 PNG를 디코드
+      if (isCancelled()) return;
+      // 여기부터 finally까지 await가 없습니다. 기록 경계·바꾸기·캐시 등록·잠금 해제가 한 배치입니다.
+      flushHistory(); // 바꾸기 직전에 기록 경계를 닫음
+      setStickers((previous) => previous.map((item) => (item.id === stickerId
+        ? {
+          ...item,
+          ...keepStickerCenter(item, result.width, result.height),
+          src: result.url,
+          width: result.width,
+          height: result.height,
+          cutout: { ...nextSource, crop: result.crop, workingSize: result.workingSize },
+        }
+        : item)));
+      pendingUrl = null; // 문서로 넘김. 이제 Phase 1의 'URL 해제' effect가 맡음
+      rememberCutoutConfidence(stickerId, nextSource.target, confidence); // 성공한 작업의 마스크만 캐시에 넣음
+      setCutoutImagesState({ kind: "loading" }); // 새 PNG를 캔버스가 올릴 때까지 저장을 막음
+    } catch {
+      if (!isCancelled()) setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.loadFailed });
+    } finally {
+      if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 바꾸지 못한 URL
+      if (!isCancelled()) setCutoutBusyId(null);
+    }
+  };
+
   const handleStickerUpdate = (stickerId: string, updates: Partial<CanvasSticker>) => {
     setStickers(prev =>
       prev.map(sticker => {
@@ -1776,6 +1837,11 @@ function App() {
       }}
       exportMode={exportMode}
       isEditLocked={cutoutBusyId !== null}
+      cutoutEdit={{
+        errorMessage: cutoutError && cutoutError.targetId === editorState.selection ? cutoutError.message : null,
+        onRegenerate: (stickerId: string, changes: CutoutChanges) => { void handleCutoutRegenerate(stickerId, changes); },
+        onPreloadPointModel: () => { void preloadPointSegmentation().catch(() => undefined); },
+      }}
       stageRefExternal={stageRef}
       texts={texts}
       stickers={stickers}
