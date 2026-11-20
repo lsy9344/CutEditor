@@ -6,13 +6,15 @@ import type { FrameType, UserImage } from "../types/frame";
 import { FRAME_LAYOUTS } from "../types/frame";
 import { getNextTextTransformState } from "./textTransform";
 import {
+  getCenterRotatedTransform,
   getClampedKeyboardMove,
   getContainedImageSize,
   getNextImageSelection,
   getNudgedPosition,
-  getRotatedTransform,
   getScaledTransform,
   getSelectedImageFromState,
+  isActivationKey,
+  isTabLeavingImages,
   KEYBOARD_MOVE_FAST_STEP,
   KEYBOARD_MOVE_STEP,
   KEYBOARD_ROTATE_STEP,
@@ -1158,13 +1160,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
 
     if (e.key === "Tab") {
-      const nextSelection = getNextImageSelection({
-        selection,
-        selectedSlot,
-        slotOrder: frameLayout.slots.map((slot) => slot.id),
-        userImages,
-        direction: e.shiftKey ? -1 : 1,
-      });
+      const slotOrder = frameLayout.slots.map((slot) => slot.id);
+      const direction = e.shiftKey ? -1 : 1;
+      // 마지막 사진(뒤로는 첫 사진)이면 preventDefault 없이 넘겨서 브라우저가 다음 요소로 포커스를 옮기게 합니다.
+      if (isTabLeavingImages({ selection, selectedSlot, slotOrder, userImages, direction })) return;
+      const nextSelection = getNextImageSelection({ selection, selectedSlot, slotOrder, userImages, direction });
 
       if (nextSelection) {
         e.preventDefault();
@@ -1210,8 +1210,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     if (e.key.toLowerCase() === "r") {
       e.preventDefault();
-      handleImageTransform(selectedImage.id, getRotatedTransform({
+      const context = getImageDisplayContext(selectedImage);
+      if (!context) return;
+      handleImageTransform(selectedImage.id, getCenterRotatedTransform({
         image: selectedImage,
+        displaySize: context.displaySize,
         deltaDegrees: e.shiftKey ? -KEYBOARD_ROTATE_STEP : KEYBOARD_ROTATE_STEP,
       }));
       return;
@@ -2348,7 +2351,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           flipEnabled={false}
                           borderStroke="black"
                           borderStrokeWidth={3}
-                          anchorSize={12}
+                          anchorSize={24}
                           anchorStroke="black"
                           anchorStrokeWidth={3}
                           anchorFill="white"
@@ -2446,7 +2449,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             id={`transformer-text-${textItem.id}`}
                             borderStroke="black"
                             borderStrokeWidth={3}
-                            anchorSize={12}
+                            anchorSize={24}
                             anchorStroke="black"
                             anchorStrokeWidth={3}
                             anchorFill="white"
@@ -2517,6 +2520,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 onPointerUp={() => photoEdit.onCompareHeldChange(false)}
                 onPointerLeave={() => photoEdit.onCompareHeldChange(false)}
                 onPointerCancel={() => photoEdit.onCompareHeldChange(false)}
+                onKeyDown={(event) => {
+                  if (!isActivationKey(event.key)) return;
+                  event.preventDefault();
+                  if (event.repeat) return;
+                  photoEdit.onCompareHeldChange(true);
+                }}
+                onKeyUp={(event) => {
+                  if (!isActivationKey(event.key)) return;
+                  event.preventDefault();
+                  photoEdit.onCompareHeldChange(false);
+                }}
+                onBlur={() => photoEdit.onCompareHeldChange(false)}
+                aria-pressed={photoEdit.compareHeld}
                 onContextMenu={(event) => event.preventDefault()}
                 style={{
                   flex: 1.4,
@@ -2528,7 +2544,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   userSelect: 'none'
                 }}
               >
-                누르고 있으면 원본
+                누르는 동안 원래 사진
               </button>
             )}
           </div>

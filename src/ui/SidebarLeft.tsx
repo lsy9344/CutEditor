@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { FRAME_LAYOUTS, type FrameType, type FrameOption } from "../types/frame";
 import { getCategorySelectionOutcome } from "../utils/frameChangeFlow";
+import { isActivationKey } from "../canvas/keyboardShortcuts";
 
 export type SidebarLeftProps = {
   selectedFrame: FrameType | null;
@@ -153,17 +154,25 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                   key={option.value}
                   className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''} ${selectedFrame === option.value ? 'frame-gallery-card--selected' : ''}`}
                   onClick={() => handleFrameSelect(option.value)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (!isActivationKey(event.key)) return;
+                    event.preventDefault();
+                    handleFrameSelect(option.value);
+                  }}
+                  aria-pressed={selectedFrame === option.value}
                 >
                   <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`}>
                     <img
                       src={getPreviewSource(option)}
-                      alt={option.label}
+                      alt=""
                       loading="lazy"
                       onLoad={() => handleImageLoad(option.value)}
                       onError={() => handleImageError(option)}
                     />
                     {selectedFrame === option.value && (
-                      <div style={{
+                      <div aria-hidden="true" style={{
                         position: 'absolute',
                         top: '8px',
                         right: '8px',

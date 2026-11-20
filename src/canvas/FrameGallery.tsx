@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FRAME_LAYOUTS, type FrameType, type FrameOption } from '../types/frame';
+import { isActivationKey } from './keyboardShortcuts';
 
 interface FrameGalleryProps {
     selectedCategory: string | null;
@@ -105,6 +106,13 @@ export const FrameGallery: React.FC<FrameGalleryProps> = ({
                         key={option.value}
                         className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''}`}
                         onClick={() => onSelectFrame(option.value)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(event) => {
+                            if (!isActivationKey(event.key)) return;
+                            event.preventDefault();
+                            onSelectFrame(option.value);
+                        }}
                     >
                         <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`}>
                             <img
