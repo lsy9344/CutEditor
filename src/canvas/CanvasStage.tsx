@@ -6,7 +6,9 @@ import type { FrameType, UserImage } from "../types/frame";
 import { FRAME_LAYOUTS } from "../types/frame";
 import { getNextTextTransformState } from "./textTransform";
 import {
+  getAngleInputDegrees,
   getCenterRotatedTransform,
+  getCenterScaledTransform,
   getClampedKeyboardMove,
   getContainedImageSize,
   getNextImageSelection,
@@ -61,6 +63,16 @@ import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState
 import { getDecorImagesState, isFrameColorApplied } from "../state/decorImagesState";
 import type { DecorImagesState, FrameColorResult, FrameLoad } from "../state/decorImagesState";
 import { getSlotButtonLabel, getSlotLabel, getSwatchName } from "../state/editorLabels";
+
+// 끌기 대안(설계 8.2): 한 번 누를 때 20px씩 옮깁니다(방향키 Shift와 같은 값).
+const MOVE_BUTTONS = [
+  { label: '위로 옮기기', delta: { x: 0, y: -KEYBOARD_MOVE_FAST_STEP } },
+  { label: '아래로 옮기기', delta: { x: 0, y: KEYBOARD_MOVE_FAST_STEP } },
+  { label: '왼쪽으로 옮기기', delta: { x: -KEYBOARD_MOVE_FAST_STEP, y: 0 } },
+  { label: '오른쪽으로 옮기기', delta: { x: KEYBOARD_MOVE_FAST_STEP, y: 0 } },
+] as const;
+const STICKER_TILT_STEP = 15; // 스티커 기울이기 각도(설계 8.2)
+const DETAIL_BUTTON_STYLE = { minHeight: '32px', fontSize: '14px', padding: '0 8px' } as const;
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -329,6 +341,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedImageId = selectedImage?.id ?? null;
   const [isAdjustDetailOpen, setIsAdjustDetailOpen] = useState(false);
+  const [isStickerDetailOpen, setIsStickerDetailOpen] = useState(false); // 스티커 '자세히'는 기본으로 접어 둡니다
+  const [stickerAngleDraft, setStickerAngleDraft] = useState<string | null>(null); // 각도 칸에 쓰는 중인 글자
   const [appliedToAllCount, setAppliedToAllCount] = useState<number | null>(null); // '모든 사진에 적용' 결과 표시
   const [editedPhotoDisplays, setEditedPhotoDisplays] = useState<Map<string, EditedPhotoDisplay>>(new Map());
   const editedPhotoDisplaysRef = useRef(editedPhotoDisplays);
@@ -1909,6 +1923,42 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }));
   };
 
+  const moveSelectedImageBy = (delta: { x: number; y: number }) => {
+    if (!selectedImage) return;
+    const context = getImageDisplayContext(selectedImage);
+    if (!context) return;
+    handleImageTransform(selectedImage.id, getClampedKeyboardMove({
+      image: selectedImage,
+      slot: context.slot,
+      displaySize: context.displaySize,
+      delta,
+    }));
+  };
+
+  const moveSelectedStickerBy = (delta: { x: number; y: number }) => {
+    if (!selectedSticker) return;
+    onStickerUpdate?.(selectedSticker.id, getNudgedPosition({ x: selectedSticker.x, y: selectedSticker.y, delta }));
+  };
+
+  // 스티커는 왼쪽 위 기준으로 그려지므로 가운데를 지키는 계산을 씁니다(설계 7.1).
+  const scaleSelectedStickerBy = (scaleFactor: number) => {
+    if (!selectedSticker) return;
+    onStickerUpdate?.(selectedSticker.id, getCenterScaledTransform({
+      item: selectedSticker,
+      size: { width: selectedSticker.width, height: selectedSticker.height },
+      scaleFactor,
+    }));
+  };
+
+  const rotateSelectedStickerBy = (deltaDegrees: number) => {
+    if (!selectedSticker) return;
+    onStickerUpdate?.(selectedSticker.id, getCenterRotatedTransform({
+      image: selectedSticker,
+      displaySize: { width: selectedSticker.width, height: selectedSticker.height },
+      deltaDegrees,
+    }));
+  };
+
   return (
     <div
       className="linear-card linear-fade-in"
@@ -2917,6 +2967,33 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     {isAdjustDetailOpen ? '접기' : '자세히'}
                   </button>
 
+                  {isAdjustDetailOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>사진 옮기기</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {MOVE_BUTTONS.map((moveButton) => (
+                          <button
+                            key={moveButton.label}
+                            type="button"
+                            className="linear-button linear-button--secondary"
+                            onClick={() => moveSelectedImageBy(moveButton.delta)}
+                            style={DETAIL_BUTTON_STYLE}
+                          >
+                            {moveButton.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedImageBy(-KEYBOARD_ROTATE_STEP)} style={DETAIL_BUTTON_STYLE}>
+                          왼쪽으로 기울이기
+                        </button>
+                        <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedImageBy(KEYBOARD_ROTATE_STEP)} style={DETAIL_BUTTON_STYLE}>
+                          오른쪽으로 기울이기
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {isAdjustDetailOpen && PHOTO_ADJUST_FIELDS.map((field) => {
                     const adjustValue = selectedImage.edits.adjust[field.key];
                     return (
@@ -3029,12 +3106,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </div>
 
               {/* 색상 틴트 */}
-              <div>
-                {!selectedSticker.cutout && (
+              {!selectedSticker.cutout && (
+                <div>
                   <p style={{ fontSize: '14px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색 바꾸기</p>
-                )}
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  {!selectedSticker.cutout && (
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                     <input
                       type="color"
                       className="linear-input"
@@ -3050,14 +3125,72 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       title="스티커 색 고르기"
                       aria-label="스티커 색 고르기"
                     />
-                  )}
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                aria-expanded={isStickerDetailOpen}
+                onClick={() => setIsStickerDetailOpen((open) => !open)}
+                style={DETAIL_BUTTON_STYLE}
+              >
+                {isStickerDetailOpen ? '접기' : '자세히'}
+              </button>
+              {isStickerDetailOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>스티커 옮기기</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {MOVE_BUTTONS.map((moveButton) => (
+                      <button
+                        key={moveButton.label}
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => moveSelectedStickerBy(moveButton.delta)}
+                        style={DETAIL_BUTTON_STYLE}
+                      >
+                        {moveButton.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    <button type="button" className="linear-button linear-button--secondary" onClick={() => scaleSelectedStickerBy(1 / KEYBOARD_SCALE_FACTOR)} style={DETAIL_BUTTON_STYLE}>
+                      작게 하기
+                    </button>
+                    <button type="button" className="linear-button linear-button--secondary" onClick={() => scaleSelectedStickerBy(KEYBOARD_SCALE_FACTOR)} style={DETAIL_BUTTON_STYLE}>
+                      크게 하기
+                    </button>
+                    <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedStickerBy(-STICKER_TILT_STEP)} style={DETAIL_BUTTON_STYLE}>
+                      왼쪽으로 기울이기
+                    </button>
+                    <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedStickerBy(STICKER_TILT_STEP)} style={DETAIL_BUTTON_STYLE}>
+                      오른쪽으로 기울이기
+                    </button>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                    스티커 각도(°)
+                    <input
+                      type="number"
+                      className="linear-input"
+                      step="1"
+                      value={stickerAngleDraft ?? String(Math.round(selectedSticker.rotation))}
+                      onChange={(event) => {
+                        const degrees = getAngleInputDegrees(event.currentTarget.valueAsNumber);
+                        setStickerAngleDraft(degrees === null ? event.currentTarget.value : String(degrees)); // 보이는 값 = 적용한 값(UP-6)
+                        if (degrees === null) return;
+                        rotateSelectedStickerBy(degrees - selectedSticker.rotation);
+                      }}
+                      onBlur={() => setStickerAngleDraft(null)}
+                      style={{ width: '88px', minHeight: '32px', fontSize: '14px' }}
+                    />
+                  </label>
                   <button
                     type="button"
                     className="linear-button linear-button--secondary"
                     onClick={() => onStickerUpdate?.(selectedSticker.id, getStickerEditResetUpdates())}
                     disabled={!canResetStickerEdit}
                     style={{
-                      flex: 1,
                       height: '32px',
                       fontSize: '14px',
                       border: 'var(--border-width) solid var(--linear-neutral-500)',
@@ -3067,7 +3200,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     처음대로
                   </button>
                 </div>
-              </div>
+              )}
 
               {selectedSticker.cutout && (() => {
                 const cutoutToolButtonStyle = {
