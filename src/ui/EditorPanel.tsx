@@ -4,6 +4,8 @@ import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
 import { getDefaultTextPosition } from "./defaultTextPosition";
+import { CUTOUT_COPY } from "../photo/cutoutCopy";
+import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -126,6 +128,12 @@ export type EditorPanelProps = {
   }>) => void;
   onStickerDelete?: (stickerId: string) => void;
   onExport?: () => void;
+  cutoutSection?: {
+    images: Array<{ id: string; url: string }>;
+    errorMessage: string | null;
+    onCreate: (imageId: string) => void;
+    onPreload: () => void;
+  };
   forcedTab?: "text" | "sticker" | null;
   showActionRail?: boolean;
   showExportButton?: boolean;
@@ -141,6 +149,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   onStickerInsert,
   onStickerDelete,
   onExport,
+  cutoutSection,
   forcedTab,
   showActionRail = true,
   showExportButton = true,
@@ -198,6 +207,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
       setActiveTab(forcedTab);
     }
   }, [forcedTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'sticker' || !cutoutSection || !PHOTO_EDIT_FEATURES.cutout) return;
+    cutoutSection.onPreload();
+  }, [activeTab]);
 
   // 고정 미리보기 문구
   const fontPreviewText = '내 세상은 네가 있어 더 아름다워♥, 2025.09.13';
@@ -713,6 +727,46 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)', flex: 1, minHeight: 0 }}>
               {!selectedStickerCategory ? (
                 <>
+                  {cutoutSection && PHOTO_EDIT_FEATURES.cutout && (
+                    <div
+                      style={{
+                        border: 'var(--border-width) solid var(--linear-neutral-500)',
+                        padding: '12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                      }}
+                    >
+                      <h3>{CUTOUT_COPY.sectionTitle}</h3>
+                      <p style={{ fontSize: 'var(--linear-text-sm)' }}>{CUTOUT_COPY.sectionDescription}</p>
+                      <p style={{ fontSize: '11px', color: 'var(--linear-secondary-400)' }}>{CUTOUT_COPY.tip}</p>
+                      {cutoutSection.images.length === 0 ? (
+                        <p>{CUTOUT_COPY.noPhoto}</p>
+                      ) : (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {cutoutSection.images.map((image, index) => (
+                            <button
+                              key={image.id}
+                              type="button"
+                              className="linear-button linear-button--secondary"
+                              aria-label={`${index + 1}번째 사진으로 내 사진 스티커 만들기`}
+                              onClick={() => cutoutSection.onCreate(image.id)}
+                              style={{ width: 72, height: 72, padding: 0, overflow: 'hidden' }}
+                            >
+                              <img
+                                src={image.url}
+                                alt=""
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {cutoutSection.errorMessage && (
+                        <p className="linear-status--warning">{cutoutSection.errorMessage}</p>
+                      )}
+                    </div>
+                  )}
                   <h3>스티커 선택</h3>
                   <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>
                     클릭하여 스티커 목록을 확인하세요.

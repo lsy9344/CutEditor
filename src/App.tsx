@@ -62,6 +62,15 @@ import {
   shouldShowManualSaveHintImmediately,
 } from './utils/exportBehavior'
 import { exportStageToBlob } from './utils/stageExport'
+import { abandonPendingSegmenters, preloadSegmentation, segmentEveryone } from './photo/segmentation'
+import {
+  createCutoutWorkingCanvas,
+  loadImageElement,
+  renderCutoutSticker,
+  waitForPaint,
+} from './photo/cutoutRender'
+import { pruneCutoutCache, rememberCutoutConfidence, setCutoutWorkingCanvas } from './photo/cutoutCache'
+import { CUTOUT_COPY } from './photo/cutoutCopy'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -442,6 +451,10 @@ function App() {
   const currentDocumentRef = useRef(currentDocument);
   currentDocumentRef.current = currentDocument;
   const trackedObjectUrlsRef = useRef(new Set<string>());
+  const [cutoutBusyId, setCutoutBusyId] = useState<string | null>(null);
+  const [cutoutError, setCutoutError] = useState<{ targetId: string; message: string } | null>(null);
+  const cutoutRunRef = useRef(0); // 누끼 작업마다 1 올림. '취소'를 누르면 1 올려 그 작업의 결과를 버림
+  const cutoutLockRef = useRef<HTMLDivElement>(null);
   const flushHistory = useCallback(() => {
     // 호출 시점의 문서를 고정한다. 같은 배치의 후속 setState가 updater 실행 전에 반영되어
     // 기록 경계가 다음 변경까지 함께 닫히는 일을 막는다.
@@ -519,7 +532,11 @@ function App() {
       URL.revokeObjectURL(url);
       trackedObjectUrlsRef.current.delete(url);
     });
-  }, [history, currentDocument]);
+    if (!cutoutBusyId) {
+      // 잠긴 동안에는 정리하지 않음. 붙이기 직전에 등록한 새 스티커의 캐시를 아직 문서에 없다고 지우지 않기 위해서
+      pruneCutoutCache(new Set(liveDocuments.flatMap((liveDocument) => liveDocument.stickers.map((sticker) => sticker.id))));
+    }
+  }, [history, currentDocument, cutoutBusyId]);
 
   const applyEditorDocument = (nextDocument: EditorDocument) => {
     setEditorState((previous) => ({
@@ -1076,11 +1093,11 @@ function App() {
     [],
   );
 
-  const handleStickerInsert = async (src: string) => {
-    const { width, height } = await loadStickerDimensions(src, {
-      fallbackWidth: DEFAULT_STICKER_WIDTH,
-      fallbackHeight: DEFAULT_STICKER_HEIGHT,
-    });
+  const buildCenteredSticker = (
+    src: string,
+    dimensions: { width: number; height: number },
+  ): CanvasSticker => {
+    const { width, height } = dimensions;
     const initialScale = getInitialStickerScale({ width, height });
     const displayDimensions = getScaledStickerDimensions({
       width,
@@ -1099,7 +1116,7 @@ function App() {
       stickerHeight: displayDimensions.height,
     });
 
-    const newSticker: CanvasSticker = {
+    return {
       id: `sticker-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       src,
       x,
@@ -1113,6 +1130,14 @@ function App() {
       flipY: false,
       tintColor: null,
     };
+  }
+
+  const handleStickerInsert = async (src: string) => {
+    const dimensions = await loadStickerDimensions(src, {
+      fallbackWidth: DEFAULT_STICKER_WIDTH,
+      fallbackHeight: DEFAULT_STICKER_HEIGHT,
+    });
+    const newSticker = buildCenteredSticker(src, dimensions);
 
     if (shouldHoldStickerInsert()) {
       heldStickerRef.current.push(newSticker); // 완료 순서대로 보관했다가 포인터를 뗀 뒤 하나씩 붙임
@@ -1144,6 +1169,65 @@ function App() {
     setStickers((previous) => [...previous, nextHeldSticker]);
     selectInsertedSticker(nextHeldSticker.id);
   }, [flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers]);
+
+  const handleCutoutCancel = () => {
+    cutoutRunRef.current += 1; // 진행 중인 작업의 결과를 버림
+    abandonPendingSegmenters(); // 아직 준비 중인 모델 요청을 버림. 이미 준비된 모델은 그대로
+    setCutoutBusyId(null);
+  };
+
+  const handleCutoutCreate = async (imageId: string) => {
+    if (cutoutBusyId) return;
+    const image = editorState.userImages.find((userImage) => userImage.id === imageId);
+    if (!image) return;
+    cutoutRunRef.current += 1;
+    const runId = cutoutRunRef.current;
+    const isCancelled = () => cutoutRunRef.current !== runId;
+    let pendingUrl: string | null = null; // 붙이기 전까지 이 함수가 가진 PNG URL
+    setCutoutBusyId(imageId);
+    setCutoutError(null);
+    try {
+      await waitForPaint();
+      if (isCancelled()) return;
+      const source = await loadImageElement(image.url);
+      if (isCancelled()) return; // 원본 디코드를 기다리는 동안 취소
+      const workingCanvas = createCutoutWorkingCanvas(source, image.edits);
+      const confidence = await segmentEveryone(workingCanvas, isCancelled); // 모델을 기다린 뒤 segment() 바로 앞에서도 확인
+      if (!confidence || isCancelled()) return; // 취소됐으면 렌더를 시작하지 않음
+      const result = await renderCutoutSticker(workingCanvas, confidence, { outline: true, eraseStrokes: [] });
+      if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
+      if (isCancelled()) return;
+      if (result.kind === "not-found") {
+        setCutoutError({ targetId: imageId, message: CUTOUT_COPY.notFound });
+        return;
+      }
+      await loadImageElement(result.url); // 붙이기 전에 PNG를 디코드
+      if (isCancelled()) return;
+      // 여기부터 finally까지 await가 없습니다. 기록 경계·붙이기·캐시 등록·잠금 해제가 한 배치입니다.
+      const newSticker: CanvasSticker = {
+        ...buildCenteredSticker(result.url, { width: result.width, height: result.height }),
+        cutout: { sourceImageId: imageId, target: { kind: "everyone" }, outline: true, eraseStrokes: [], crop: result.crop, workingSize: result.workingSize },
+      };
+      if (shouldHoldStickerInsert()) {
+        heldStickerRef.current.push(newSticker); // 포인터를 누르고 있는 동안 끝난 결과는 기존 보류 목록에 넣어 순서대로 붙임
+        pendingUrl = null; // 보류한 스티커가 문서에 붙을 때 URL 해제 effect가 맡음
+        return;
+      }
+      // 붙이기 직전에 기록 경계를 닫음. 앞의 변경과 묶이지 않고 누끼만 한 단계가 됨
+      flushHistory();
+      setStickers((previous) => [...previous, newSticker]);
+      pendingUrl = null; // 문서로 넘김. 이제 'URL 해제' effect가 맡음
+      selectInsertedSticker(newSticker.id);
+      setCutoutWorkingCanvas(newSticker.id, workingCanvas);
+      rememberCutoutConfidence(newSticker.id, { kind: "everyone" }, confidence);
+      setMobilePanel(null); // 모바일 시트를 닫아 붙은 결과를 바로 보여 줌
+    } catch {
+      if (!isCancelled()) setCutoutError({ targetId: imageId, message: CUTOUT_COPY.loadFailed });
+    } finally {
+      if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 붙이지 못한 URL
+      if (!isCancelled()) setCutoutBusyId(null); // 취소했으면 이미 풀렸고, 그 뒤 시작한 새 작업의 잠금은 건드리지 않음
+    }
+  };
 
   const handleStickerUpdate = (stickerId: string, updates: Partial<CanvasSticker>) => {
     setStickers(prev =>
@@ -1553,6 +1637,13 @@ function App() {
   const selectedText = selectedTextId ? texts.find(t => t.id === selectedTextId) : undefined;
   const selectedSticker = selectedStickerId ? stickers.find(s => s.id === selectedStickerId) : undefined;
 
+  const cutoutCandidateImages = editorState.selectedFrame
+    ? FRAME_LAYOUTS[editorState.selectedFrame].slots
+        .map((slot) => editorState.userImages.find((image) => image.slotId === slot.id))
+        .filter((image): image is UserImage => Boolean(image))
+        .map((image) => ({ id: image.id, url: image.url }))
+    : [];
+
   const sharedEditorPanelProps = {
     selectedFrame: editorState.selectedFrame,
     selectedText,
@@ -1564,6 +1655,12 @@ function App() {
     onStickerUpdate: handleStickerUpdate,
     onStickerDelete: handleStickerDelete,
     onExport: handleExport,
+    cutoutSection: {
+      images: cutoutCandidateImages,
+      errorMessage: cutoutError && cutoutCandidateImages.some((image) => image.id === cutoutError.targetId) ? cutoutError.message : null,
+      onCreate: (imageId: string) => { void handleCutoutCreate(imageId); },
+      onPreload: () => { void preloadSegmentation().catch(() => undefined); },
+    },
   };
 
   const mainCanvasContent = canvasMode === 'gallery' ? (
@@ -1720,6 +1817,21 @@ function App() {
                   : '현재 세션 폴더에 저장 완료됐어요. 잠시 후 이 안내는 자동으로 닫혀요.'}
               </p>
             </div>
+          </div>
+        </div>
+      )}
+      {cutoutBusyId && (
+        <div
+          ref={cutoutLockRef}
+          aria-live="polite"
+          role="status"
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.32)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 10000 }}
+        >
+          <div className="linear-card" style={{ width: 'min(360px, 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center', boxShadow: 'var(--shadow-lg)' }}>
+            <p style={{ margin: 0 }}>{CUTOUT_COPY.creating}</p>
+            <button type="button" className="linear-button linear-button--secondary" onClick={handleCutoutCancel}>
+              {CUTOUT_COPY.cancel}
+            </button>
           </div>
         </div>
       )}

@@ -29,6 +29,7 @@ import {
 import { getZoomToFit } from "./zoomSizing";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 import type { PhotoEdits } from "../photo/photoEdits";
+import type { CutoutSource } from "../photo/cutoutTypes";
 import {
   applyPresetToEdits,
   isDefaultPhotoEdits,
@@ -114,6 +115,7 @@ export type CanvasStageProps = {
     flipX: boolean;
     flipY: boolean;
     tintColor: string | null;
+    cutout?: CutoutSource;
   }>;
   onSelect?: (id: string | null) => void;
   onSlotSelect?: (slotId: string | null) => void;
@@ -2738,22 +2740,26 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
               {/* 색상 틴트 */}
               <div>
-                <p style={{ fontSize: '11px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
+                {!selectedSticker.cutout && (
+                  <p style={{ fontSize: '11px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
+                )}
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  <input
-                    type="color"
-                    className="linear-input"
-                    value={selectedSticker.tintColor ?? '#000000'}
-                    onChange={(e) => onStickerUpdate?.(selectedSticker.id, { tintColor: e.target.value })}
-                    style={{
-                      width: '32px',
-                      height: '32px',
-                      padding: '2px',
-                      border: 'var(--border-width) solid var(--linear-neutral-500)',
-                      cursor: 'pointer',
-                    }}
-                    title="틴트 색상 선택"
-                  />
+                  {!selectedSticker.cutout && (
+                    <input
+                      type="color"
+                      className="linear-input"
+                      value={selectedSticker.tintColor ?? '#000000'}
+                      onChange={(e) => onStickerUpdate?.(selectedSticker.id, { tintColor: e.target.value })}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        padding: '2px',
+                        border: 'var(--border-width) solid var(--linear-neutral-500)',
+                        cursor: 'pointer',
+                      }}
+                      title="틴트 색상 선택"
+                    />
+                  )}
                   <button
                     type="button"
                     className="linear-button linear-button--secondary"
