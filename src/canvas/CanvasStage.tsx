@@ -60,7 +60,7 @@ import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
 import { getDecorImagesState, isFrameColorApplied } from "../state/decorImagesState";
 import type { DecorImagesState, FrameColorResult, FrameLoad } from "../state/decorImagesState";
-import { getSlotButtonLabel, getSlotLabel } from "../state/editorLabels";
+import { getSlotButtonLabel, getSlotLabel, getSwatchName } from "../state/editorLabels";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -291,6 +291,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   // 커스텀 컬러 팔레트 관련
   const [showCustomPalette, setShowCustomPalette] = useState(false);
+  const [isFrameColorOpen, setIsFrameColorOpen] = useState(false); // 프레임 색은 기본으로 접어 둡니다
   const paletteCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const customPickButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -635,7 +636,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const renderBrushControls = (guideText: string) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <p style={{ margin: 0, fontSize: "11px", color: "var(--linear-secondary-300)" }}>{guideText}</p>
+      <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-secondary-300)" }}>{guideText}</p>
       <div style={{ display: "flex", gap: "6px" }}>
         {BRUSH_SIZE_OPTIONS.map((option) => (
           <button
@@ -647,7 +648,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               flex: 1,
               height: "32px",
               padding: "0 8px",
-              fontSize: "11px",
+              fontSize: "14px",
               border: "var(--border-width) solid var(--linear-neutral-500)",
             }}
           >
@@ -661,7 +662,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         onClick={() => photoEdit.onToolModeChange("none")}
         style={{
           height: "32px",
-          fontSize: "12px",
+          fontSize: "14px",
           border: "var(--border-width) solid var(--linear-neutral-500)",
         }}
       >
@@ -2560,7 +2561,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               className="linear-button linear-button--secondary"
               onClick={historyControls.onUndo}
               disabled={!historyControls.canUndo}
-              style={{ flex: 1, height: '32px', fontSize: '12px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canUndo ? 1 : 0.5 }}
+              style={{ flex: 1, minHeight: '44px', minWidth: '44px', fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canUndo ? 1 : 0.5 }}
               title="마지막 변경을 되돌립니다 (Ctrl+Z)"
             >
               되돌리기
@@ -2570,7 +2571,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               className="linear-button linear-button--secondary"
               onClick={historyControls.onRedo}
               disabled={!historyControls.canRedo}
-              style={{ flex: 1, height: '32px', fontSize: '12px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canRedo ? 1 : 0.5 }}
+              style={{ flex: 1, minHeight: '44px', minWidth: '44px', fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canRedo ? 1 : 0.5 }}
               title="되돌린 변경을 다시 합니다 (Ctrl+Shift+Z)"
             >
               다시 하기
@@ -2600,8 +2601,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 onContextMenu={(event) => event.preventDefault()}
                 style={{
                   flex: 1.4,
-                  height: '32px',
-                  fontSize: '11px',
+                  minHeight: '44px',
+                  minWidth: '44px',
+                  fontSize: '14px',
                   border: 'var(--border-width) solid var(--linear-neutral-500)',
                   opacity: hasEditedPhotos ? 1 : 0.5,
                   touchAction: 'none',
@@ -2638,34 +2640,45 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           </div>
           {selectedFrame !== "1l" && (
             <div>
-              <div ref={paletteAnchorRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <label style={{ color: 'var(--linear-neutral-50)', fontSize: '14px' }}>프레임 색상</label>
-                <button
-                  ref={customPickButtonRef}
-                  type="button"
-                  className="linear-button linear-button--secondary"
-                  style={{ height: 24, padding: '0 8px', fontSize: 12 }}
-                  onClick={() => setShowCustomPalette((v) => !v)}
-                  aria-expanded={showCustomPalette}
-                  aria-haspopup="dialog"
-                >
-                  직접 선택
-                </button>
+              <div ref={paletteAnchorRef} style={{ marginBottom: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    aria-expanded={isFrameColorOpen}
+                    onClick={() => {
+                      setIsFrameColorOpen((open) => !open);
+                      setShowCustomPalette(false);
+                    }}
+                    style={{ minHeight: '44px', fontSize: '14px' }}
+                  >
+                    프레임 색 바꾸기
+                  </button>
+                  {isFrameColorOpen && (
+                    <button
+                      ref={customPickButtonRef}
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      style={{ height: 32, padding: '0 8px', fontSize: 14 }}
+                      onClick={() => setShowCustomPalette((v) => !v)}
+                      aria-expanded={showCustomPalette}
+                    >
+                      직접 선택
+                    </button>
+                  )}
+                </div>
                 {showCustomPalette && (
                   <div
                     className="linear-card"
                     style={{
-                      position: 'absolute',
-                      right: 0,
-                      top: 'calc(100% + 6px)',
+                      marginTop: 6,
                       padding: 8,
                       border: 'var(--border-width) solid var(--linear-neutral-500)',
                       borderRadius: '0',
                       background: 'var(--linear-neutral-600)',
-                      zIndex: 20,
                       boxShadow: 'var(--shadow-lg)'
                     }}
-                    role="dialog"
+                    role="group"
                     aria-label="원형 색상 팔레트"
                   >
                     <div style={{ position: 'relative' }}>
@@ -2705,31 +2718,34 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 )}
               </div>
               {/* 쉬운 팔레트: 외부 설정 기반 스와치 */}
-              <div style={{ display: 'flex', flexWrap: 'nowrap', gap: 4 }}>
-                {presetColors.map((color) => {
-                  const isSelected = color.toLowerCase() === frameColor.toLowerCase();
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      aria-label={`색상 ${color}`}
-                      className="linear-button linear-button--secondary"
-                      onClick={() => onFrameColorChange?.(color)}
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: '0',
-                        padding: 0,
-                        backgroundColor: color,
-                        border: isSelected ? 'var(--border-width) solid var(--linear-primary-500)' : 'var(--border-width) solid var(--linear-neutral-500)',
-                        boxShadow: 'var(--shadow-sm)',
-                        flexShrink: 0,
-                      }}
-                      title={color}
-                    />
-                  );
-                })}
-              </div>
+              {isFrameColorOpen && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {presetColors.map((color) => {
+                    const isSelected = color.toLowerCase() === frameColor.toLowerCase();
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={getSwatchName(color)}
+                        className="linear-button linear-button--secondary"
+                        onClick={() => onFrameColorChange?.(color)}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          minHeight: 32,
+                          borderRadius: '0',
+                          padding: 0,
+                          backgroundColor: color,
+                          border: isSelected ? 'var(--border-width) solid var(--linear-primary-500)' : 'var(--border-width) solid var(--linear-neutral-500)',
+                          boxShadow: 'var(--shadow-sm)',
+                          flexShrink: 0,
+                        }}
+                        title={getSwatchName(color)}
+                      />
+                    );
+                  })}
+                </div>
+              )}
               {/* 기본 컬러 인풋 제거: 커스텀 원형 팔레트 사용 */}
             </div>
           )}
@@ -2816,7 +2832,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       onClick={() => photoEdit.onToolModeChange("erase-photo")}
                       style={{
                         height: '32px',
-                        fontSize: '12px',
+                        fontSize: '14px',
                         border: 'var(--border-width) solid var(--linear-neutral-500)'
                       }}
                     >
@@ -2835,9 +2851,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         className={`linear-button ${selectedImage.edits.presetId === preset.id ? 'linear-button--primary' : 'linear-button--secondary'}`}
                         onClick={() => photoEdit.onEditsChange(selectedImage.id, applyPresetToEdits(selectedImage.edits, preset.id))}
                         style={{
-                          height: '32px',
+                          minHeight: '44px',
+                          minWidth: '44px',
                           padding: '0 8px',
-                          fontSize: '11px',
+                          fontSize: '14px',
                           border: 'var(--border-width) solid var(--linear-neutral-500)'
                         }}
                       >
@@ -2853,7 +2870,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       onClick={() => photoEdit.onApplyAdjustToAll(selectedImage.id)}
                       style={{
                         height: '32px',
-                        fontSize: '12px',
+                        fontSize: '14px',
                         border: 'var(--border-width) solid var(--linear-neutral-500)'
                       }}
                     >
@@ -2865,9 +2882,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     type="button"
                     className="linear-button linear-button--secondary"
                     onClick={() => setIsAdjustDetailOpen(!isAdjustDetailOpen)}
+                    aria-expanded={isAdjustDetailOpen}
                     style={{
                       height: '32px',
-                      fontSize: '12px',
+                      fontSize: '14px',
                       border: 'var(--border-width) solid var(--linear-neutral-500)'
                     }}
                   >
@@ -2878,7 +2896,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     const adjustValue = selectedImage.edits.adjust[field.key];
                     return (
                       <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <p style={{ fontSize: '11px', width: '64px', margin: 0, color: 'var(--linear-secondary-300)' }}>{field.label}</p>
+                        <p style={{ fontSize: '14px', width: '64px', margin: 0, color: 'var(--linear-secondary-300)' }}>{field.label}</p>
                         <button
                           type="button"
                           className="linear-button linear-button--secondary"
@@ -2888,13 +2906,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           style={{
                             width: '32px',
                             height: '28px',
-                            fontSize: '12px',
+                            fontSize: '14px',
                             border: 'var(--border-width) solid var(--linear-neutral-500)'
                           }}
                         >
                           −
                         </button>
-                        <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '11px', color: 'var(--linear-neutral-50)' }}>{adjustValue}</span>
+                        <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{adjustValue}</span>
                         <button
                           type="button"
                           className="linear-button linear-button--secondary"
@@ -2904,7 +2922,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           style={{
                             width: '32px',
                             height: '28px',
-                            fontSize: '12px',
+                            fontSize: '14px',
                             border: 'var(--border-width) solid var(--linear-neutral-500)'
                           }}
                         >
@@ -2946,7 +2964,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     gap: '4px',
                     minWidth: 0,
                     padding: '0 6px',
-                    fontSize: '11px',
+                    fontSize: '14px',
                     border: 'var(--border-width) solid var(--linear-neutral-500)',
                   }}
                   title="좌우 반전"
@@ -2971,7 +2989,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     gap: '4px',
                     minWidth: 0,
                     padding: '0 6px',
-                    fontSize: '11px',
+                    fontSize: '14px',
                     border: 'var(--border-width) solid var(--linear-neutral-500)',
                   }}
                   title="상하 반전"
@@ -2988,7 +3006,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               {/* 색상 틴트 */}
               <div>
                 {!selectedSticker.cutout && (
-                  <p style={{ fontSize: '11px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
+                  <p style={{ fontSize: '14px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
                 )}
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   {!selectedSticker.cutout && (
@@ -3015,7 +3033,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     style={{
                       flex: 1,
                       height: '32px',
-                      fontSize: '11px',
+                      fontSize: '14px',
                       border: 'var(--border-width) solid var(--linear-neutral-500)',
                       opacity: canResetStickerEdit ? 1 : 0.5,
                     }}
@@ -3029,7 +3047,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               {selectedSticker.cutout && (() => {
                 const cutoutToolButtonStyle = {
                   height: '32px',
-                  fontSize: '11px',
+                  fontSize: '14px',
                   border: 'var(--border-width) solid var(--linear-neutral-500)',
                   opacity: isCutoutCacheMissing ? 0.5 : 1,
                 };
@@ -3038,7 +3056,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {isCutoutCacheMissing && (
-                      <p style={{ margin: 0, fontSize: '11px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.cacheMissing}</p>
+                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.cacheMissing}</p>
                     )}
                     {selectedSticker.cutout.target.kind === "everyone" ? (
                       <button
@@ -3066,7 +3084,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     )}
                     {photoEdit.toolMode === "pick-point" && (
                       <>
-                        <p style={{ margin: 0, fontSize: '11px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.pickGuide}</p>
+                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.pickGuide}</p>
                         <button
                           type="button"
                           className="linear-button linear-button--secondary"
@@ -3108,7 +3126,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       {CUTOUT_COPY.restart}
                     </button>
                     {cutoutEdit.errorMessage && (
-                      <p className="linear-status--warning" style={{ margin: 0, fontSize: '11px' }}>{cutoutEdit.errorMessage}</p>
+                      <p className="linear-status--warning" style={{ margin: 0, fontSize: '14px' }}>{cutoutEdit.errorMessage}</p>
                     )}
                   </div>
                 );
