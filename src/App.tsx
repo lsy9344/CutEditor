@@ -798,10 +798,8 @@ function App() {
   }
 
   const handleImageUpload = useCallback((file: File, slotId: string) => {
-    console.log('🔥 App.handleImageUpload called with:', file.name, slotId);
     const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const url = URL.createObjectURL(file);
-    console.log('🔥 Created image URL:', url);
 
     const newImage: UserImage = {
       id: imageId,
@@ -816,12 +814,9 @@ function App() {
       edits: createDefaultPhotoEdits()
     };
 
-    console.log('🔥 Created newImage:', newImage);
-
     setEditorState(prev => {
       const filteredImages = prev.userImages.filter(img => img.slotId !== slotId);
       const newUserImages = [...filteredImages, newImage];
-      console.log('🔥 Updating userImages from', prev.userImages.length, 'to', newUserImages.length);
       return {
         ...prev,
         userImages: newUserImages,
@@ -964,7 +959,6 @@ function App() {
   }, [cutoutBusyId]);
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
-    console.log('[App] onImageTransform', { imageId, transform });
     setEditorState(prev => ({
       ...prev,
       userImages: prev.userImages.map(img =>

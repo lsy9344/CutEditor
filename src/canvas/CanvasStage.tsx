@@ -1084,8 +1084,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   // 슬롯 클릭 핸들러 (선택 상태 변경 및 파일 선택)
   const handleSlotClick = (slotId: string) => {
-    console.log('🔥 handleSlotClick called with slotId:', slotId);
-
     // 슬롯 선택 상태 업데이트
     onSelect?.(null);
     onSlotSelect?.(slotId);
@@ -1093,7 +1091,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     setDraggedSlotId(slotId);
     currentSlotIdRef.current = slotId; // ref에도 저장
-    console.log('🔥 currentSlotIdRef.current set to:', currentSlotIdRef.current);
 
     if (onRequestImageImport?.(slotId)) {
       return;
@@ -1101,24 +1098,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     // 모바일/Safari에서도 사용자 제스처 내에서 동작하도록 즉시 트리거
     fileInputRef.current?.click();
-    console.log('🔥 fileInputRef.current.click() executed');
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('🔥 handleFileSelect called');
     const file = e.target.files?.[0];
-    console.log('🔥 selected file:', file);
-    console.log('🔥 draggedSlotId:', draggedSlotId);
-    console.log('🔥 currentSlotIdRef.current:', currentSlotIdRef.current);
-    console.log('🔥 onImageUpload function:', onImageUpload);
 
     const slotId = currentSlotIdRef.current; // ref에서 가져오기
 
     if (file && slotId && onImageUpload) {
-      console.log('🔥 calling onImageUpload with:', file.name, slotId);
       onImageUpload(file, slotId);
-    } else {
-      console.log('🔥 onImageUpload not called. file:', !!file, 'slotId:', !!slotId, 'onImageUpload:', !!onImageUpload);
     }
 
     setDraggedSlotId(null);
@@ -1289,7 +1277,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     displayWidth?: number,
     displayHeight?: number
   ) => {
-    console.log('[wheel] start', { imageId, hasSlot: !!slot, deltaY: e.evt?.deltaY, hasTransformCb: typeof onImageTransform === 'function' });
     // 상위로 버블링되거나 페이지 스크롤 되지 않도록 차단
     e.evt.preventDefault();
     // Konva 이벤트 버블 차단
@@ -1301,13 +1288,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     // 휠 시 선택 동기화 (원본 PySide 동작 참고)
     onSelect?.(userImage.id);
     onSlotSelect?.(userImage.slotId);
-    console.log('[wheel] selecting', { imageId: userImage.id, slotId: userImage.slotId });
 
     const scaleBy = 1.1;
     // 실제 노드 스케일을 우선 사용(상태-뷰 불일치 방지)
     let oldScale = Number.isFinite(userImage.scaleX) ? userImage.scaleX : 1;
     const deltaY = e.evt.deltaY;
-    console.log('[wheel] scales', { oldScale, deltaY });
 
     // deltaY NaN 체크
     if (isNaN(deltaY)) return;
@@ -1316,7 +1301,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     // 스케일 제한 상한 제거 (하한만 유지하여 0 이하 방지)
     const clampedScale = Math.max(0.1, newScale);
-    console.log('[wheel] newScale', { newScale, clampedScale });
 
     // 최종 NaN 체크
     if (isNaN(clampedScale)) return;
@@ -1402,13 +1386,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const relY = newImgY - slot.y - (slot.height - displayHeight) / 2;
       if (!isNaN(relX)) nextTransform.x = relX;
       if (!isNaN(relY)) nextTransform.y = relY;
-      console.log('[wheel] nextTransform', nextTransform);
     }
 
-    console.log('[wheel] dispatch transform', nextTransform);
     // 내부 핸들러 통해 상태 업데이트(유효 필드만 반영)
     handleImageTransform(imageId, nextTransform);
-    console.log('[wheel] applied');
   };
 
   // ===== 모바일 핀치 줌 지원 =====
@@ -2131,21 +2112,17 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         listening={!hasImage} // 이미지가 있을 때는 클릭 이벤트 비활성화
                         onMouseEnter={() => {
                           if (!hasImage) {
-                            console.log('🔥 Slot mouse enter:', slot.id);
                             setDraggedSlotId(slot.id);
                             currentSlotIdRef.current = slot.id;
                           }
                         }}
                         onMouseLeave={() => {
                           if (!hasImage) {
-                            console.log('🔥 Slot mouse leave:', slot.id);
                             setDraggedSlotId(null);
                           }
                         }}
-                        onClick={(e) => {
+                        onClick={() => {
                           if (!hasImage) {
-                            console.log('🔥 Slot clicked!!! slot.id:', slot.id);
-                            console.log('🔥 Click event:', e);
                             handleSlotClick(slot.id);
                           }
                         }}
