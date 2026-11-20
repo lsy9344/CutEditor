@@ -73,3 +73,62 @@ export const makeSaveFilename = (date: Date): string => {
 // DOMException이 없는 환경에서도 돌도록 이름만 봅니다.
 export const isPickerAbort = (error: unknown): boolean =>
   typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
+
+export const runSaveFlow = async <THandle>(
+  { route: requestedRoute, filename: requestedFilename, retry }: SaveFlowInput<THandle>,
+  deps: SaveFlowDeps<THandle>,
+): Promise<SaveFlowResult<THandle>> => {
+  // 다시 저장하기는 지금 배치와 상관없이 처음 저장의 경로·이름·핸들을 씁니다.
+  let route = retry?.route ?? requestedRoute;
+  const filename = retry?.filename ?? requestedFilename;
+  let fileHandle: THandle | null = retry?.fileHandle ?? null;
+  let downloadLocation: SaveLocation = "downloads";
+  if (route === "picker-first" && fileHandle === null) {
+    // 클릭으로 얻은 사용자 활성화가 살아 있을 때 열어야 하므로 이 호출이 첫 await입니다.
+    try {
+      fileHandle = await deps.pickFile(filename);
+    } catch (error) {
+      if (isPickerAbort(error)) return { kind: "cancelled" };
+      deps.warn("저장 위치 창을 열지 못했어요", error);
+      route = "download"; // 다시 저장해도 창을 다시 열지 않습니다
+      downloadLocation = "downloads-after-picker-error";
+    }
+  }
+  deps.showProgress();
+  let blob: Blob;
+  try {
+    blob = await deps.render();
+  } catch (error) {
+    return { kind: "failed", error, retry: { route, filename, fileHandle } };
+  }
+  if (route === "boothy") {
+    let savedToBoothy: boolean;
+    try {
+      savedToBoothy = await deps.saveToBoothy(blob);
+    } catch (error) {
+      return { kind: "failed", error, retry: { route, filename, fileHandle: null } };
+    }
+    if (savedToBoothy) return { kind: "done", location: "boothy" };
+    deps.download(blob, filename);
+    return { kind: "done", location: "downloads" };
+  }
+  if (fileHandle !== null) {
+    // 핸들이 있으면 공유 화면으로 새지 않고 그 파일에만 씁니다. 열기·쓰기·닫기 어느 것이 실패해도 다운로드합니다.
+    try {
+      const writable = await deps.openWritable(fileHandle);
+      await writable.write(blob);
+      await writable.close();
+      return { kind: "done", location: "picked" };
+    } catch (error) {
+      deps.warn("고른 곳에 저장하지 못했어요", error);
+      deps.download(blob, filename);
+      return { kind: "done", location: "downloads-after-write-error" };
+    }
+  }
+  if (route === "share-sheet") {
+    deps.openShareSheet(blob, filename);
+    return { kind: "share-sheet" };
+  }
+  deps.download(blob, filename);
+  return { kind: "done", location: downloadLocation };
+};
