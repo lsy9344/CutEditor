@@ -31,3 +31,49 @@ test("App은 안내 모듈과 모달 포커스 모듈, 상태 줄 자리를 실�
     assert.ok(appSource.includes(code), `App에서 찾지 못했습니다: ${code}`);
   }
 });
+
+const getFunctionBody = (startMarker: string, endMarker: string): string => {
+  const start = appSource.indexOf(startMarker);
+  const end = appSource.indexOf(endMarker, start);
+  assert.ok(start >= 0 && end > start, `App에서 구간을 찾지 못했습니다: ${startMarker}`);
+  return appSource.slice(start, end);
+};
+
+test("프레임 바꾸기 확인창은 대상 프레임만 저장하고 빠질 사진 장수는 그릴 때 현재 사진 목록으로 센다", () => {
+  const confirmBranch = getFunctionBody("if (decision.kind === 'confirm')", "applyFrameChange(decision.frameType);");
+  assert.ok(!confirmBranch.includes("droppedPhotoCount"), "확인창 상태에 장수를 저장하고 있습니다");
+  assert.ok(!confirmBranch.includes("splitPhotosByFrame("), "확인창을 열 때 장수를 계산하고 있습니다");
+
+  const noticeView = getFunctionBody("const droppedPhotoCount = ", "const isNoticeOpen");
+  assert.ok(noticeView.includes("splitPhotosByFrame("), "안내 문구가 같은 계산을 쓰지 않습니다");
+  assert.ok(noticeView.includes("editorState.userImages"), "안내 문구가 현재 사진 목록으로 세지 않습니다");
+  assert.ok(noticeView.includes("getNoticeView(notice, "), "안내 문구에 계산한 장수를 넘기지 않습니다");
+});
+
+test("프레임을 적용할 때도 안내 문구와 같은 계산으로 남는 사진을 가린다", () => {
+  const applyBody = getFunctionBody("const applyFrameChange = ", "const handleFrameSelect");
+  assert.ok(applyBody.includes("splitPhotosByFrame("), "적용 함수가 같은 계산을 쓰지 않습니다");
+  assert.ok(!applyBody.includes("validSlotIds"), "적용 함수에 옛 거르기 코드가 남아 있습니다");
+});
+
+test("확인창을 닫고 시트가 남으면 시트 안으로 포커스를 돌려준다", () => {
+  assert.ok(appSource.includes("getFocusReturnCandidates("), "App이 후보 순서 계산을 쓰지 않습니다");
+  const returnEffect = getFunctionBody("// 닫힌 뒤 포커스 돌려주기", "const applyEditorDocument");
+  assert.ok(returnEffect.includes('[data-focus-return="sheet-close"]'), "열린 시트의 닫기 버튼을 후보로 두지 않았습니다");
+  assert.ok(
+    /data-focus-return="sheet-close"[\s\S]{0,200}닫기\s*<\/button>/.test(appSource),
+    "휴대폰 시트의 닫기 버튼에 표시가 없습니다",
+  );
+});
+
+test("가져오기를 시작할 때 지난 상태 줄을 지우되 요청을 보내지 않는 조기 반환에서는 지우지 않는다", () => {
+  const importRequest = getFunctionBody("const handleBoothyImportRequest = useCallback(", "}, [boothyLaunchContext, isBoothyImportBridgeAvailable");
+  const clearIndex = importRequest.indexOf("setInlineStatus(null)");
+  const lastEarlyReturnIndex = importRequest.indexOf("if (!targetWindow)");
+  const firstPostIndex = importRequest.indexOf("postMessage(");
+
+  assert.ok(clearIndex >= 0, "상태 줄을 지우는 줄이 없습니다");
+  assert.ok(importRequest.indexOf("return false;", lastEarlyReturnIndex) < clearIndex, "조기 반환 앞에서 상태 줄을 지웁니다");
+  assert.ok(clearIndex < firstPostIndex, "요청을 보낸 뒤에 상태 줄을 지웁니다");
+  assert.equal(importRequest.split("setInlineStatus(null)").length - 1, 1, "상태 줄 지우기가 여러 곳입니다");
+});

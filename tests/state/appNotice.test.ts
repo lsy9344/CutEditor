@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   SAVE_DONE_NEXT_STEP,
-  countDroppedPhotos,
   getInlineStatusView,
   getNoticeView,
+  splitPhotosByFrame,
 } from "../../src/state/appNotice.ts";
 import type { AppNotice, InlineStatus, SaveLocation } from "../../src/state/appNotice.ts";
 import { PHOTO_FAILED_SAVE_MESSAGE, PHOTO_LOADING_SAVE_MESSAGE } from "../../src/state/photoLoadState.ts";
@@ -14,8 +14,8 @@ import { CUTOUT_COPY } from "../../src/photo/cutoutCopy.ts";
 const SAVE_LOCATIONS: SaveLocation[] = ["picked", "downloads", "downloads-after-picker-error", "downloads-after-write-error", "boothy"];
 
 const RULE_NOTICES: AppNotice[] = [
-  { kind: "frame-change", frameType: "4v_1", droppedPhotoCount: 0 },
-  { kind: "frame-change", frameType: "2h", droppedPhotoCount: 2 },
+  { kind: "frame-change", frameType: "4v_1" },
+  { kind: "frame-change", frameType: "2h" },
   { kind: "empty-slots", emptySlotCount: 3 },
   { kind: "save-progress" },
   ...SAVE_LOCATIONS.map((location): AppNotice => ({ kind: "save-done", location, missingStickerCount: 1 })),
@@ -35,7 +35,7 @@ const RULE_STATUSES: InlineStatus[] = [
 const FORBIDDEN_WORDS = ["실패", "오류", "세션", "내보내기"];
 
 test("프레임 바꾸기 확인은 빠지는 사진이 없으면 그대로 있다는 문장을 보인다", () => {
-  const view = getNoticeView({ kind: "frame-change", frameType: "4v_1", droppedPhotoCount: 0 });
+  const view = getNoticeView({ kind: "frame-change", frameType: "4v_1" }, 0);
 
   assert.equal(view.title, "프레임을 바꿀까요?");
   assert.deepEqual(view.lines, [
@@ -46,7 +46,7 @@ test("프레임 바꾸기 확인은 빠지는 사진이 없으면 그대로 있�
 });
 
 test("프레임 바꾸기 확인은 빠지는 사진 수를 문장에 넣는다", () => {
-  const view = getNoticeView({ kind: "frame-change", frameType: "2h", droppedPhotoCount: 2 });
+  const view = getNoticeView({ kind: "frame-change", frameType: "2h" }, 2);
 
   assert.deepEqual(view.lines, [
     "새 프레임에 없는 칸의 사진 2장은 빠져요.",
@@ -56,7 +56,7 @@ test("프레임 바꾸기 확인은 빠지는 사진 수를 문장에 넣는다"
 });
 
 test("프레임 바꾸기 확인은 버튼 둘이고 그대로 두기로 닫힌다", () => {
-  const view = getNoticeView({ kind: "frame-change", frameType: "4v_1", droppedPhotoCount: 0 });
+  const view = getNoticeView({ kind: "frame-change", frameType: "4v_1" }, 0);
 
   assert.deepEqual(view.actions, [
     { id: "keep-frame", label: "그대로 두기", isPrimary: false },
@@ -188,20 +188,22 @@ test("가져오기 실패는 호스트 문구 없이 늘 같은 일반 문장 �
 
 test("모든 안내는 주 버튼 0~1개, 닫기 규칙, 금지 낱말 없음을 지킨다", () => {
   for (const notice of RULE_NOTICES) {
-    const view = getNoticeView(notice);
-    const label = JSON.stringify(notice);
+    for (const droppedPhotoCount of [0, 2]) {
+      const view = getNoticeView(notice, droppedPhotoCount);
+      const label = JSON.stringify({ notice, droppedPhotoCount });
 
-    assert.ok(view.actions.filter((action) => action.isPrimary).length <= 1, `${label}: 주 버튼`);
-    if (view.closeActionId !== null) {
-      assert.ok(view.actions.some((action) => action.id === view.closeActionId), `${label}: closeActionId`);
-    }
-    assert.equal(view.isBusy, notice.kind === "save-progress", `${label}: isBusy`);
-    for (const action of view.actions) {
-      assert.ok(!action.label.includes("확인") && !action.label.includes("취소"), `${label}: 버튼 이름 ${action.label}`);
-    }
-    for (const text of [view.title, ...view.lines, ...view.actions.map((action) => action.label)]) {
-      for (const word of FORBIDDEN_WORDS) {
-        assert.ok(!text.includes(word), `${label}: '${text}'에 '${word}'`);
+      assert.ok(view.actions.filter((action) => action.isPrimary).length <= 1, `${label}: 주 버튼`);
+      if (view.closeActionId !== null) {
+        assert.ok(view.actions.some((action) => action.id === view.closeActionId), `${label}: closeActionId`);
+      }
+      assert.equal(view.isBusy, notice.kind === "save-progress", `${label}: isBusy`);
+      for (const action of view.actions) {
+        assert.ok(!action.label.includes("확인") && !action.label.includes("취소"), `${label}: 버튼 이름 ${action.label}`);
+      }
+      for (const text of [view.title, ...view.lines, ...view.actions.map((action) => action.label)]) {
+        for (const word of FORBIDDEN_WORDS) {
+          assert.ok(!text.includes(word), `${label}: '${text}'에 '${word}'`);
+        }
       }
     }
   }
@@ -217,16 +219,35 @@ test("모든 안내는 주 버튼 0~1개, 닫기 규칙, 금지 낱말 없음을
   }
 });
 
-test("빠지는 사진 수는 새 프레임에 없는 칸의 사진만 센다", () => {
+const photoAt = (slotId: string) => ({ slotId });
+
+test("빠지는 사진은 새 프레임에 없는 칸의 사진만 센다", () => {
+  const fourSlotPhotos = ["slot-1", "slot-2", "slot-3", "slot-4"].map(photoAt);
+
+  assert.equal(splitPhotosByFrame({ photos: fourSlotPhotos, nextSlotIds: ["slot-1", "slot-2"] }).dropped.length, 2);
   assert.equal(
-    countDroppedPhotos({ photoSlotIds: ["slot-1", "slot-2", "slot-3", "slot-4"], nextSlotIds: ["slot-1", "slot-2"] }),
-    2,
-  );
-  assert.equal(
-    countDroppedPhotos({ photoSlotIds: ["slot-1", "slot-2"], nextSlotIds: ["slot-1", "slot-2", "slot-3"] }),
+    splitPhotosByFrame({ photos: ["slot-1", "slot-2"].map(photoAt), nextSlotIds: ["slot-1", "slot-2", "slot-3"] }).dropped.length,
     0,
   );
-  assert.equal(countDroppedPhotos({ photoSlotIds: [], nextSlotIds: ["slot-1", "slot-2"] }), 0);
+  assert.equal(splitPhotosByFrame({ photos: [], nextSlotIds: ["slot-1", "slot-2"] }).dropped.length, 0);
+});
+
+test("남는 사진은 새 프레임의 칸에 있는 사진이고 빠지는 사진과 겹치지 않는다", () => {
+  const photos = ["slot-1", "slot-2", "slot-3"].map(photoAt);
+  const { kept, dropped } = splitPhotosByFrame({ photos, nextSlotIds: ["slot-1", "slot-3"] });
+
+  assert.deepEqual(kept, [photos[0], photos[2]]);
+  assert.deepEqual(dropped, [photos[1]]);
+});
+
+// 확인창에는 대상 프레임만 저장하고, 안내 문구는 그릴 때마다 지금 사진 목록으로 다시 셉니다(UX1-2).
+test("확인창을 연 뒤 사진이 늘어나면 같은 계산이 늘어난 장수를 돌려준다", () => {
+  const twoSlotFrame = ["slot-1", "slot-2"];
+  const photosWhenOpened = ["slot-1"].map(photoAt);
+  const photosAfterLateImport = ["slot-1", "slot-3"].map(photoAt);
+
+  assert.equal(splitPhotosByFrame({ photos: photosWhenOpened, nextSlotIds: twoSlotFrame }).dropped.length, 0);
+  assert.equal(splitPhotosByFrame({ photos: photosAfterLateImport, nextSlotIds: twoSlotFrame }).dropped.length, 1);
 });
 
 test("사진을 기다리는 중 저장하지 못했어요 안내는 첫 줄만 더하고 나머지는 같다", () => {

@@ -12,7 +12,8 @@ export type SaveLocation =
   | "downloads-after-write-error"
   | "boothy";
 export type AppNotice =
-  | { kind: "frame-change"; frameType: FrameType; droppedPhotoCount: number }
+  // 빠질 사진 장수는 상태에 두지 않고 그릴 때마다 지금 사진 목록으로 셉니다(UX1-2).
+  | { kind: "frame-change"; frameType: FrameType }
   | { kind: "empty-slots"; emptySlotCount: number }
   | { kind: "save-progress" }
   | { kind: "save-done"; location: SaveLocation; missingStickerCount: number }
@@ -49,11 +50,11 @@ const FRAME_CHANGE_LAST_LINE = "바꾸고 나면 되돌리기로 지금 프레�
 const CALL_STAFF_LINE = "계속 안 되면 직원을 불러 주세요.";
 const PHOTO_WAITING_RETRY_LINE = "사진을 불러오는 중이에요. 잠시 뒤 다시 눌러 주세요.";
 
-export const getNoticeView = (notice: AppNotice): NoticeView => {
+export const getNoticeView = (notice: AppNotice, droppedPhotoCount = 0): NoticeView => {
   switch (notice.kind) {
     case "frame-change": {
-      const photoLines = notice.droppedPhotoCount > 0
-        ? [`새 프레임에 없는 칸의 사진 ${notice.droppedPhotoCount}장은 빠져요.`, "나머지 사진과 글씨, 스티커는 그대로 있어요."]
+      const photoLines = droppedPhotoCount > 0
+        ? [`새 프레임에 없는 칸의 사진 ${droppedPhotoCount}장은 빠져요.`, "나머지 사진과 글씨, 스티커는 그대로 있어요."]
         : ["사진과 글씨, 스티커는 그대로 있어요."];
       return {
         title: "프레임을 바꿀까요?",
@@ -128,7 +129,11 @@ export const getInlineStatusView = (status: InlineStatus): InlineStatusView => {
   }
 };
 
-export const countDroppedPhotos = ({ photoSlotIds, nextSlotIds }: { photoSlotIds: string[]; nextSlotIds: string[] }): number => {
+// 새 프레임의 칸에 남는 사진과 빠지는 사진을 나눕니다. 안내의 장수와 적용 결과가 같은 계산을 씁니다(UX1-2).
+export const splitPhotosByFrame = <Photo extends { slotId: string }>({ photos, nextSlotIds }: { photos: Photo[]; nextSlotIds: string[] }): { kept: Photo[]; dropped: Photo[] } => {
   const nextSlotIdSet = new Set(nextSlotIds);
-  return photoSlotIds.filter((slotId) => !nextSlotIdSet.has(slotId)).length;
+  return {
+    kept: photos.filter((photo) => nextSlotIdSet.has(photo.slotId)),
+    dropped: photos.filter((photo) => !nextSlotIdSet.has(photo.slotId)),
+  };
 };

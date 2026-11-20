@@ -80,9 +80,9 @@ import {
 import { keepStickerCenter } from './photo/cutoutGeometry'
 import { CUTOUT_COPY } from './photo/cutoutCopy'
 import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
-import { countDroppedPhotos, getInlineStatusView, getNoticeView } from './state/appNotice'
+import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
-import { getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
+import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -621,7 +621,14 @@ function App() {
     };
   }, [cutoutBusyId]);
 
-  const noticeView = notice ? getNoticeView(notice) : null;
+  // 빠질 사진 장수는 그릴 때마다 지금 사진 목록과 대상 프레임으로 셉니다. 확인창을 연 뒤 늦게 온 사진도 들어갑니다(UX1-2).
+  const droppedPhotoCount = notice?.kind === 'frame-change'
+    ? splitPhotosByFrame({
+      photos: editorState.userImages,
+      nextSlotIds: FRAME_LAYOUTS[notice.frameType].slots.map((slot) => slot.id),
+    }).dropped.length
+    : 0;
+  const noticeView = notice ? getNoticeView(notice, droppedPhotoCount) : null;
   const isNoticeOpen = notice !== null;
   const inlineStatusView = inlineStatus ? getInlineStatusView(inlineStatus) : null;
 
@@ -651,14 +658,15 @@ function App() {
     noticeCardRef.current?.focus();
   }, [notice, cutoutBusyId]);
 
-  // 닫힌 뒤 포커스 돌려주기: 연 곳 → 캔버스 → 저장 버튼 가운데 쓸 수 있는 첫 요소
+  // 닫힌 뒤 포커스 돌려주기: 연 곳 → 열린 시트의 닫기 버튼 → 캔버스 → 저장 버튼 가운데 쓸 수 있는 첫 요소
   useEffect(() => {
     if (isNoticeOpen || cutoutBusyId || !isFocusReturnPendingRef.current) return;
-    const candidates = [
-      noticeOpenerRef.current,
-      document.querySelector<HTMLElement>('[data-focus-return="canvas"]'),
-      ...Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="save"]')),
-    ];
+    const candidates = getFocusReturnCandidates({
+      opener: noticeOpenerRef.current,
+      sheetCandidates: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="sheet-close"]')),
+      canvas: document.querySelector<HTMLElement>('[data-focus-return="canvas"]'),
+      saves: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="save"]')),
+    });
     const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
     isFocusReturnPendingRef.current = false;
     noticeOpenerRef.current = null;
@@ -837,11 +845,11 @@ function App() {
 
   const applyFrameChange = (frameType: FrameType) => {
     if (isCutoutLocked()) return;
-    const newFrameLayout = FRAME_LAYOUTS[frameType];
-    const validSlotIds = new Set(newFrameLayout.slots.map(s => s.id));
-
-    // Retain images that fit into the new frame's slots
-    const nextUserImages = editorState.userImages.filter((image) => validSlotIds.has(image.slotId));
+    // 새 프레임의 칸에 맞는 사진만 남깁니다. 확인창 안내의 장수와 같은 계산입니다.
+    const { kept: nextUserImages } = splitPhotosByFrame({
+      photos: editorState.userImages,
+      nextSlotIds: FRAME_LAYOUTS[frameType].slots.map((slot) => slot.id),
+    });
     const nextDocument: EditorDocument = { userImages: nextUserImages, texts, stickers, frameColor: editorState.frameColor };
     setHistory(createHistory(nextDocument));
     setEditorState((previous) => ({
@@ -877,14 +885,7 @@ function App() {
       return;
     }
     if (decision.kind === 'confirm') {
-      setNotice({
-        kind: 'frame-change',
-        frameType: decision.frameType,
-        droppedPhotoCount: countDroppedPhotos({
-          photoSlotIds: editorState.userImages.map((image) => image.slotId),
-          nextSlotIds: FRAME_LAYOUTS[decision.frameType].slots.map((slot) => slot.id),
-        }),
-      });
+      setNotice({ kind: 'frame-change', frameType: decision.frameType });
       return;
     }
 
@@ -924,7 +925,6 @@ function App() {
   }, []);
 
   const handleBoothyImportRequest = useCallback((slotId: string) => {
-    setInlineStatus(null); // 칸을 다시 누르면 지난 가져오기 실패 줄을 지움
     if (!isBoothyImportBridgeAvailable) {
       return false;
     }
@@ -934,6 +934,8 @@ function App() {
     if (!targetWindow) {
       return false;
     }
+
+    setInlineStatus(null); // 요청을 실제로 보낼 때만 지난 가져오기 실패 줄을 지움
 
     if (pendingBoothyImport) {
       // Recover from a missed host response by retrying the same correlation.
@@ -2239,6 +2241,7 @@ function App() {
               <button
                 type="button"
                 className="linear-button linear-button--secondary"
+                data-focus-return="sheet-close"
                 onClick={() => setMobilePanel(null)}
               >
                 닫기
@@ -2344,7 +2347,10 @@ function App() {
                 ))}
               </div>
               {noticeView.actions.length > 0 && (
-                <div className="linear-flex" style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                <div
+                  className="linear-flex"
+                  style={{ justifyContent: 'flex-end', flexWrap: 'wrap' }}
+                >
                   {noticeView.actions.map((action) => (
                     <button
                       key={action.id}
