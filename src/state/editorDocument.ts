@@ -1,4 +1,5 @@
 import type { UserImage } from "../types/frame";
+import type { CutoutSource } from "../photo/cutoutTypes";
 
 export type TextAlign = "left" | "center" | "right";
 
@@ -31,6 +32,7 @@ export type CanvasSticker = {
   flipX: boolean;
   flipY: boolean;
   tintColor: string | null;
+  cutout?: CutoutSource;
 };
 
 export type EditorDocument = {
