@@ -10,6 +10,8 @@ import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
 
 type TextAlign = "left" | "center" | "right";
 
+const TEXT_ALIGN_LABELS = { left: '왼쪽 맞춤', center: '가운데 맞춤', right: '오른쪽 맞춤' } as const;
+
 const LETTERING_SUGGESTIONS = Array.from(
   new Set([
     "다비야, 너의 1000일을 축하해 :)",
@@ -114,6 +116,8 @@ export type EditorPanelProps = {
     rotation: number;
   }>) => void;
   onTextDelete?: (textId: string) => void;
+  isTextDeletedNoticeVisible?: boolean;
+  onUndoTextDelete?: () => void;
   onStickerInsert?: (src: string) => void;
   onStickerUpdate?: (stickerId: string, updates: Partial<{
     x: number;
@@ -147,6 +151,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   onTextInsert,
   onTextUpdate,
   onTextDelete,
+  isTextDeletedNoticeVisible = false,
+  onUndoTextDelete,
   onStickerInsert,
   onStickerDelete,
   onExport,
@@ -188,6 +194,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
       }
     }
   }, [fontsLoading, fonts, selectedText]);
+
+  useEffect(() => {
+    if (!fontsLoading && fonts.length === 0) console.warn('public/font 폴더에 사용할 .ttf 글꼴이 없습니다.');
+  }, [fontsLoading, fonts.length]);
 
   // 선택된 텍스트가 변경될 때 입력창에 동기화
   useEffect(() => {
@@ -297,10 +307,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   const handleTextInsert = () => {
-    if (!textInput.trim()) {
-      alert("텍스트를 입력해주세요.");
-      return;
-    }
+    if (!textInput.trim()) return;
 
     // 프레임별 위치 설정
     const { x, y } = getDefaultTextPosition(selectedFrame ?? null);
@@ -366,14 +373,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   const handleTextDelete = () => {
-    if (!selectedText) {
-      alert("삭제할 텍스트를 먼저 선택해주세요.");
-      return;
-    }
-
-    if (confirm(`"${selectedText.text}" 텍스트를 삭제하시겠습니까?`)) {
-      onTextDelete?.(selectedText.id);
-    }
+    if (!selectedText) return;
+    onTextDelete?.(selectedText.id); // 안내는 App이 문서를 보고 띄웁니다
   };
 
   const handleTextAlignChange = (newAlign: TextAlign) => {
@@ -523,10 +524,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             >
               {/* 텍스트 내용 작성 파트 */}
               <div>
-                <h3>사진에 글씨 새기기</h3>
+                <h3>사진에 글씨 쓰기</h3>
                 <div className="linear-grid linear-mt-4" style={{ gridTemplateColumns: "1fr" }}>
                   <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>텍스트를 입력하세요.</p>
+                    <p style={{ fontSize: "var(--linear-text-sm)" }}>넣을 글씨를 써 주세요</p>
                     <textarea
                       ref={textInputRef as React.RefObject<HTMLTextAreaElement>}
                       className="linear-input"
@@ -547,7 +548,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   </label>
 
                   <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)" }}>레터링을 추천해 드릴게요 :)</p>
+                    <p style={{ fontSize: "var(--linear-text-sm)" }}>추천 문구</p>
                     <select
                       className="linear-select"
                       style={{ width: '100%', textOverflow: 'ellipsis', borderColor: 'var(--linear-neutral-300)', marginTop: 'var(--linear-space-1)' }}
@@ -559,7 +560,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         }
                       }}
                     >
-                      <option value="" disabled>클릭해서 추천받기</option>
+                      <option value="" disabled>눌러서 추천 문구 고르기</option>
                       {LETTERING_SUGGESTIONS.map((suggestion) => (
                         <option key={suggestion} value={suggestion}>
                           {suggestion}
@@ -570,6 +571,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
                   <div className="linear-flex linear-mt-4" style={{ gap: '6px' }}>
                     <button
+                      type="button"
                       className="linear-button linear-button--secondary"
                       onClick={handleTextDelete}
                       disabled={!selectedText}
@@ -578,17 +580,43 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', flex: 1
                       }}
                     >
-                      삭제
+                      글씨 지우기
                     </button>
                     <button
+                      type="button"
                       className="linear-button linear-button--primary"
                       onClick={handleTextInsert}
+                      disabled={!textInput.trim()}
                       style={{
+                        opacity: textInput.trim() ? 1 : 0.5, cursor: textInput.trim() ? 'pointer' : 'not-allowed',
                         fontSize: '14px', height: '48px', border: 'var(--border-width) solid var(--linear-neutral-500)', flex: 1
                       }}
                     >
-                      삽입
+                      글씨 넣기
                     </button>
+                  </div>
+                  {!textInput.trim() && (
+                    <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-400)' }}>넣을 글씨를 먼저 써 주세요</p>
+                  )}
+                  <div role="status">
+                    {isTextDeletedNoticeVisible && (
+                      <div
+                        className="linear-status--success linear-flex"
+                        style={{ alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}
+                      >
+                        <span style={{ fontSize: '14px' }}>글씨를 지웠어요</span>
+                        {onUndoTextDelete && (
+                          <button
+                            type="button"
+                            className="linear-button linear-button--secondary"
+                            onClick={onUndoTextDelete}
+                            style={{ minHeight: '44px', minWidth: '44px', fontSize: '14px' }}
+                          >
+                            되돌리기
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -599,14 +627,14 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--linear-space-3)" }}>
                 {/* 폰트 선택 (전체 너비) */}
                 <label>
-                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 선택</p>
+                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>글씨체</p>
                   <div className="linear-flex" style={{ alignItems: 'center' }}>
                     <button
                       type="button"
                       className="linear-button linear-button--secondary"
                       onClick={() => !fontsLoading && setFontPickerOpen(true)}
                       disabled={fontsLoading}
-                      title={fontsLoading ? '폰트 로딩 중' : '폰트 선택'}
+                      title={fontsLoading ? '글씨체 불러오는 중' : '글씨체 고르기'}
                       style={{
                         border: 'var(--border-width) solid var(--linear-neutral-500)',
                         padding: '6px 10px', fontSize: '14px', fontFamily: displayedFontFamily || 'var(--linear-font-family)',
@@ -622,7 +650,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 {/* 크기 및 색상 (1fr 1fr) */}
                 <div className="linear-grid" style={{ gridTemplateColumns: "1fr 1fr", gap: "var(--linear-space-2)" }}>
                   <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 크기</p>
+                    <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>글씨 크기</p>
                     <input
                       type="number"
                       className="linear-input"
@@ -634,7 +662,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   </label>
 
                   <label>
-                    <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 색상</p>
+                    <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>글씨 색</p>
                     <input
                       type="color"
                       className="linear-input"
@@ -647,7 +675,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
                 {/* 폰트 스타일 */}
                 <div>
-                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>폰트 스타일</p>
+                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>글씨 모양</p>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button
                       type="button"
@@ -678,7 +706,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
                 {/* 텍스트 정렬 */}
                 <div>
-                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>텍스트 정렬</p>
+                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>줄 맞춤</p>
                   <div style={{ display: "flex", gap: "6px" }}>
                     {["left", "center", "right"].map((align) => (
                       <button
@@ -687,6 +715,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         className={`linear-button ${displayedTextAlign === align ? "linear-button--primary" : "linear-button--secondary"}`}
                         onClick={() => handleTextAlignChange(align as TextAlign)}
                         disabled={!selectedText}
+                        aria-label={TEXT_ALIGN_LABELS[align as keyof typeof TEXT_ALIGN_LABELS]}
+                        title={TEXT_ALIGN_LABELS[align as keyof typeof TEXT_ALIGN_LABELS]}
                         style={{
                           flex: 1, height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
                           opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed",
@@ -770,7 +800,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   )}
                   <h3>스티커 선택</h3>
                   <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>
-                    클릭하여 스티커 목록을 확인하세요.
+                    스티커를 누르면 사진에 붙어요
                   </p>
                   <div
                     style={{
@@ -845,7 +875,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         border: 'var(--border-width) solid var(--linear-neutral-500)'
                       }}
                     >
-                      ← 뒤로
+                      ← 스티커 종류
                     </button>
                     <h3 style={{ margin: 0, fontSize: '16px', flex: 1, color: 'var(--linear-neutral-50)' }}>
                       {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.label}
@@ -965,7 +995,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="linear-flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3>폰트 선택</h3>
+                  <h3>글씨체</h3>
                   <button
                     type="button"
                     className="linear-button linear-button--secondary"
@@ -978,11 +1008,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   </button>
                 </div>
                 <div style={{ marginTop: '12px', fontSize: '14px', color: 'var(--linear-secondary-400)' }}>
-                  파일명(확장자 제외)을 해당 폰트로 표시합니다. 클릭하면 적용됩니다.
+                  글씨체를 누르면 바로 바뀌어요
                 </div>
                 <div
                   role="listbox"
-                  aria-label="폰트 목록"
+                  aria-label="글씨체 목록"
                   style={{
                     marginTop: '12px',
                     flex: 1,
@@ -1039,7 +1069,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   ))}
                   {fonts.length === 0 && (
                     <div style={{ padding: '12px', color: 'var(--linear-secondary-400)', fontSize: '14px' }}>
-                      사용할 수 있는 폰트가 없습니다. public/font 폴더에 .ttf를 추가해 주세요.
+                      글씨체를 불러오지 못했어요. 직원을 불러 주세요.
                     </div>
                   )}
                 </div>

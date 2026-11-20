@@ -30,3 +30,38 @@ test("CanvasStage에 옛 편집 패널 문구와 11~12px 글자가 남아 있지
     assert.ok(!removedPattern.test(source), `${sourcePath}에 옛 패턴이 남아 있습니다: ${removedPattern}`);
   }
 });
+
+test("EditorPanel에 alert, confirm과 옛 글씨 패널 문구가 남아 있지 않다", () => {
+  const sourcePath = "src/ui/EditorPanel.tsx";
+  const source = readFileSync(sourcePath, "utf8");
+  const removedTexts = [
+    "alert(",
+    "confirm(",
+    "사진에 글씨 새기기",
+    "텍스트를 입력하세요.",
+    "레터링을 추천해 드릴게요",
+    "클릭해서 추천받기",
+    "폰트 선택</p>",
+    "'폰트 로딩 중'",
+    "폰트 크기</p>",
+    "폰트 색상</p>",
+    "폰트 스타일</p>",
+    "텍스트 정렬</p>",
+    "클릭하여 스티커 목록을 확인하세요",
+    "← 뒤로",
+    "<h3>폰트 선택</h3>",
+    "파일명(확장자 제외)",
+    'aria-label="폰트 목록"',
+    "사용할 수 있는 폰트가 없습니다",
+    "선택한 스티커 삭제",
+    "`${slot.key} sticker`",
+  ];
+  const removedPatterns = [/>\s*삭제\s*</, />\s*삽입\s*</];
+
+  for (const removedText of removedTexts) {
+    assert.ok(!source.includes(removedText), `${sourcePath}에 옛 문구가 남아 있습니다: ${removedText}`);
+  }
+  for (const removedPattern of removedPatterns) {
+    assert.ok(!removedPattern.test(source), `${sourcePath}에 옛 패턴이 남아 있습니다: ${removedPattern}`);
+  }
+});
