@@ -366,7 +366,8 @@ p {
 }
 
 .linear-input:focus {
-  outline: none;
+  outline: 3px solid var(--linear-neutral-500);
+  outline-offset: 2px;
   background-color: var(--linear-neutral-900);
   box-shadow: var(--shadow-base);
   transform: translate(-1px, -1px);
@@ -428,7 +429,8 @@ p {
 }
 
 .linear-select:focus {
-  outline: none;
+  outline: 3px solid var(--linear-neutral-500);
+  outline-offset: 2px;
   background-color: var(--linear-neutral-900);
   box-shadow: var(--shadow-base);
   transform: translate(-1px, -1px);
@@ -771,10 +773,6 @@ p {
   transition: all 0.1s ease-in-out;
 }
 
-.linear-fade-in {
-  animation: linearFadeIn 0.3s ease-out;
-}
-
 @keyframes linearFadeIn {
   from {
     opacity: 0;
@@ -825,6 +823,18 @@ p {
     box-shadow: var(--shadow-hover);
     z-index: 1;
   }
+
+  .linear-fade-in {
+    animation: linearFadeIn 0.3s ease-out;
+  }
+
+  .frame-gallery-image-container.loading {
+    animation: bgPulse 1.5s ease-in-out 3;
+  }
+
+  .tutorial-highlight {
+    animation: tutorial-pulse 1s ease-in-out 3 !important;
+  }
 }
 
 .frame-gallery-card:active {
@@ -856,10 +866,6 @@ p {
 
 .frame-gallery-card.span-2 .frame-gallery-image-container {
   aspect-ratio: 3/2;
-}
-
-.frame-gallery-image-container.loading {
-  animation: bgPulse 1.5s infinite ease-in-out;
 }
 
 @keyframes bgPulse {
@@ -930,10 +936,15 @@ p {
 }
 
 .tutorial-highlight {
-  animation: tutorial-pulse 1s ease-in-out infinite !important;
   background: #FFB703 !important;
   color: #000 !important;
   border-radius: 4px;
   position: relative;
   z-index: 999;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-highlight {
+    box-shadow: 0 0 0 3px #fff, 0 0 0 6px #000 !important;
+  }
 }
