@@ -111,4 +111,3 @@ test("가장자리 지우기 미리보기와 실제 처리에 같은 상한 반�
     /getLocalBrushRadius\(\s*getCutoutBrushScreenRadius\(requestedScreenRadius, targetSticker, zoom\),/,
   );
 });
-
