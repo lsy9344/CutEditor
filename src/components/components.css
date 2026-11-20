@@ -531,7 +531,6 @@ p {
   flex-direction: column;
   gap: var(--linear-space-2);
   overflow: hidden;
-  max-height: 100dvh;
 }
 
 .app-main--mobile-editor > .app-mobile-canvas-shell {
@@ -551,29 +550,10 @@ p {
   justify-content: flex-start;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  flex-shrink: 0;
 }
 
 .app-main--mobile-editor .canvas-stage-layout {
   justify-content: flex-start;
-}
-
-.app-main--mobile-editor .canvas-control-panel {
-  min-height: 0;
-  max-height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.app-main--mobile-editor .canvas-control-panel > div:first-child {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--linear-neutral-600);
-}
-
-.app-main--mobile-editor > .app-mobile-toolbar {
-  flex-shrink: 0;
 }
 
 .app-main--mobile-editor .konvajs-content,
@@ -581,6 +561,31 @@ p {
   touch-action: pan-x pan-y;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* 세로 모바일: 문서 스크롤을 유지하면서 캔버스와 제어줄을 화면 위쪽에 고정한다. */
+@media (max-width: 768px) and (orientation: portrait) {
+  .app-main--mobile-editor {
+    overflow: clip;
+  }
+
+  .app-main--mobile-editor .canvas-stage-layout {
+    overflow: clip;
+  }
+
+  .app-main--mobile-editor .canvas-stage-area {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--linear-neutral-600);
+  }
+
+  .app-main--mobile-editor .canvas-control-panel > div:first-child {
+    position: sticky;
+    top: var(--mobile-canvas-height, 0px);
+    z-index: 2;
+    background: var(--linear-neutral-600);
+  }
 }
 
 .app-mobile-sheet-backdrop {

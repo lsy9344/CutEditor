@@ -60,6 +60,28 @@ function getSourceSize(source: HTMLImageElement | HTMLCanvasElement): {
   return { width: source.width, height: source.height };
 }
 
+export function applyEraseStrokes(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  strokes: BrushStroke[],
+): void {
+  const mask = new Uint8Array(width * height);
+  strokes.forEach((stroke) => rasterizeStroke(stroke, width, height, mask));
+  inpaintMasked(rgba, width, height, mask);
+}
+
+export function applyEraseStroke(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  stroke: BrushStroke,
+): void {
+  const mask = new Uint8Array(width * height);
+  rasterizeStroke(stroke, width, height, mask);
+  inpaintMasked(rgba, width, height, mask);
+}
+
 export function renderPhotoBase(
   source: HTMLImageElement | HTMLCanvasElement,
   erase: BrushStroke[],
@@ -81,9 +103,7 @@ export function renderPhotoBase(
 
   if (erase.length > 0) {
     const imageData = context.getImageData(0, 0, workingSize.width, workingSize.height);
-    const mask = new Uint8Array(workingSize.width * workingSize.height);
-    erase.forEach((stroke) => rasterizeStroke(stroke, workingSize.width, workingSize.height, mask));
-    inpaintMasked(imageData.data, workingSize.width, workingSize.height, mask);
+    applyEraseStrokes(imageData.data, workingSize.width, workingSize.height, erase);
     context.putImageData(imageData, 0, 0);
   }
 
@@ -163,9 +183,7 @@ export function renderBrushStrokeOnBase(
 
   context.drawImage(base, 0, 0);
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  const mask = new Uint8Array(canvas.width * canvas.height);
-  rasterizeStroke(stroke, canvas.width, canvas.height, mask);
-  inpaintMasked(imageData.data, canvas.width, canvas.height, mask);
+  applyEraseStroke(imageData.data, canvas.width, canvas.height, stroke);
   context.putImageData(imageData, 0, 0);
 
   return canvas;

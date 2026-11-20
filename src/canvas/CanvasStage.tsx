@@ -506,7 +506,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
       const draft = brushDraftRef.current;
-      if (draft && draft.pointerId !== event.pointerId) cancelBrushStroke(); // 두 번째 손가락
+      if (!draft) return;
+      if (draft.pointerId !== event.pointerId) {
+        cancelBrushStroke(); // 두 번째 손가락
+        return;
+      }
+      // 같은 id라도 새로 눌린 주 입력이면, 종료를 놓친 이전 임시 획을 버린다.
+      if (isBrushPointerStart(event.pointerType, event.isPrimary, event.button)) cancelBrushStroke();
     };
     const onPointerUp = (event: PointerEvent) => finishBrushStrokeRef.current(event.pointerId);
     const onPointerCancel = (event: PointerEvent) => {
@@ -1738,7 +1744,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   };
 
   return (
-    <div className="linear-card linear-fade-in" style={{ height: '100%', overflow: 'hidden', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div
+      className="linear-card linear-fade-in"
+      style={{
+        height: '100%',
+        // sticky 자식이 문서 스크롤을 기준으로 붙도록 스크롤 컨테이너를 만들지 않는다.
+        overflow: 'clip',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        ['--mobile-canvas-height' as string]: `${containerSize.height}px`,
+      } as React.CSSProperties}
+    >
       <div className="canvas-stage-layout">
         <div
           ref={containerRef}

@@ -36,3 +36,18 @@ test("P3-4 창 포커스 상실과 탭 숨김에서도 임시 획과 미리보�
     /const cancelBrushStrokeOnHidden = \(\) => \{\s*if \(document\.visibilityState === "hidden"\) cancelBrushStroke\(\);\s*\};/,
   );
 });
+
+test("P3-7 전역 pointerdown에서 같은 id의 새 주 입력도 남은 임시 획을 버린다", () => {
+  const source = readCanvasStage();
+  const handlerStart = source.indexOf("const onPointerDown = (event: PointerEvent) => {");
+  const handlerEnd = source.indexOf("const onPointerUp", handlerStart);
+  const handlerBody = source.slice(handlerStart, handlerEnd);
+
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  assert.match(handlerBody, /draft\.pointerId !== event\.pointerId\)[\s\S]*?cancelBrushStroke\(\)/);
+  assert.match(
+    handlerBody,
+    /if \(isBrushPointerStart\(event\.pointerType, event\.isPrimary, event\.button\)\) cancelBrushStroke\(\);/,
+  );
+});
