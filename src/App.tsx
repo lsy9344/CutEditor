@@ -924,6 +924,7 @@ function App() {
   }, []);
 
   const handleBoothyImportRequest = useCallback((slotId: string) => {
+    setInlineStatus(null); // 칸을 다시 누르면 지난 가져오기 실패 줄을 지움
     if (!isBoothyImportBridgeAvailable) {
       return false;
     }
@@ -995,7 +996,8 @@ function App() {
 
       if (event.data.type === 'editor.import_failed') {
         setPendingBoothyImport(null);
-        alert(`${event.data.message}\n\n${event.data.nextAction}`);
+        console.warn('오늘 찍은 사진을 불러오지 못했어요', event.data);
+        setInlineStatus({ kind: 'import-failed' });
         return;
       }
 
@@ -1025,11 +1027,8 @@ function App() {
           }
 
           setPendingBoothyImport(null);
-          alert(
-            error instanceof Error && error.message.trim()
-              ? error.message
-              : '세션 사진을 편집기로 가져오지 못했습니다.',
-          );
+          console.warn('오늘 찍은 사진을 불러오지 못했어요', error);
+          setInlineStatus({ kind: 'import-failed' });
         });
     };
 
