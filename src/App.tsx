@@ -459,6 +459,7 @@ function App() {
   const cutoutLockRef = useRef<HTMLDivElement>(null);
   const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
   const heldBoothyImportRef = useRef<{ file: File; slotId: string } | null>(null); // 잠금 중 도착한 Boothy 사진(마지막 한 건)
+  const boothyReleasePendingRef = useRef(false); // 잠금 해제 때 Boothy 사진을 먼저 반영하고, 보류 스티커는 그다음 렌더로 미룸
   const isCutoutLocked = () => cutoutLockRef.current !== null; // 덮개가 떠 있으면 잠금. 옛 클로저의 비동기 콜백에서도 지금 값을 읽음
   const flushHistory = useCallback(() => {
     // 호출 시점의 문서를 고정한다. 같은 배치의 후속 setState가 updater 실행 전에 반영되어
@@ -948,7 +949,10 @@ function App() {
     flushHistory(); // 누끼 결과까지를 한 단계로 닫음
     const heldImport = heldBoothyImportRef.current;
     heldBoothyImportRef.current = null;
-    if (heldImport) handleImageUpload(heldImport.file, heldImport.slotId);
+    if (heldImport) {
+      boothyReleasePendingRef.current = true; // 사진이 문서에 들어간 다음 렌더에서 보류 스티커를 붙임(N17)
+      handleImageUpload(heldImport.file, heldImport.slotId);
+    }
   }, [cutoutBusyId]);
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
@@ -1131,10 +1135,9 @@ function App() {
     setEditorState(prev => ({ ...prev, selection: stickerId }));
   }, []);
 
-  // 포인터를 누르고 있는 동안 끝난 스티커는 진행 중인 끌기를 끊지 않도록 보류한다.
-  // Phase 4 티켓 13은 이 조건에 '내 사진 스티커 만드는 중'만 더한다.
+  // 포인터를 누르고 있는 동안 끝난 스티커와 누끼 잠금 중 끝난 스티커는 진행 중인 끌기를 끊지 않도록 보류한다.
   const shouldHoldStickerInsert = useCallback(
-    () => hasActivePointers(pointerPresenceRef.current),
+    () => isCutoutLocked() || hasActivePointers(pointerPresenceRef.current),
     [],
   );
 
@@ -1184,13 +1187,8 @@ function App() {
     });
     const newSticker = buildCenteredSticker(src, dimensions);
 
-    if (isCutoutLocked()) {
-      heldStickerRef.current.push(newSticker); // 잠금 중: 완료 순서대로 모두 보관했다가 풀린 뒤 하나씩 붙임
-      return;
-    }
-
     if (shouldHoldStickerInsert()) {
-      heldStickerRef.current.push(newSticker); // 완료 순서대로 보관했다가 포인터를 뗀 뒤 하나씩 붙임
+      heldStickerRef.current.push(newSticker); // 완료 순서대로 보관했다가 잠금·포인터가 풀린 뒤 하나씩 붙임
       return;
     }
 
@@ -1201,7 +1199,13 @@ function App() {
   }
 
   useEffect(() => {
-    if (isCutoutLocked() || shouldHoldStickerInsert()) return;
+    if (boothyReleasePendingRef.current) {
+      // 잠금 해제에서 Boothy 사진을 먼저 반영했다. 그 사진이 문서에 들어간 다음 렌더에서
+      // 보류 스티커를 붙여 되돌리기를 한 단계씩 나눈다(N17).
+      boothyReleasePendingRef.current = false;
+      return;
+    }
+    if (cutoutBusyId || shouldHoldStickerInsert()) return;
     const nextHeldSticker = heldStickerRef.current[0];
     if (!nextHeldSticker) {
       lastHeldStickerIdRef.current = null;
@@ -1215,23 +1219,10 @@ function App() {
 
     heldStickerRef.current.shift(); // 완료 순서대로 하나씩
     lastHeldStickerIdRef.current = nextHeldSticker.id;
-    flushHistory(); // 바로 앞 단계(끌기 종료·앞서 붙인 보류 스티커)를 닫아 보류 스티커를 별도 단계로 남김
+    flushHistory(); // 바로 앞 단계(끌기 종료·앞서 붙인 보류 스티커·Boothy 사진)를 닫아 보류 스티커를 별도 단계로 남김
     setStickers((previous) => [...previous, nextHeldSticker]);
     selectInsertedSticker(nextHeldSticker.id);
-  }, [flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers]);
-
-  // 잠금 중에 끝난 일반 스티커는 잠금이 풀린 뒤 완료 순서대로 렌더마다 하나씩 붙인다.
-  useEffect(() => {
-    if (cutoutBusyId || hasActivePointers(pointerPresenceRef.current)) return;
-    const lastHeldStickerId = lastHeldStickerIdRef.current;
-    if (lastHeldStickerId && !stickers.some((sticker) => sticker.id === lastHeldStickerId)) return;
-    const nextHeldSticker = heldStickerRef.current.shift();
-    if (!nextHeldSticker) return;
-    flushHistory(); // 바로 앞 단계(누끼 결과나 바로 앞에 붙인 보류 스티커)를 닫음
-    setStickers((previous) => [...previous, nextHeldSticker]);
-    lastHeldStickerIdRef.current = nextHeldSticker.id;
-    selectInsertedSticker(nextHeldSticker.id);
-  }, [cutoutBusyId, stickers]);
+  }, [cutoutBusyId, currentDocument, flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers]);
 
   const handleCutoutCancel = () => {
     cutoutRunRef.current += 1; // 진행 중인 작업의 결과를 버림
@@ -1259,6 +1250,15 @@ function App() {
       if (!confidence || isCancelled()) return; // 취소됐으면 렌더를 시작하지 않음
       const result = await renderCutoutSticker(workingCanvas, confidence, { outline: true, eraseStrokes: [] });
       if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
+      // 동기 계산이 끝난 직후에는 계산 중에 누른 취소 입력이 아직 처리되지 않았을 수 있다.
+      // 0ms 타이머를 연달아 두 번 기다려 이미 예약된 입력 태스크가 먼저 처리되게 하고,
+      // 결과·오류를 반영하기 전에 작업 번호를 다시 본다.
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
       if (isCancelled()) return;
       if (result.kind === "not-found") {
         setCutoutError({ targetId: imageId, message: CUTOUT_COPY.notFound });
@@ -1271,11 +1271,6 @@ function App() {
         ...buildCenteredSticker(result.url, { width: result.width, height: result.height }),
         cutout: { sourceImageId: imageId, target: { kind: "everyone" }, outline: true, eraseStrokes: [], crop: result.crop, workingSize: result.workingSize },
       };
-      if (shouldHoldStickerInsert()) {
-        heldStickerRef.current.push(newSticker); // 포인터를 누르고 있는 동안 끝난 결과는 기존 보류 목록에 넣어 순서대로 붙임
-        pendingUrl = null; // 보류한 스티커가 문서에 붙을 때 URL 해제 effect가 맡음
-        return;
-      }
       // 붙이기 직전에 기록 경계를 닫음. 앞의 변경과 묶이지 않고 누끼만 한 단계가 됨
       flushHistory();
       setStickers((previous) => [...previous, newSticker]);
@@ -1286,6 +1281,13 @@ function App() {
       setCutoutImagesState({ kind: "loading" }); // 캔버스가 새 PNG를 올릴 때까지 저장을 막음
       setMobilePanel(null); // 모바일 시트를 닫아 붙은 결과를 바로 보여 줌
     } catch {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      // 동기 추론 실패로 곧바로 catch에 들어온 경우에도 같은 경계를 둔다.
       if (!isCancelled()) setCutoutError({ targetId: imageId, message: CUTOUT_COPY.loadFailed });
     } finally {
       if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 붙이지 못한 URL
