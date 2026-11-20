@@ -70,14 +70,14 @@ test("끌기 중 완료된 스티커는 끌기 종료 뒤 붙어 첫 되돌리�
   assert.equal(history.present, "base");
 });
 
-test("App은 포인터가 눌려 있으면 완료된 스티커를 보류하고 해제 뒤 렌더마다 하나씩 붙인다", () => {
+test("App은 포인터가 눌려 있거나 누끼 잠금 중이면 완료된 스티커를 보류하고 해제 뒤 렌더마다 하나씩 붙인다", () => {
   const source = readFileSync("src/App.tsx", "utf8");
 
   assert.match(source, /const heldStickerRef = useRef<CanvasSticker\[\]>\(\[\]\);/);
   assert.match(source, /const lastHeldStickerIdRef = useRef<string \| null>\(null\);/);
   assert.match(
     source,
-    /const shouldHoldStickerInsert = useCallback\(\s*\(\) => hasActivePointers\(pointerPresenceRef\.current\),\s*\[\],\s*\);/,
+    /const shouldHoldStickerInsert = useCallback\(\s*\(\) => isCutoutLocked\(\) \|\| hasActivePointers\(pointerPresenceRef\.current\),\s*\[\],\s*\);/,
   );
   assert.match(
     source,
@@ -85,7 +85,7 @@ test("App은 포인터가 눌려 있으면 완료된 스티커를 보류하고 �
   );
   assert.match(
     source,
-    /\}, \[flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers\]\);/,
+    /\}, \[cutoutBusyId, currentDocument, flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers\]\);/,
   );
 });
 
