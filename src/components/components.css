@@ -670,6 +670,9 @@ p {
   box-shadow: var(--shadow-base);
   margin-right: 4px;
   margin-bottom: 4px;
+  max-height: 100%;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 /* Scrollbar Styling for Brutalism */
@@ -719,6 +722,8 @@ p {
     flex-wrap: wrap;
     justify-content: center;
     align-items: center;
+    max-height: none;
+    overflow-y: visible;
   }
 }
 
