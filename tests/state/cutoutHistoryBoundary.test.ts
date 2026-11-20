@@ -7,6 +7,7 @@ import {
   pushHistory,
   undoHistory,
 } from "../../src/state/history.ts";
+import { isCancelledAfterPendingInput } from "../../src/photo/cutoutRender.ts";
 
 const isSame = (a: string, b: string) => a === b;
 
@@ -77,8 +78,19 @@ function getCutoutCreateBody(): string {
   const start = source.indexOf("const handleCutoutCreate = async (imageId: string) => {");
   assert.ok(start >= 0, "handleCutoutCreate를 찾지 못했습니다.");
 
-  const end = source.indexOf("const handleStickerUpdate =", start);
+  const end = source.indexOf("const handleCutoutRegenerate =", start);
   assert.ok(end > start, "handleCutoutCreate의 끝을 찾지 못했습니다.");
+
+  return source.slice(start, end);
+}
+
+function getCutoutRegenerateBody(): string {
+  const source = readFileSync("src/App.tsx", "utf8");
+  const start = source.indexOf("const handleCutoutRegenerate = async (stickerId: string, changes: CutoutChanges) => {");
+  assert.ok(start >= 0, "handleCutoutRegenerate를 찾지 못했습니다.");
+
+  const end = source.indexOf("const handleStickerUpdate =", start);
+  assert.ok(end > start, "handleCutoutRegenerate의 끝을 찾지 못했습니다.");
 
   return source.slice(start, end);
 }
@@ -136,20 +148,55 @@ test("잠금 중 끝난 Boothy 사진과 일반 스티커 두 개는 사진 다�
   );
 });
 
-test("계산 직후 취소가 처리되면 사람 없음 안내와 스티커가 남지 않는다", () => {
-  const body = getCutoutCreateBody();
-  const yieldCount = (body.match(/await new Promise<void>\(\(resolve\) => \{\s*setTimeout\(resolve, 0\);\s*\}\);/g) ?? []).length;
+test("입력 양보 경계는 동기 계산 중 예약된 취소를 처리한 뒤 취소됨을 돌려준다", async () => {
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  let frameRequests = 0;
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    frameRequests += 1;
+    setTimeout(() => callback(0), 0);
+    return frameRequests;
+  }) as typeof requestAnimationFrame;
 
-  // 성공·사람 없음 결과를 반영하기 전 한 번, 오류를 반영하기 전 한 번, 같은 경계를 둔다.
-  // 한 번의 0ms 대기로는 브라우저가 이미 예약한 취소 클릭 태스크보다 먼저 깨어날 수 있어 두 번 기다린다.
-  assert.equal(yieldCount, 4);
+  try {
+    let cancelled = false;
+    // 동기 계산 중에 이미 예약된 취소 입력 태스크
+    setTimeout(() => {
+      cancelled = true;
+    }, 0);
+
+    assert.equal(await isCancelledAfterPendingInput(() => cancelled), true);
+    assert.equal(frameRequests, 1);
+
+    assert.equal(await isCancelledAfterPendingInput(() => cancelled), true);
+    cancelled = false;
+    assert.equal(await isCancelledAfterPendingInput(() => cancelled), false);
+  } finally {
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  }
+});
+
+test("만들기와 다시 만들기는 결과·사람 없음·예외를 반영하기 전에 같은 취소 경계를 지난다", () => {
+  for (const body of [getCutoutCreateBody(), getCutoutRegenerateBody()]) {
+    assert.doesNotMatch(body, /setTimeout/);
+    assert.equal((body.match(/await isCancelledAfterPendingInput\(isCancelled\)/g) ?? []).length, 3);
+    assert.match(
+      body,
+      /if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*if \(result\.kind === "not-found"\) \{\s*setCutoutError\(/,
+    );
+    assert.match(
+      body,
+      /if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*\/\/ 여기부터 finally까지 await가 없습니다\.[\s\S]*?flushHistory\(\);/,
+    );
+    assert.match(
+      body,
+      /\} catch \{\s*(?:\/\/[^\n]*\n\s*)*if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*setCutoutError\(/,
+    );
+  }
+
+  const source = readFileSync("src/App.tsx", "utf8");
   assert.match(
-    body,
-    /const result = await renderCutoutSticker\([\s\S]*?if \(result\.kind === "ok"\) pendingUrl = result\.url;[\s\S]*?await new Promise<void>\(\(resolve\) => \{\s*setTimeout\(resolve, 0\);\s*\}\);\s*await new Promise<void>\(\(resolve\) => \{\s*setTimeout\(resolve, 0\);\s*\}\);\s*if \(isCancelled\(\)\) return;\s*if \(result\.kind === "not-found"\) \{\s*setCutoutError\(/,
-  );
-  assert.match(
-    body,
-    /\} catch \{\s*await new Promise<void>\(\(resolve\) => \{\s*setTimeout\(resolve, 0\);\s*\}\);\s*await new Promise<void>\(\(resolve\) => \{\s*setTimeout\(resolve, 0\);\s*\}\);\s*(?:\/\/[^\n]*\n\s*)*if \(!isCancelled\(\)\) setCutoutError\(/,
+    source,
+    /const handleCutoutCancel = \(\) => \{\s*cutoutRunRef\.current \+= 1;[\s\S]*?setCutoutError\(null\);/,
   );
 });
 

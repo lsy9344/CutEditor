@@ -72,3 +72,17 @@ export function stickerStrokeToSourceStroke(
     radius: (localRadius * (crop.width / stickerSize.width)) / workingSize.width,
   };
 }
+
+// 작은 스티커에서 기본 붓 한 획이 남은 전경을 모두 덮지 않도록,
+// 화면에 보이는 스티커 짧은 변의 1/8을 넘지 않게 붓 반지름을 제한합니다.
+export function getCutoutBrushScreenRadius(
+  screenRadius: number,
+  sticker: StickerFrame,
+  stageScale: number,
+): number {
+  const displayedShortSide = Math.min(
+    sticker.width * Math.abs(sticker.scaleX),
+    sticker.height * Math.abs(sticker.scaleY),
+  ) * stageScale;
+  return Math.min(screenRadius, displayedShortSide / 8);
+}

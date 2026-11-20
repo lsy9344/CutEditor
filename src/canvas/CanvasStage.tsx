@@ -33,7 +33,7 @@ import { getCutoutImagesState } from "../photo/cutoutTypes";
 import type { CutoutChanges, CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
 import { hasCutoutWorkingCanvas } from "../photo/cutoutCache";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
-import { stickerLocalToSourceUv, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
+import { getCutoutBrushScreenRadius, stickerLocalToSourceUv, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
 import {
   applyPresetToEdits,
   isDefaultPhotoEdits,
@@ -460,6 +460,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isCutoutCacheMissing = selectedSticker?.cutout ? !hasCutoutWorkingCanvas(selectedSticker.id) : false;
+  const brushScreenRadius = photoEdit.toolMode === "erase-cutout" && selectedSticker?.cutout
+    ? getCutoutBrushScreenRadius(BRUSH_SCREEN_RADIUS[photoEdit.brushSize], selectedSticker, zoom)
+    : BRUSH_SCREEN_RADIUS[photoEdit.brushSize];
   const isTouchManipulationActive = Boolean(selection);
 
   useEffect(() => {
@@ -528,10 +531,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (!draft || draft.pointerId !== pointerId) return;
     cancelBrushStroke();
     if (draft.mode !== photoEdit.toolMode) return;
-    const localRadius = getLocalBrushRadius(BRUSH_SCREEN_RADIUS[photoEdit.brushSize], draft.overlay.getAbsoluteScale().x);
+    const requestedScreenRadius = BRUSH_SCREEN_RADIUS[photoEdit.brushSize];
     if (draft.mode === "erase-photo") {
       const targetImage = userImages.find((userImage) => userImage.id === draft.targetId);
       if (!targetImage) return;
+      const localRadius = getLocalBrushRadius(requestedScreenRadius, draft.overlay.getAbsoluteScale().x);
       const stroke = toNormalizedStroke(draft.localPoints, draft.overlay.width(), draft.overlay.height(), localRadius);
       if (!stroke) return;
       photoEdit.onEditsChange(targetImage.id, { ...targetImage.edits, erase: [...targetImage.edits.erase, stroke] });
@@ -539,6 +543,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (draft.mode === "erase-cutout") {
       const targetSticker = stickers.find((sticker) => sticker.id === draft.targetId);
       if (!targetSticker?.cutout) return;
+      // 미리보기 원과 같은 상한 반지름을 실제 픽셀 처리에도 쓴다.
+      const localRadius = getLocalBrushRadius(
+        getCutoutBrushScreenRadius(requestedScreenRadius, targetSticker, zoom),
+        draft.overlay.getAbsoluteScale().x,
+      );
       const stroke = stickerStrokeToSourceStroke(draft.localPoints, localRadius, { width: targetSticker.width, height: targetSticker.height }, targetSticker.cutout.crop, targetSticker.cutout.workingSize);
       if (!stroke) return;
       cutoutEdit.onRegenerate(targetSticker.id, { eraseStrokes: [...targetSticker.cutout.eraseStrokes, stroke] });
@@ -2475,7 +2484,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     ref={brushLineRef}
                     points={[]}
                     stroke={ERASE_PREVIEW_COLOR}
-                    strokeWidth={(2 * BRUSH_SCREEN_RADIUS[photoEdit.brushSize]) / zoom}
+                    strokeWidth={(2 * brushScreenRadius) / zoom}
                     lineCap="round"
                     lineJoin="round"
                   />

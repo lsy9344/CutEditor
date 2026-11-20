@@ -65,6 +65,7 @@ import { exportStageToBlob } from './utils/stageExport'
 import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone } from './photo/segmentation'
 import {
   createCutoutWorkingCanvas,
+  isCancelledAfterPendingInput,
   loadImageElement,
   renderCutoutSticker,
   waitForPaint,
@@ -1235,6 +1236,7 @@ function App() {
     cutoutRunRef.current += 1; // 진행 중인 작업의 결과를 버림
     abandonPendingSegmenters(); // 아직 준비 중인 모델 요청을 버림. 이미 준비된 모델은 그대로
     setCutoutBusyId(null);
+    setCutoutError(null); // 취소 클릭이 오류 예약 뒤에 처리돼도 안내를 남기지 않음
   };
 
   const handleCutoutCreate = async (imageId: string) => {
@@ -1257,22 +1259,15 @@ function App() {
       if (!confidence || isCancelled()) return; // 취소됐으면 렌더를 시작하지 않음
       const result = await renderCutoutSticker(workingCanvas, confidence, { outline: true, eraseStrokes: [] });
       if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
-      // 동기 계산이 끝난 직후에는 계산 중에 누른 취소 입력이 아직 처리되지 않았을 수 있다.
-      // 0ms 타이머를 연달아 두 번 기다려 이미 예약된 입력 태스크가 먼저 처리되게 하고,
-      // 결과·오류를 반영하기 전에 작업 번호를 다시 본다.
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      if (isCancelled()) return;
+      // 동기 계산 직후에는 계산 중에 누른 취소 입력이 아직 처리되지 않았을 수 있다.
+      // 프레임 경계를 지나 대기 입력을 처리한 뒤 작업 번호를 다시 본다.
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
       if (result.kind === "not-found") {
         setCutoutError({ targetId: imageId, message: CUTOUT_COPY.notFound });
         return;
       }
       await loadImageElement(result.url); // 붙이기 전에 PNG를 디코드
-      if (isCancelled()) return;
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
       // 여기부터 finally까지 await가 없습니다. 기록 경계·붙이기·캐시 등록·잠금 해제가 한 배치입니다.
       const newSticker: CanvasSticker = {
         ...buildCenteredSticker(result.url, { width: result.width, height: result.height }),
@@ -1288,14 +1283,9 @@ function App() {
       setCutoutImagesState({ kind: "loading" }); // 캔버스가 새 PNG를 올릴 때까지 저장을 막음
       setMobilePanel(null); // 모바일 시트를 닫아 붙은 결과를 바로 보여 줌
     } catch {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 0);
-      });
       // 동기 추론 실패로 곧바로 catch에 들어온 경우에도 같은 경계를 둔다.
-      if (!isCancelled()) setCutoutError({ targetId: imageId, message: CUTOUT_COPY.loadFailed });
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
+      setCutoutError({ targetId: imageId, message: CUTOUT_COPY.loadFailed });
     } finally {
       if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 붙이지 못한 URL
       if (!isCancelled()) setCutoutBusyId(null); // 취소했으면 이미 풀렸고, 그 뒤 시작한 새 작업의 잠금은 건드리지 않음
@@ -1326,13 +1316,14 @@ function App() {
       if (!confidence) throw new Error("cutout cache missing");
       const result = await renderCutoutSticker(workingCanvas, confidence, { outline: nextSource.outline, eraseStrokes: nextSource.eraseStrokes });
       if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
-      if (isCancelled()) return;
+      // 동기 계산 직후의 취소 입력을 처리한 뒤 결과를 반영한다.
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
       if (result.kind === "not-found") {
         setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.notFound });
         return;
       }
       await loadImageElement(result.url); // 바꾸기 전에 PNG를 디코드
-      if (isCancelled()) return;
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
       // 여기부터 finally까지 await가 없습니다. 기록 경계·바꾸기·캐시 등록·잠금 해제가 한 배치입니다.
       flushHistory(); // 바꾸기 직전에 기록 경계를 닫음
       setStickers((previous) => previous.map((item) => (item.id === stickerId
@@ -1349,7 +1340,8 @@ function App() {
       rememberCutoutConfidence(stickerId, nextSource.target, confidence); // 성공한 작업의 마스크만 캐시에 넣음
       setCutoutImagesState({ kind: "loading" }); // 새 PNG를 캔버스가 올릴 때까지 저장을 막음
     } catch {
-      if (!isCancelled()) setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.loadFailed });
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
+      setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.loadFailed });
     } finally {
       if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 바꾸지 못한 URL
       if (!isCancelled()) setCutoutBusyId(null);

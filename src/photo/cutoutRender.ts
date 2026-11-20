@@ -22,6 +22,17 @@ export function waitForPaint(): Promise<void> {
   });
 }
 
+// 계산이 끝난 뒤 브라우저가 대기 중인 입력(취소 클릭)을 처리하는 프레임 경계를 한 번 지나게 한 다음,
+// 기존 작업 번호로 취소 여부를 돌려줍니다. 취소된 작업은 결과·안내를 반영하지 않습니다.
+export async function isCancelledAfterPendingInput(isCancelled: () => boolean): Promise<boolean> {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 0);
+    });
+  });
+  return isCancelled();
+}
+
 export function loadImageElement(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();

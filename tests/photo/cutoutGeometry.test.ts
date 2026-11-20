@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
+  getCutoutBrushScreenRadius,
   keepStickerCenter,
   stickerLocalToSourceUv,
   stickerStrokeToSourceStroke,
@@ -72,3 +74,41 @@ test("stickerStrokeToSourceStroke returns null when no points remain", () => {
 
   assert.equal(result, null);
 });
+
+test("getCutoutBrushScreenRadius caps the brush at 1/8 of the displayed short side", () => {
+  const smallSticker = { x: 0, y: 0, width: 13.89, height: 18.99, scaleX: 1, scaleY: 1, rotation: 0 };
+
+  assert.equal(getCutoutBrushScreenRadius(16, smallSticker, 1), 13.89 / 8);
+});
+
+test("getCutoutBrushScreenRadius keeps the default brush on a large sticker", () => {
+  const largeSticker = { x: 0, y: 0, width: 300, height: 400, scaleX: 1, scaleY: 1, rotation: 0 };
+
+  assert.equal(getCutoutBrushScreenRadius(16, largeSticker, 1), 16);
+});
+
+test("getCutoutBrushScreenRadius applies the sticker and stage scale", () => {
+  const sticker = { x: 0, y: 0, width: 200, height: 100, scaleX: 0.5, scaleY: 0.5, rotation: 0 };
+
+  assert.equal(getCutoutBrushScreenRadius(16, sticker, 1), 50 / 8);
+  assert.equal(getCutoutBrushScreenRadius(16, sticker, 2), 100 / 8);
+  assert.equal(getCutoutBrushScreenRadius(16, sticker, 4), 16);
+});
+
+test("getCutoutBrushScreenRadius ignores rotation and flip signs", () => {
+  const sticker = { x: 0, y: 0, width: 200, height: 100, scaleX: 0.5, scaleY: -0.5, rotation: 37 };
+
+  assert.equal(getCutoutBrushScreenRadius(16, sticker, 1), 50 / 8);
+  assert.equal(getCutoutBrushScreenRadius(16, { ...sticker, scaleX: -0.5, scaleY: 0.5 }, 1), 50 / 8);
+});
+
+test("가장자리 지우기 미리보기와 실제 처리에 같은 상한 반지름을 쓴다", () => {
+  const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+
+  assert.match(source, /strokeWidth=\{\(2 \* brushScreenRadius\) \/ zoom\}/);
+  assert.match(
+    source,
+    /getLocalBrushRadius\(\s*getCutoutBrushScreenRadius\(requestedScreenRadius, targetSticker, zoom\),/,
+  );
+});
+
