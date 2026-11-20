@@ -56,7 +56,7 @@ import {
 } from "../photo/photoTool";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
-import { getSlotLabel } from "../state/editorLabels";
+import { getSlotButtonLabel, getSlotLabel } from "../state/editorLabels";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -174,6 +174,19 @@ export type CanvasStageProps = {
   }>) => void;
 };
 
+const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  whiteSpace: 'nowrap',
+  margin: '-1px',
+  padding: 0,
+  border: 0,
+};
+const SLOT_LIST_VISIBLE_STYLE: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' };
+
 const toLegacyFrameFileName = (frameType: FrameType): string | null => {
   if (frameType === "1l") return "1_l";
   if (frameType === "1f") return "1_v";
@@ -284,6 +297,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   userImageUrlsRef.current = new Map(userImages.map((userImage) => [userImage.id, userImage.url] as const));
   const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
+  const [isSlotListFocused, setIsSlotListFocused] = useState(false); // 칸 버튼 목록은 포커스가 안에 있을 때만 보입니다
   const currentSlotIdRef = useRef<string | null>(null);
   const stickerLoadSourcesRef = useRef<Map<string, string>>(new Map());
   const stickerImageRefs = useRef<Record<string, Konva.Image | null>>({});
@@ -2547,6 +2561,30 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 누르는 동안 원래 사진
               </button>
             )}
+          </div>
+          {/* 칸 버튼 목록: 키보드로 들어오면 보이고, 마우스 손님에게는 숨깁니다(설계 7.4) */}
+          <div
+            role="group"
+            aria-labelledby="slot-list-title"
+            style={isSlotListFocused ? SLOT_LIST_VISIBLE_STYLE : VISUALLY_HIDDEN_STYLE}
+            onFocus={() => setIsSlotListFocused(true)}
+            onBlur={(event) => {
+              if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+              setIsSlotListFocused(false);
+            }}
+          >
+            <p id="slot-list-title" style={{ margin: 0, fontSize: '14px', color: 'var(--linear-neutral-50)' }}>칸에 사진 넣기</p>
+            {frameLayout.slots.map((slot, slotIndex) => (
+              <button
+                key={slot.id}
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={() => handleSlotClick(slot.id)}
+                style={{ minHeight: '44px', fontSize: '14px' }}
+              >
+                {getSlotButtonLabel(slotIndex, userImages.some((image) => image.slotId === slot.id))}
+              </button>
+            ))}
           </div>
           {selectedFrame !== "1l" && (
             <div>
