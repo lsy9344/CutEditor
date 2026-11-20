@@ -71,6 +71,7 @@ import {
 } from './photo/cutoutRender'
 import { pruneCutoutCache, rememberCutoutConfidence, setCutoutWorkingCanvas } from './photo/cutoutCache'
 import { CUTOUT_COPY } from './photo/cutoutCopy'
+import type { CutoutImagesState } from './photo/cutoutTypes'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -453,6 +454,7 @@ function App() {
   const trackedObjectUrlsRef = useRef(new Set<string>());
   const [cutoutBusyId, setCutoutBusyId] = useState<string | null>(null);
   const [cutoutError, setCutoutError] = useState<{ targetId: string; message: string } | null>(null);
+  const [cutoutImagesState, setCutoutImagesState] = useState<CutoutImagesState>({ kind: "ready" }); // 내 사진 스티커의 현재 PNG가 캔버스에 올라갔는지
   const cutoutRunRef = useRef(0); // 누끼 작업마다 1 올림. '취소'를 누르면 1 올려 그 작업의 결과를 버림
   const cutoutLockRef = useRef<HTMLDivElement>(null);
   const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
@@ -628,6 +630,7 @@ function App() {
   const [exportObjectUrl, setExportObjectUrl] = useState<string | null>(null);
   const [exportFilename, setExportFilename] = useState<string>("");
   const [exportManualSaveRequired, setExportManualSaveRequired] = useState<boolean>(false);
+  const [exportMissingStickerCount, setExportMissingStickerCount] = useState(0); // 모바일 미리보기에 보여 줄 빠진 스티커 수
   const [viewportWidth, setViewportWidth] = useState<number>(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -1280,6 +1283,7 @@ function App() {
       selectInsertedSticker(newSticker.id);
       setCutoutWorkingCanvas(newSticker.id, workingCanvas);
       rememberCutoutConfidence(newSticker.id, { kind: "everyone" }, confidence);
+      setCutoutImagesState({ kind: "loading" }); // 캔버스가 새 PNG를 올릴 때까지 저장을 막음
       setMobilePanel(null); // 모바일 시트를 닫아 붙은 결과를 바로 보여 줌
     } catch {
       if (!isCancelled()) setCutoutError({ targetId: imageId, message: CUTOUT_COPY.loadFailed });
@@ -1472,6 +1476,15 @@ function App() {
       return;
     }
 
+    if (cutoutImagesState.kind === "loading") {
+      alert(CUTOUT_COPY.exportBlocked);
+      return;
+    }
+    const missingStickerCount = cutoutImagesState.kind === "failed" ? cutoutImagesState.stickerIds.length : 0; // 화면에도 그려지지 않는 스티커 수. 저장을 막지 않음
+    const showMissingStickerNotice = () => {
+      if (missingStickerCount > 0) alert(CUTOUT_COPY.missingStickers(missingStickerCount));
+    };
+
     const expectsBoothySessionSave = Boolean(
       boothyLaunchContext?.completion?.saveUrl?.trim()
       && boothyLaunchContext?.sessionId?.trim()
@@ -1510,6 +1523,7 @@ function App() {
         if (expectsBoothySessionSave) {
           setBoothySaveNoticeState('saved');
         }
+        showMissingStickerNotice();
         return;
       }
 
@@ -1532,6 +1546,7 @@ function App() {
           userAgent,
           isStandalone,
         }));
+        setExportMissingStickerCount(missingStickerCount);
         setExportOverlayOpen(true);
         return;
       }
@@ -1552,6 +1567,7 @@ function App() {
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
+          showMissingStickerNotice();
           return;
         } catch (error) {
           const isAbort = error instanceof DOMException && error.name === 'AbortError';
@@ -1570,6 +1586,7 @@ function App() {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+      showMissingStickerNotice();
       setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
     } catch (e) {
       console.error('Export 실패:', e);
@@ -1674,6 +1691,7 @@ function App() {
     setExportObjectUrl(null);
     setExportFilename("");
     setExportManualSaveRequired(false);
+    setExportMissingStickerCount(0);
   };
 
   const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
@@ -1762,6 +1780,7 @@ function App() {
       texts={texts}
       stickers={stickers}
       onPhotoImagesStateChange={handlePhotoImagesStateChange}
+      onCutoutImagesStateChange={setCutoutImagesState}
       onSelect={handleSelect}
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}
@@ -2164,6 +2183,9 @@ function App() {
                 ? '이 브라우저에서는 자동 저장이 불안정할 수 있어요. 아래 미리보기를 길게 눌러 이미지를 저장해 주세요.'
                 : '공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.'}
             </p>
+            {exportMissingStickerCount > 0 && (
+              <p className="linear-status--warning" style={{ marginBottom: 12 }}>{CUTOUT_COPY.missingStickers(exportMissingStickerCount)}</p>
+            )}
             {exportObjectUrl && (
               <img
                 src={exportObjectUrl}
