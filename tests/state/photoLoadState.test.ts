@@ -95,16 +95,16 @@ test("App은 저장을 기다리지 않고 프레임 확인 직후 사진 준비
   assert.match(source, /onPhotoImagesStateChange=\{handlePhotoImagesStateChange\}/);
   assert.match(source, /const photoImagesState = photoImagesStateRef\.current;/);
   assert.match(source, /const photoSaveBlockMessage = getPhotoSaveBlockMessage\(photoImagesState\);/);
-  assert.match(source, /if \(photoSaveBlockMessage\) \{\s*alert\(photoSaveBlockMessage\);\s*return;\s*\}/);
+  assert.match(source, /if \(photoSaveBlockMessage\) \{\s*setInlineStatus\(\{ kind: 'save-blocked', message: photoSaveBlockMessage \}\);\s*return;\s*\}/);
 
   const frameCheckIndex = source.indexOf("if (!frameType) {");
   const photoCheckIndex = source.indexOf("const photoImagesState = photoImagesStateRef.current;");
   assert.ok(frameCheckIndex !== -1 && frameCheckIndex < photoCheckIndex);
   [
     "setExportMode(true);",
-    "const savedToBoothySession = await saveToBoothySession({",
-    "if (exportExperience === 'share-sheet') {",
-    "const fileHandle = await window.showSaveFilePicker({",
+    "saveToBoothy: (blob) => saveToBoothySession({ blob, frameType }),",
+    "const result = await runSaveFlow(",
+    "pickFile: (suggestedName) => window.showSaveFilePicker!({",
     "const downloadUrl = URL.createObjectURL(blob);",
   ].forEach((saveBranch) => {
     assert.ok(photoCheckIndex < source.indexOf(saveBranch), saveBranch);

@@ -6,6 +6,8 @@ export type DesktopNavigationRailProps = {
   activePanel: DesktopPanel;
   onTogglePanel: (panel: Exclude<DesktopPanel, null>) => void;
   onExport: () => void;
+  isSaveDisabled: boolean;
+  saveDisabledReason?: string;
   tutorialStep: number | null;
   frameButtonRef: React.Ref<HTMLButtonElement>;
   textButtonRef: React.Ref<HTMLButtonElement>;
@@ -35,6 +37,8 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
   activePanel,
   onTogglePanel,
   onExport,
+  isSaveDisabled,
+  saveDisabledReason,
   tutorialStep,
   frameButtonRef,
   textButtonRef,
@@ -108,15 +112,17 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         type="button"
         className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
         onClick={onExport}
+        disabled={isSaveDisabled}
+        title={saveDisabledReason}
         data-focus-return="save"
-        style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0 }}
+        style={{ width: '100%', height: '56px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', padding: 0, opacity: isSaveDisabled ? 0.5 : 1, cursor: isSaveDisabled ? 'not-allowed' : 'pointer' }}
       >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
           <polyline points="7 10 12 15 17 10" />
           <line x1="12" y1="15" x2="12" y2="3" />
         </svg>
-        <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>저장</span>
+        <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>저장</span>
       </button>
     </aside>
   );

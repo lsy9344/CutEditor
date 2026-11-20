@@ -59,12 +59,8 @@ test("Boothy 내재화 저장은 saveUrl 브리지를 먼저 사용하고 파일
   assert.match(source, /if \(savedViaHostMessage\) \{\s*return true;\s*}/);
   assert.match(source, /const saveUrl = boothyLaunchContext\?\.completion\?\.saveUrl\?\.trim\(\) \?\? '';/);
   assert.match(source, /const response = await fetch\(saveUrl, \{/);
-  assert.match(source, /const savedToBoothySession = await saveToBoothySession\(\{/);
-  assert.match(
-    source,
-    /if \(savedToBoothySession\) \{\s*if \(expectsBoothySessionSave\) \{\s*setBoothySaveNoticeState\('saved'\);\s*}\s*showMissingStickerNotice\(\);\s*return;\s*}/,
-  );
-  assert.ok(source.search(/if \(savedToBoothySession\) \{/) < source.indexOf("window.showSaveFilePicker({")); // 파일 저장 폴백보다 앞에서 반환
+  assert.match(source, /saveToBoothy: \(blob\) => saveToBoothySession\(\{ blob, frameType \}\),/);
+  assert.match(source, /const route = getSaveRoute\(\{\s*expectsBoothySessionSave,/);
 });
 
 test("Boothy 내재화 편집기는 마운트 직후 host ready 메시지를 보낸다", () => {
