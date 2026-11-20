@@ -1,5 +1,7 @@
 import type { UserImage } from "../types/frame";
 import type { CutoutSource } from "../photo/cutoutTypes";
+import { pushHistory } from "./history.ts";
+import type { History } from "./history.ts";
 
 export type TextAlign = "left" | "center" | "right";
 
@@ -81,6 +83,26 @@ export function hasEditorObject(document: EditorDocument, objectId: string): boo
     || document.texts.some((text) => text.id === objectId)
     || document.stickers.some((sticker) => sticker.id === objectId)
   );
+}
+
+// 글씨 지우기 한 번의 기록입니다. base는 지우기 직전 기록 맨 위 문서 객체, deleted는 지운 직후 문서입니다(설계 9장, UR-2).
+export type TextDeleteRecord = { base: EditorDocument; deleted: EditorDocument };
+
+// 지금 문서까지 기록에 넣었을 때 맨 위가 그 지우기일 때만 지우기 안내의 [되돌리기]가 유효합니다.
+// 문서 값만 비교하지 않습니다. 기록을 초기화하는 프레임 변경 뒤에는 base가 past에 없어 거짓입니다.
+export function canUndoTextDelete({
+  record,
+  history,
+  currentDocument,
+}: {
+  record: TextDeleteRecord | null;
+  history: History<EditorDocument>;
+  currentDocument: EditorDocument;
+}): boolean {
+  if (record === null) return false;
+  const flushedHistory = pushHistory(history, currentDocument, isSameEditorDocument);
+  const topPastDocument = flushedHistory.past[flushedHistory.past.length - 1];
+  return topPastDocument === record.base && isSameEditorDocument(flushedHistory.present, record.deleted);
 }
 
 export function collectObjectUrls(document: EditorDocument): Set<string> {

@@ -8,8 +8,8 @@ import { TutorialOverlay } from './ui/TutorialOverlay'
 import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
-import type { CanvasSticker, CanvasText, EditorDocument, TextAlign } from './state/editorDocument'
-import { collectObjectUrls, collectUrlsToRevoke, hasEditorObject, isSameEditorDocument } from './state/editorDocument'
+import type { CanvasSticker, CanvasText, EditorDocument, TextAlign, TextDeleteRecord } from './state/editorDocument'
+import { canUndoTextDelete, collectObjectUrls, collectUrlsToRevoke, hasEditorObject, isSameEditorDocument } from './state/editorDocument'
 import type { History } from './state/history'
 import {
   canRedo,
@@ -485,6 +485,14 @@ function App() {
   }), [editorState.userImages, editorState.frameColor, texts, stickers]);
   const [history, setHistory] = useState<History<EditorDocument>>(() => createHistory(currentDocument));
   const isHistoryPending = !isSameEditorDocument(history.present, currentDocument);
+  const [textDeleteRecord, setTextDeleteRecord] = useState<TextDeleteRecord | null>(null); // 글씨 지우기 한 번의 기록(UR-2)
+  const isTextDeletedNoticeVisible = canUndoTextDelete({ record: textDeleteRecord, history, currentDocument });
+  useEffect(() => {
+    // 다른 편집이 기록되거나 글씨를 새로 고르면 안내를 비웁니다. 그 편집을 되돌려도 다시 나타나지 않습니다.
+    if (textDeleteRecord !== null && (!isTextDeletedNoticeVisible || selectedTextId !== null)) {
+      setTextDeleteRecord(null);
+    }
+  }, [textDeleteRecord, isTextDeletedNoticeVisible, selectedTextId]);
   const currentDocumentRef = useRef(currentDocument);
   currentDocumentRef.current = currentDocument;
   const trackedObjectUrlsRef = useRef(new Set<string>());
@@ -719,6 +727,13 @@ function App() {
     applyEditorDocument(next.present);
   };
 
+  const handleUndoTextDelete = () => {
+    // 누르는 순간 다시 봅니다. 맨 위 기록이 그 지우기가 아니면 아무것도 되돌리지 않습니다.
+    if (!canUndoTextDelete({ record: textDeleteRecord, history, currentDocument })) return;
+    setTextDeleteRecord(null);
+    handleUndo();
+  };
+
   const handleRedo = () => {
     if (isCutoutLocked()) return;
     const flushed = pushHistory(history, currentDocument, isSameEditorDocument);
@@ -880,6 +895,7 @@ function App() {
     });
     const nextDocument: EditorDocument = { userImages: nextUserImages, texts, stickers, frameColor: editorState.frameColor };
     setHistory(createHistory(nextDocument));
+    setTextDeleteRecord(null); // 기록을 초기화하므로 지우기 안내도 지웁니다(UR-2)
     setEditorState((previous) => ({
       ...previous,
       selectedFrame: frameType,
@@ -1184,6 +1200,8 @@ function App() {
 
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
+    setSelectedStickerId(null);
+    setEditorState(prev => ({ ...prev, selection: newText.id, selectedSlot: null }));
   }
 
 
@@ -1245,6 +1263,10 @@ function App() {
   }
 
   const handleTextDelete = (textId: string) => {
+    setTextDeleteRecord({
+      base: pushHistory(history, currentDocument, isSameEditorDocument).present, // 지우기 직전 기록 맨 위(누를 때 flush된 그 객체)
+      deleted: { ...currentDocument, texts: currentDocument.texts.filter((text) => text.id !== textId) },
+    });
     setTexts(prev => prev.filter(text => text.id !== textId));
 
     // 삭제된 텍스트가 선택된 상태였다면 선택 해제
@@ -1998,6 +2020,8 @@ function App() {
     onTextInsert: handleTextInsert,
     onTextUpdate: handleTextUpdate,
     onTextDelete: handleTextDelete,
+    isTextDeletedNoticeVisible,
+    onUndoTextDelete: handleUndoTextDelete,
     onStickerInsert: handleStickerInsert,
     onStickerUpdate: handleStickerUpdate,
     onStickerDelete: handleStickerDelete,
