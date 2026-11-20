@@ -34,7 +34,7 @@ export const PHOTO_ADJUST_FIELDS: PhotoAdjustField[] = [
   { key: "brightness", label: "밝기", min: ADJUST_MIN, max: ADJUST_MAX, step: ADJUST_STEP },
   { key: "contrast", label: "선명하게", min: ADJUST_MIN, max: ADJUST_MAX, step: ADJUST_STEP },
   { key: "saturation", label: "색감", min: ADJUST_MIN, max: ADJUST_MAX, step: ADJUST_STEP },
-  { key: "warmth", label: "따뜻하게", min: ADJUST_MIN, max: ADJUST_MAX, step: ADJUST_STEP },
+  { key: "warmth", label: "따뜻함", min: ADJUST_MIN, max: ADJUST_MAX, step: ADJUST_STEP },
 ];
 
 export const PHOTO_PRESETS: { id: PhotoPresetId; label: string; adjust: PhotoAdjust }[] = [

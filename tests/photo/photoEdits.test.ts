@@ -69,7 +69,7 @@ test("PHOTO_ADJUST_FIELDS는 쉬운 이름의 네 항목을 정해진 범위로 
       ["brightness", "밝기"],
       ["contrast", "선명하게"],
       ["saturation", "색감"],
-      ["warmth", "따뜻하게"],
+      ["warmth", "따뜻함"],
     ],
   );
 
