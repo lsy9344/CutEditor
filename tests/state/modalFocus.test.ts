@@ -74,14 +74,14 @@ test("쓸 수 있는 후보가 없거나 후보가 빈 배열이면 -1을 돌려
 // UX1-1: 프레임 시트가 아직 열려 있으면 포커스는 시트 안에 둡니다. 시트 후보는 캔버스·저장 버튼보다 앞입니다.
 test("돌려줄 후보는 연 곳, 열린 시트 안 후보, 캔버스, 저장 버튼 순서다", () => {
   assert.deepEqual(
-    getFocusReturnCandidates({ opener: "opener", sheetCandidates: ["sheet-close"], canvas: "canvas", saves: ["save-1", "save-2"] }),
+    getFocusReturnCandidates({ origin: "frame-change", opener: "opener", sheetCandidates: ["sheet-close"], canvas: "canvas", saves: ["save-1", "save-2"] }),
     ["opener", "sheet-close", "canvas", "save-1", "save-2"],
   );
 });
 
 test("시트가 없으면 돌려줄 후보는 전과 같이 연 곳, 캔버스, 저장 버튼 순서다", () => {
   assert.deepEqual(
-    getFocusReturnCandidates({ opener: null, sheetCandidates: [], canvas: "canvas", saves: ["save"] }),
+    getFocusReturnCandidates({ origin: "frame-change", opener: null, sheetCandidates: [], canvas: "canvas", saves: ["save"] }),
     [null, "canvas", "save"],
   );
 });
@@ -102,4 +102,33 @@ test("연 곳을 쓸 수 있으면 열린 시트가 있어도 연 곳이 먼저�
   const described = [NORMAL_CANDIDATE, NORMAL_CANDIDATE, NORMAL_CANDIDATE];
 
   assert.equal(pickFocusReturnIndex(described), 0);
+});
+
+// UX2-2: 저장에서 시작한 안내는 원래 저장 버튼을 못 쓰면 지금 배치의 저장 버튼으로 돌아간다. 캔버스보다 앞이다.
+test("저장에서 시작한 안내는 연 곳, 열린 시트 안 후보, 저장 버튼, 캔버스 순서로 돌려준다", () => {
+  assert.deepEqual(
+    getFocusReturnCandidates({ origin: "save", opener: "opener", sheetCandidates: ["sheet-close"], canvas: "canvas", saves: ["save-1", "save-2"] }),
+    ["opener", "sheet-close", "save-1", "save-2", "canvas"],
+  );
+});
+
+test("저장에서 시작했고 원래 저장 버튼이 사라졌으면 지금 배치의 저장 버튼이 캔버스보다 먼저 고른다", () => {
+  const candidates = getFocusReturnCandidates({ origin: "save", opener: "old-save", sheetCandidates: [], canvas: "canvas", saves: ["phone-save"] });
+  const described = candidates.map((candidate) => (candidate === "old-save" ? DISCONNECTED_CANDIDATE : NORMAL_CANDIDATE));
+
+  assert.equal(candidates[pickFocusReturnIndex(described)], "phone-save");
+});
+
+test("저장에서 시작했어도 저장 버튼을 모두 못 쓰면 캔버스로 돌아간다", () => {
+  const candidates = getFocusReturnCandidates({ origin: "save", opener: null, sheetCandidates: [], canvas: "canvas", saves: ["hidden-save"] });
+  const described = candidates.map((candidate) => (candidate === "canvas" ? NORMAL_CANDIDATE : DISCONNECTED_CANDIDATE));
+
+  assert.equal(candidates[pickFocusReturnIndex(described)], "canvas");
+});
+
+test("프레임 바꾸기에서 시작한 안내는 연 곳을 못 쓰면 저장 버튼이 있어도 캔버스로 돌아간다", () => {
+  const candidates = getFocusReturnCandidates({ origin: "frame-change", opener: "frame-card", sheetCandidates: [], canvas: "canvas", saves: ["save"] });
+  const described = candidates.map((candidate) => (candidate === "frame-card" ? DISCONNECTED_CANDIDATE : NORMAL_CANDIDATE));
+
+  assert.equal(candidates[pickFocusReturnIndex(described)], "canvas");
 });

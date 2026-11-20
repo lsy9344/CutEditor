@@ -8,6 +8,8 @@ export type SaveFlowInput<THandle> = { route: SaveRoute; filename: string; retry
 export type SaveWritable = { write: (data: Blob) => Promise<void>; close: () => Promise<void> };
 export type SaveFlowDeps<THandle> = {
   pickFile: (suggestedName: string) => Promise<THandle>;
+  // 렌더할 캔버스와 그 사진이 지금 준비됐는지 그 자리에서 읽습니다. 위치 창이 열린 사이 캔버스가 바뀔 수 있습니다(UX2-1).
+  isCanvasReady: () => boolean;
   showProgress: () => void;
   render: () => Promise<Blob>;
   saveToBoothy: (blob: Blob) => Promise<boolean>;
@@ -20,6 +22,8 @@ export type SaveFlowResult<THandle> =
   | { kind: "cancelled" }
   | { kind: "share-sheet" }
   | { kind: "done"; location: SaveLocation }
+  // 렌더·쓰기 전에 멈춘 저장. 고른 경로·이름·핸들을 남기므로 준비가 끝난 뒤 다시 저장할 수 있습니다.
+  | { kind: "photos-not-ready"; retry: SaveRetry<THandle> }
   | { kind: "failed"; error: unknown; retry: SaveRetry<THandle> };
 export type SaveRequestStep =
   | { kind: "blocked"; message: string }
@@ -94,6 +98,8 @@ export const runSaveFlow = async <THandle>(
       downloadLocation = "downloads-after-picker-error";
     }
   }
+  // 위치 창이 돌아온 뒤 렌더할 캔버스를 다시 확인합니다. 사진이 덜 올라온 캔버스로 내보내면 사진 빠진 파일이 성공으로 남습니다.
+  if (!deps.isCanvasReady()) return { kind: "photos-not-ready", retry: { route, filename, fileHandle } };
   deps.showProgress();
   let blob: Blob;
   try {

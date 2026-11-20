@@ -81,6 +81,7 @@ import { CUTOUT_COPY } from './photo/cutoutCopy'
 import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
+import type { FocusReturnOrigin } from './state/modalFocus'
 import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
 import { countEmptySlots, getSaveRequestStep, getSaveRoute, makeSaveFilename, runSaveFlow } from './state/saveFlow'
 import type { SaveRetry } from './state/saveFlow'
@@ -489,6 +490,8 @@ function App() {
   const [cutoutBusyId, setCutoutBusyId] = useState<string | null>(null);
   const [cutoutError, setCutoutError] = useState<{ targetId: string; message: string } | null>(null);
   const [cutoutImagesState, setCutoutImagesState] = useState<CutoutImagesState>({ kind: "ready" }); // 내 사진 스티커의 현재 PNG가 캔버스에 올라갔는지
+  const cutoutImagesStateRef = useRef(cutoutImagesState); // 저장 위치 창을 기다린 뒤에도 지금 값을 읽으려고 둡니다(UX2-1)
+  cutoutImagesStateRef.current = cutoutImagesState;
   const cutoutRunRef = useRef(0); // 누끼 작업마다 1 올림. '취소'를 누르면 1 올려 그 작업의 결과를 버림
   const cutoutLockRef = useRef<HTMLDivElement>(null);
   const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
@@ -500,10 +503,12 @@ function App() {
   const noticeCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 카드
   const noticeOpenerRef = useRef<HTMLElement | null>(null); // 확인창이나 저장을 시작한 요소
   const isFocusReturnPendingRef = useRef(false); // 확인창·저장이 끝나면 포커스를 돌려줄지
-  // 이어지는 안내(빈 칸 → 진행 → 완료) 동안 처음 연 곳을 지킵니다. 이미 기억 중이면 바꾸지 않습니다.
-  const rememberNoticeOpener = (card: HTMLElement | null) => {
+  const focusReturnOriginRef = useRef<FocusReturnOrigin>('frame-change'); // 안내가 저장에서 시작했는지(UX2-2)
+  // 이어지는 안내(빈 칸 → 진행 → 완료) 동안 처음 연 곳과 시작한 곳을 지킵니다. 이미 기억 중이면 바꾸지 않습니다.
+  const rememberNoticeOpener = (card: HTMLElement | null, origin: FocusReturnOrigin) => {
     if (isFocusReturnPendingRef.current) return;
     isFocusReturnPendingRef.current = true;
+    focusReturnOriginRef.current = origin;
     const activeElement = document.activeElement;
     const isUsableOpener = activeElement instanceof HTMLElement
       && activeElement !== document.body
@@ -630,6 +635,7 @@ function App() {
     : 0;
   const noticeView = notice ? getNoticeView(notice, droppedPhotoCount) : null;
   const isNoticeOpen = notice !== null;
+  const noticeKind = notice?.kind ?? null; // 카드 포커스는 안내가 열리거나 종류가 바뀔 때만 줍니다(UX2-3)
   const inlineStatusView = inlineStatus ? getInlineStatusView(inlineStatus) : null;
 
   // 확인창 배경: 연 곳 기억, 바깥 inert, Ctrl/Meta 단축키 막기
@@ -637,7 +643,7 @@ function App() {
     const container = appContainerRef.current;
     const noticeElement = noticeRef.current;
     if (!isNoticeOpen || !container || !noticeElement) return;
-    rememberNoticeOpener(noticeElement);
+    rememberNoticeOpener(noticeElement, 'frame-change');
     // 확인창, 누끼 잠금 덮개, 이미 inert인 요소는 건드리지 않습니다.
     const restoreInert = setInertOutside({ container, keep: [noticeElement, cutoutLockRef.current] });
     const blockShortcutKey = (event: KeyboardEvent) => {
@@ -653,15 +659,18 @@ function App() {
   }, [isNoticeOpen, cutoutBusyId]);
 
   // 카드에 포커스. 버튼이 아니라 카드에 줘서 미리 고른 버튼이 없게 합니다. 누끼 잠금이 풀리면 다시 줍니다(UP-5).
+  // 같은 안내에서 문장만 바뀔 때(사진 기다림)는 다시 돌지 않아 눌러 둔 버튼의 포커스가 남습니다(UX2-3).
   useEffect(() => {
-    if (!notice || cutoutBusyId) return;
+    if (!noticeKind || cutoutBusyId) return;
     noticeCardRef.current?.focus();
-  }, [notice, cutoutBusyId]);
+  }, [noticeKind, cutoutBusyId]);
 
-  // 닫힌 뒤 포커스 돌려주기: 연 곳 → 열린 시트의 닫기 버튼 → 캔버스 → 저장 버튼 가운데 쓸 수 있는 첫 요소
+  // 닫힌 뒤 포커스 돌려주기: 연 곳 → 열린 시트의 닫기 버튼 → 캔버스·저장 버튼 가운데 쓸 수 있는 첫 요소
+  // (저장에서 시작했으면 저장 버튼이 캔버스보다 앞)
   useEffect(() => {
     if (isNoticeOpen || isExportInFlight || cutoutBusyId || !isFocusReturnPendingRef.current) return;
     const candidates = getFocusReturnCandidates({
+      origin: focusReturnOriginRef.current,
       opener: noticeOpenerRef.current,
       sheetCandidates: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="sheet-close"]')),
       canvas: document.querySelector<HTMLElement>('[data-focus-return="canvas"]'),
@@ -1605,6 +1614,7 @@ function App() {
       setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
       return;
     }
+    const stageAtClick = stageRef.current; // 위치 창이 열린 사이 캔버스가 다시 마운트됐는지 알아보는 기준(UX2-1)
     const missingStickerCount = cutoutImagesState.kind === "failed" ? cutoutImagesState.stickerIds.length : 0; // 화면에도 그려지지 않는 스티커 수. 저장을 막지 않음
 
     const expectsBoothySessionSave = Boolean(
@@ -1637,6 +1647,10 @@ function App() {
             startIn: 'desktop',
             types: [{ description: 'PNG 이미지', accept: { 'image/png': ['.png'] } }],
           }),
+          // 창이 돌아온 뒤 지금 렌더할 캔버스를 ref로 다시 읽습니다. 캔버스가 바뀌었으면 사진 준비를 확인할 수 없으므로 준비가 안 된 것으로 봅니다.
+          isCanvasReady: () => stageRef.current === stageAtClick
+            && !isSaveWaitingForImages()
+            && getPhotoSaveBlockMessage(photoImagesStateRef.current) === null,
           showProgress: () => setNotice({ kind: 'save-progress' }),
           render: async () => {
             setCompareHeld(false);
@@ -1675,6 +1689,12 @@ function App() {
         },
       );
 
+      if (result.kind === 'photos-not-ready') {
+        // 렌더·쓰기 전에 멈췄습니다. 고른 경로·이름·핸들을 남기고 기존 사진 기다림 안내로 [다시 저장하기]를 보입니다(결정 F).
+        retrySaveRef.current = result.retry;
+        setNotice({ kind: 'save-failed', hasPickedFile: result.retry.fileHandle !== null, isWaitingForPhotos: true });
+        return;
+      }
       if (result.kind === 'failed') {
         console.error('사진 저장 실패', result.error);
         retrySaveRef.current = result.retry;
@@ -1838,7 +1858,7 @@ function App() {
     if (exportInFlightRef.current) return;
     const frameType = editorState.selectedFrame;
     if (!frameType) return;
-    rememberNoticeOpener(null); // 저장이 끝나면 이 버튼으로 포커스를 돌려줍니다(잠금 중 포커스를 잃어도)
+    rememberNoticeOpener(null, 'save'); // 저장이 끝나면 이 버튼으로 포커스를 돌려줍니다(잠금 중 포커스를 잃어도)
     setInlineStatus(null);
     // retrySaveRef는 비우지 않습니다(결정 F). 남은 재시도 정보가 있으면 handleExport가 그 경로·이름·핸들을 씁니다
     // 막힐 저장은 빈 칸 확인보다 먼저 첫 클릭에서 알립니다(UP-9). handleExport가 같은 검사를 다시 합니다.
@@ -1866,10 +1886,11 @@ function App() {
 
   // 다시 저장하기를 눌렀을 때 기다리면 풀리는 막힘인지 봅니다(결정 F). 새 상태가 아니라 handleExport 앞 검사와 같은 값을 읽습니다.
   // 사진 실패(failed)는 기다려도 풀리지 않으므로 넣지 않습니다. 그때는 안내를 닫고 handleExport가 상태 줄 save-blocked를 보입니다.
+  // ref만 읽어서 저장 위치 창을 기다린 뒤 옛 렌더의 클로저에서 불러도 지금 값을 봅니다(UX2-1).
   const isSaveWaitingForImages = () =>
-    photoImagesSourceRef.current !== editorState.userImages
+    photoImagesSourceRef.current !== currentDocumentRef.current.userImages
     || photoImagesStateRef.current.kind === 'loading'
-    || cutoutImagesState.kind === 'loading';
+    || cutoutImagesStateRef.current.kind === 'loading';
 
   const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
     FRAME_OPTIONS_BY_CATEGORY[cat].some(opt => opt.value === editorState.selectedFrame)

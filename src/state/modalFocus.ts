@@ -23,16 +23,24 @@ export const pickFocusReturnIndex = (candidates: FocusCandidate[]): number => ca
   (candidate) => candidate.isConnected && !candidate.isDisabled && !candidate.isInert && !candidate.isHidden,
 );
 
+// 안내가 어디서 시작했는지. 저장 요청에서 시작했으면 "save", 프레임 바꾸기 확인창에서 시작했으면 "frame-change"
+export type FocusReturnOrigin = "save" | "frame-change";
+
 // 닫힌 뒤 포커스를 돌려줄 후보를 우선순위대로 늘어놓습니다. 시트가 아직 열려 있으면 그 안 후보를
 // 캔버스·저장 버튼보다 앞에 둬서 포커스가 시트 뒤로 가지 않게 합니다(UX1-1). 시트가 닫혔으면 sheetCandidates는 비어 있습니다.
+// 저장에서 시작했으면 원래 버튼을 못 쓸 때(화면 폭이 바뀐 경우 등) 지금 배치의 저장 버튼이 캔버스보다 앞입니다(UX2-2).
 export const getFocusReturnCandidates = <Candidate>({
+  origin,
   opener,
   sheetCandidates,
   canvas,
   saves,
 }: {
+  origin: FocusReturnOrigin;
   opener: Candidate | null;
   sheetCandidates: Candidate[];
   canvas: Candidate | null;
   saves: Candidate[];
-}): (Candidate | null)[] => [opener, ...sheetCandidates, canvas, ...saves];
+}): (Candidate | null)[] => origin === "save"
+  ? [opener, ...sheetCandidates, ...saves, canvas]
+  : [opener, ...sheetCandidates, canvas, ...saves];

@@ -12,6 +12,7 @@ const makeDeps = (override: (calls: string[]) => Partial<SaveFlowDeps<FakeHandle
   const calls: string[] = [];
   const deps: SaveFlowDeps<FakeHandle> = {
     pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); return { name: suggestedName }; },
+    isCanvasReady: () => true,
     showProgress: () => { calls.push("showProgress"); },
     render: async () => { calls.push("render"); return new Blob(["png"], { type: "image/png" }); },
     saveToBoothy: async () => { calls.push("saveToBoothy"); return true; },
@@ -146,6 +147,63 @@ test("같은 핸들로 다시 저장하면 창을 열지 않고 그 파일에 �
   const result = await run("picker-first", deps, KEPT_RETRY);
   assert.deepEqual(calls, ["showProgress", "render", "openWritable:kept.png", "write", "close"]);
   assert.deepEqual(result, { kind: "done", location: "picked" });
+});
+
+// UX2-1: 저장 위치 창이 열린 사이 캔버스가 바뀔 수 있으므로, 창이 돌아온 뒤 렌더할 캔버스의 사진 준비를 다시 확인한다.
+test("저장 위치 창이 돌아온 뒤에 준비를 확인한다", async () => {
+  const { calls, deps } = makeDeps((calls) => ({
+    isCanvasReady: () => { calls.push("isCanvasReady"); return true; },
+  }));
+  await run("picker-first", deps);
+  assert.deepEqual(calls.slice(0, 3), [`pickFile:${FILENAME}`, "isCanvasReady", "showProgress"]);
+});
+
+test("창이 돌아온 뒤 사진이 준비되지 않았으면 진행·렌더·쓰기·다운로드 없이 멈추고 고른 핸들을 남긴다", async () => {
+  const { calls, deps } = makeDeps((calls) => ({
+    isCanvasReady: () => { calls.push("isCanvasReady"); return false; },
+  }));
+  const result = await run("picker-first", deps);
+  assert.deepEqual(calls, [`pickFile:${FILENAME}`, "isCanvasReady"]);
+  assert.deepEqual(result, {
+    kind: "photos-not-ready",
+    retry: { route: "picker-first", filename: FILENAME, fileHandle: { name: FILENAME } },
+  });
+});
+
+test("준비가 끝난 뒤 다시 저장하면 창을 다시 열지 않고 멈췄던 때 고른 핸들에 쓴다", async () => {
+  let isReady = false;
+  const { calls, deps } = makeDeps((calls) => ({
+    isCanvasReady: () => isReady,
+    pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); return { name: "picked.png" }; },
+  }));
+  const stopped = await run("picker-first", deps);
+  assert.equal(stopped.kind, "photos-not-ready");
+  if (stopped.kind !== "photos-not-ready") return;
+
+  isReady = true;
+  calls.length = 0;
+  const result = await run("picker-first", deps, stopped.retry);
+  assert.deepEqual(calls, ["showProgress", "render", "openWritable:picked.png", "write", "close"]);
+  assert.deepEqual(result, { kind: "done", location: "picked" });
+});
+
+test("준비가 안 됐고 아직 고른 핸들이 없던 경로(Boothy·공유·다운로드)도 렌더 전에 멈추고 그 경로를 남긴다", async () => {
+  for (const route of ["boothy", "share-sheet", "download"] as const) {
+    const { calls, deps } = makeDeps(() => ({ isCanvasReady: () => false }));
+    const result = await run(route, deps);
+    assert.deepEqual(result, { kind: "photos-not-ready", retry: { route, filename: FILENAME, fileHandle: null } }, route);
+    assert.deepEqual(calls, [], route);
+  }
+});
+
+test("저장 위치 창을 취소하면 준비를 확인하지 않는다", async () => {
+  const { calls, deps } = makeDeps((calls) => ({
+    pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); throw namedError("AbortError"); },
+    isCanvasReady: () => { calls.push("isCanvasReady"); return false; },
+  }));
+  const result = await run("picker-first", deps);
+  assert.deepEqual(result, { kind: "cancelled" });
+  assert.deepEqual(calls, [`pickFile:${FILENAME}`]);
 });
 
 test("고른 파일을 열지 못하면 알리고 다운로드하며 쓰기·닫기는 하지 않는다", async () => {
