@@ -7,10 +7,22 @@ import { getDefaultTextPosition } from "./defaultTextPosition";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
 import { getStickerAltText } from "../state/editorLabels";
 import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
+import { KEYBOARD_MOVE_FAST_STEP, KEYBOARD_SCALE_FACTOR, getAngleInputDegrees } from "../canvas/keyboardShortcuts";
+import { getNextTextTransformState, getRenderedTextWidth } from "../canvas/textTransform";
 
 type TextAlign = "left" | "center" | "right";
 
 const TEXT_ALIGN_LABELS = { left: '왼쪽 맞춤', center: '가운데 맞춤', right: '오른쪽 맞춤' } as const;
+
+// 끌기 대안(설계 8.2): 글씨는 가운데 기준이라 x, y, rotation만 바꿉니다.
+const TEXT_MOVE_BUTTONS = [
+  { label: '위로 옮기기', delta: { x: 0, y: -KEYBOARD_MOVE_FAST_STEP } },
+  { label: '아래로 옮기기', delta: { x: 0, y: KEYBOARD_MOVE_FAST_STEP } },
+  { label: '왼쪽으로 옮기기', delta: { x: -KEYBOARD_MOVE_FAST_STEP, y: 0 } },
+  { label: '오른쪽으로 옮기기', delta: { x: KEYBOARD_MOVE_FAST_STEP, y: 0 } },
+] as const;
+const TEXT_TILT_STEP = 15; // 글씨 기울이기 각도(설계 8.2)
+const DETAIL_BUTTON_STYLE = { minHeight: '32px', fontSize: '14px', padding: '0 8px' } as const;
 
 const LETTERING_SUGGESTIONS = Array.from(
   new Set([
@@ -163,6 +175,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"text" | "sticker" | null>(forcedTab ?? null);
   const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
+  const [isTextDetailOpen, setIsTextDetailOpen] = useState(false); // 글씨 '자세히'는 기본으로 접어 둡니다
+  const [textAngleDraft, setTextAngleDraft] = useState<string | null>(null); // 각도 칸에 쓰는 중인 글자(스티커와 같은 까닭)
   const [categoryPreviewIndexes, setCategoryPreviewIndexes] = useState<Record<string, number>>({});
   const [loadedCategoryPreviews, setLoadedCategoryPreviews] = useState<Record<string, boolean>>({});
   const [stickerPreviewIndexes, setStickerPreviewIndexes] = useState<Record<string, number>>({});
@@ -383,6 +397,36 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
       onTextUpdate(selectedText.id, { textAlign: newAlign });
     }
   };
+
+  const moveSelectedTextBy = (delta: { x: number; y: number }) => {
+    if (!selectedText || !onTextUpdate) return;
+    onTextUpdate(selectedText.id, { x: selectedText.x + delta.x, y: selectedText.y + delta.y });
+  };
+
+  const rotateSelectedTextBy = (deltaDegrees: number) => {
+    if (!selectedText || !onTextUpdate) return;
+    onTextUpdate(selectedText.id, { rotation: selectedText.rotation + deltaDegrees });
+  };
+
+  // 글씨 손잡이로 가로·세로를 같은 비율로 늘린 것과 같은 결과입니다. 상자 폭과 글자 크기가 함께 바뀝니다.
+  // 손잡이처럼 그려진 폭(세로 글씨는 측정한 폭)을 기준 폭과 노드 폭으로 넘깁니다(UP-6).
+  const scaleSelectedTextBy = (scaleFactor: number) => {
+    if (!selectedText || !onTextUpdate) return;
+    const renderedWidth = getRenderedTextWidth(selectedText);
+    onTextUpdate(selectedText.id, getNextTextTransformState(
+      { boxWidth: renderedWidth, fontSize: selectedText.fontSize },
+      {
+        x: selectedText.x,
+        y: selectedText.y,
+        rotation: selectedText.rotation,
+        width: renderedWidth,
+        scaleX: scaleFactor,
+        scaleY: scaleFactor,
+      },
+    ));
+  };
+
+  const textDetailButtonStyle = { ...DETAIL_BUTTON_STYLE, opacity: selectedText ? 1 : 0.5 };
 
   const stickerScrollAreaStyle: React.CSSProperties = {
     overflowY: 'auto',
@@ -704,51 +748,115 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   </div>
                 </div>
 
-                {/* 텍스트 정렬 */}
-                <div>
-                  <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>줄 맞춤</p>
-                  <div style={{ display: "flex", gap: "6px" }}>
-                    {["left", "center", "right"].map((align) => (
-                      <button
-                        key={align}
-                        type="button"
-                        className={`linear-button ${displayedTextAlign === align ? "linear-button--primary" : "linear-button--secondary"}`}
-                        onClick={() => handleTextAlignChange(align as TextAlign)}
-                        disabled={!selectedText}
-                        aria-label={TEXT_ALIGN_LABELS[align as keyof typeof TEXT_ALIGN_LABELS]}
-                        title={TEXT_ALIGN_LABELS[align as keyof typeof TEXT_ALIGN_LABELS]}
-                        style={{
-                          flex: 1, height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
-                          opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed",
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0
-                        }}
-                      >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                          {align === 'left' && (
-                            <>
-                              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
-                              <line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="2" />
-                              <line x1="4" y1="18" x2="18" y2="18" stroke="currentColor" strokeWidth="2" />
-                            </>
-                          )}
-                          {align === 'center' && (
-                            <>
-                              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
-                              <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" />
-                              <line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" strokeWidth="2" />
-                            </>
-                          )}
-                          {align === 'right' && (
-                            <>
-                              <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
-                              <line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
-                              <line x1="6" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2" />
-                            </>
-                          )}
-                        </svg>
-                      </button>
-                    ))}
-                  </div>
+                {/* 글씨 자세히: 줄 맞춤과 끌기 대안(옮기기·크기·기울이기·각도) */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    aria-expanded={isTextDetailOpen}
+                    onClick={() => setIsTextDetailOpen((open) => !open)}
+                    style={DETAIL_BUTTON_STYLE}
+                  >
+                    {isTextDetailOpen ? '접기' : '자세히'}
+                  </button>
+                  {isTextDetailOpen && (
+                    <>
+                      <div>
+                        <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>줄 맞춤</p>
+                        <div style={{ display: "flex", gap: "6px" }}>
+                          {["left", "center", "right"].map((align) => (
+                            <button
+                              key={align}
+                              type="button"
+                              className={`linear-button ${displayedTextAlign === align ? "linear-button--primary" : "linear-button--secondary"}`}
+                              onClick={() => handleTextAlignChange(align as TextAlign)}
+                              disabled={!selectedText}
+                              aria-label={TEXT_ALIGN_LABELS[align as keyof typeof TEXT_ALIGN_LABELS]}
+                              title={TEXT_ALIGN_LABELS[align as keyof typeof TEXT_ALIGN_LABELS]}
+                              style={{
+                                flex: 1, height: "36px", border: "var(--border-width) solid var(--linear-neutral-500)",
+                                opacity: selectedText ? 1 : 0.5, cursor: selectedText ? "pointer" : "not-allowed",
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0
+                              }}
+                            >
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                {align === 'left' && (
+                                  <>
+                                    <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                                    <line x1="4" y1="12" x2="14" y2="12" stroke="currentColor" strokeWidth="2" />
+                                    <line x1="4" y1="18" x2="18" y2="18" stroke="currentColor" strokeWidth="2" />
+                                  </>
+                                )}
+                                {align === 'center' && (
+                                  <>
+                                    <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                                    <line x1="7" y1="12" x2="17" y2="12" stroke="currentColor" strokeWidth="2" />
+                                    <line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" strokeWidth="2" />
+                                  </>
+                                )}
+                                {align === 'right' && (
+                                  <>
+                                    <line x1="4" y1="6" x2="20" y2="6" stroke="currentColor" strokeWidth="2" />
+                                    <line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" strokeWidth="2" />
+                                    <line x1="6" y1="18" x2="20" y2="18" stroke="currentColor" strokeWidth="2" />
+                                  </>
+                                )}
+                              </svg>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '14px' }}>글씨 옮기기</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {TEXT_MOVE_BUTTONS.map((moveButton) => (
+                          <button
+                            key={moveButton.label}
+                            type="button"
+                            className="linear-button linear-button--secondary"
+                            onClick={() => moveSelectedTextBy(moveButton.delta)}
+                            disabled={!selectedText}
+                            style={textDetailButtonStyle}
+                          >
+                            {moveButton.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedTextBy(-TEXT_TILT_STEP)} disabled={!selectedText} style={textDetailButtonStyle}>
+                          왼쪽으로 기울이기
+                        </button>
+                        <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedTextBy(TEXT_TILT_STEP)} disabled={!selectedText} style={textDetailButtonStyle}>
+                          오른쪽으로 기울이기
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <button type="button" className="linear-button linear-button--secondary" onClick={() => scaleSelectedTextBy(1 / KEYBOARD_SCALE_FACTOR)} disabled={!selectedText} style={textDetailButtonStyle}>
+                          작게 하기
+                        </button>
+                        <button type="button" className="linear-button linear-button--secondary" onClick={() => scaleSelectedTextBy(KEYBOARD_SCALE_FACTOR)} disabled={!selectedText} style={textDetailButtonStyle}>
+                          크게 하기
+                        </button>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                        글씨 각도(°)
+                        <input
+                          type="number"
+                          className="linear-input"
+                          step="1"
+                          value={textAngleDraft ?? String(selectedText ? Math.round(selectedText.rotation) : 0)}
+                          disabled={!selectedText}
+                          onChange={(event) => {
+                            const degrees = getAngleInputDegrees(event.currentTarget.valueAsNumber);
+                            setTextAngleDraft(degrees === null ? event.currentTarget.value : String(degrees)); // 보이는 값 = 적용한 값(UP-6)
+                            if (degrees === null || !selectedText || !onTextUpdate) return;
+                            onTextUpdate(selectedText.id, { rotation: degrees }); // rotateSelectedTextBy와 같이 rotation만 바꿉니다
+                          }}
+                          onBlur={() => setTextAngleDraft(null)}
+                          style={{ width: '88px', minHeight: '32px', fontSize: '14px' }}
+                        />
+                      </label>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

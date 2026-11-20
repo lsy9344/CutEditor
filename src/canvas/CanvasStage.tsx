@@ -5,6 +5,7 @@ import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
 import { FRAME_LAYOUTS } from "../types/frame";
 import { getNextTextTransformState } from "./textTransform";
+import { getTextDimensions } from "./textTransform";
 import {
   getAngleInputDegrees,
   getCenterRotatedTransform,
@@ -768,31 +769,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const formatVerticalText = (text: string, isVertical: boolean): string => {
     // 세로 배치일 때 기존 줄바꿈은 무시하거나 적절히 처리할 수 있지만, 여기서는 단순 문자 단위 분리
     return isVertical ? text.replace(/\n/g, ' ').split('').join('\n') : text;
-  };
-
-  // 텍스트 크기 계산 유틸리티 함수
-  const getTextDimensions = (text: string, fontSize: number, fontFamily: string, isBold: boolean, isItalic: boolean, isVertical: boolean) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    const formattedText = isVertical ? text.replace(/\n/g, ' ').split('').join('\n') : text;
-    const lines = formattedText.split('\n');
-
-    if (ctx) {
-      ctx.font = `${isItalic ? 'italic ' : ''}${isBold ? 'bold ' : ''}${fontSize}px ${fontFamily}`;
-      const maxWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
-      return {
-        width: isVertical ? Math.max(maxWidth, fontSize) : maxWidth, // 세로쓰기는 최소 fontSize 너비 확보
-        height: fontSize * (isVertical ? 1.2 : 1) * lines.length
-      };
-    }
-
-    // 폴백: 근사치 계산
-    const maxLength = Math.max(1, ...lines.map(line => line.length));
-    return {
-      width: isVertical ? fontSize : maxLength * fontSize * 0.6,
-      height: fontSize * lines.length * (isVertical ? 1.2 : 1)
-    };
   };
 
   // 팔레트 미리보기 상태 (항상 동일 훅 순서 유지를 위해 상단으로 이동)
