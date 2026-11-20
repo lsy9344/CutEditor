@@ -1780,7 +1780,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       style={{
         height: '100%',
         // sticky 자식이 문서 스크롤을 기준으로 붙도록 스크롤 컨테이너를 만들지 않는다.
-        overflow: 'clip',
+        // clip을 지원하지 않는 브라우저는 기본값 hidden을 쓴다.
+        overflow: 'var(--mobile-editor-card-overflow, hidden)',
         minHeight: 0,
         display: 'flex',
         flexDirection: 'column',

@@ -1,11 +1,8 @@
 import type { PhotoEdits } from "./photoEdits.ts";
 import { isDefaultPhotoEdits, isIdentityAdjust } from "./photoEdits.ts";
 import {
-  getWorkingSize,
   isPhotoWorkingSizeClamped,
-  isStrokeSeparatedFromStrokes,
   renderAdjustedPhoto,
-  renderBrushStrokeOnBase,
   renderPhotoBase,
 } from "./photoRender.ts";
 
@@ -44,27 +41,9 @@ export function getEditedPhotoCanvas(
   }
 
   try {
-    const previousErase = edits.erase.slice(0, -1);
-    const appendedStroke = edits.erase.length > 0 ? edits.erase[edits.erase.length - 1] : null;
-    const previousBaseKey = JSON.stringify({ erase: previousErase, maxSide });
-
-    let base: HTMLCanvasElement;
-    if (cached && cached.base && appendedStroke && cached.baseKey === previousBaseKey) {
-      const workingSize = getWorkingSize(source.naturalWidth, source.naturalHeight, maxSide);
-      const canReuseBase = isStrokeSeparatedFromStrokes(
-        appendedStroke,
-        previousErase,
-        workingSize.width,
-        workingSize.height,
-      );
-      base = canReuseBase
-        ? renderBrushStrokeOnBase(cached.base, appendedStroke)
-        : renderPhotoBase(source, edits.erase, maxSide);
-    } else {
-      base = cached && cached.baseKey === baseKey && cached.base
-        ? cached.base
-        : renderPhotoBase(source, edits.erase, maxSide);
-    }
+    const base = cached && cached.base && cached.baseKey === baseKey
+      ? cached.base
+      : renderPhotoBase(source, edits.erase, maxSide);
 
     // 보정이 기본값이면 지우기 결과를 그대로 쓴다. 전체 캔버스를 한 번 더 읽고 쓰지 않는다.
     const canvas = isIdentityAdjust(edits.adjust)

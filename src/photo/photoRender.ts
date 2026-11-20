@@ -1,7 +1,7 @@
 import type { BrushStroke, PhotoAdjust } from "./photoEdits.ts";
 import { applyPhotoAdjust } from "./photoAdjust.ts";
 import { rasterizeStroke } from "./brushMask.ts";
-import { INPAINT_PADDING, inpaintMasked } from "./inpaint.ts";
+import { inpaintMasked } from "./inpaint.ts";
 
 export const PHOTO_WORKING_MAX_SIDE = { desktop: 4096, mobile: 2048 } as const;
 
@@ -71,17 +71,6 @@ export function applyEraseStrokes(
   inpaintMasked(rgba, width, height, mask);
 }
 
-export function applyEraseStroke(
-  rgba: Uint8ClampedArray,
-  width: number,
-  height: number,
-  stroke: BrushStroke,
-): void {
-  const mask = new Uint8Array(width * height);
-  rasterizeStroke(stroke, width, height, mask);
-  inpaintMasked(rgba, width, height, mask);
-}
-
 export function renderPhotoBase(
   source: HTMLImageElement | HTMLCanvasElement,
   erase: BrushStroke[],
@@ -106,85 +95,6 @@ export function renderPhotoBase(
     applyEraseStrokes(imageData.data, workingSize.width, workingSize.height, erase);
     context.putImageData(imageData, 0, 0);
   }
-
-  return canvas;
-}
-
-type StrokeBounds = {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-};
-
-function getStrokeBounds(stroke: BrushStroke, width: number, height: number): StrokeBounds | null {
-  if (stroke.points.length < 2) return null;
-
-  const radius = stroke.radius * width;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (let index = 0; index + 1 < stroke.points.length; index += 2) {
-    const x = stroke.points[index] * width;
-    const y = stroke.points[index + 1] * height;
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (y < minY) minY = y;
-    if (y > maxY) maxY = y;
-  }
-
-  return {
-    minX: Math.max(0, Math.floor(minX - radius)),
-    minY: Math.max(0, Math.floor(minY - radius)),
-    maxX: Math.min(width - 1, Math.ceil(maxX + radius)),
-    maxY: Math.min(height - 1, Math.ceil(maxY + radius)),
-  };
-}
-
-// 새 획의 메움 영역이 이전 획들의 메움 영역과 겹치지 않는지 확인한다.
-// 겹치지 않으면 이전 지우기 결과 위에 새 획만 메워도 같은 픽셀이 된다.
-export function isStrokeSeparatedFromStrokes(
-  stroke: BrushStroke,
-  previousStrokes: BrushStroke[],
-  width: number,
-  height: number,
-): boolean {
-  const bounds = getStrokeBounds(stroke, width, height);
-  if (!bounds) return false;
-
-  for (const previous of previousStrokes) {
-    const previousBounds = getStrokeBounds(previous, width, height);
-    if (!previousBounds) continue;
-    const separated = bounds.minX - previousBounds.maxX > INPAINT_PADDING
-      || previousBounds.minX - bounds.maxX > INPAINT_PADDING
-      || bounds.minY - previousBounds.maxY > INPAINT_PADDING
-      || previousBounds.minY - bounds.maxY > INPAINT_PADDING;
-    if (!separated) return false;
-  }
-
-  return true;
-}
-
-// 이전 지우기 결과를 복사한 뒤 새 획 하나만 메운다.
-export function renderBrushStrokeOnBase(
-  base: HTMLCanvasElement,
-  stroke: BrushStroke,
-): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = base.width;
-  canvas.height = base.height;
-
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    throw new Error("2D 캔버스 컨텍스트를 만들 수 없습니다");
-  }
-
-  context.drawImage(base, 0, 0);
-  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-  applyEraseStroke(imageData.data, canvas.width, canvas.height, stroke);
-  context.putImageData(imageData, 0, 0);
 
   return canvas;
 }
