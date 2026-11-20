@@ -12,6 +12,7 @@ build/
 .next/
 out/
 .vercel/
+public/mediapipe/
 
 # Environment variables
 .env
