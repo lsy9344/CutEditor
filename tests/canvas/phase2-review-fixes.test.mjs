@@ -8,7 +8,7 @@ test("P2-1 전후 비교 버튼은 캔버스 제어판의 되돌리기·다시 �
   const source = readCanvasStage();
   const historyRowStart = source.indexOf("<div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>");
   const frameColorStart = source.indexOf("{selectedFrame !== \"1l\" && (", historyRowStart);
-  const compareTextIndex = source.indexOf("누르고 있으면 원본", historyRowStart);
+  const compareTextIndex = source.indexOf("누르는 동안 원래 사진", historyRowStart);
 
   assert.notEqual(historyRowStart, -1);
   assert.notEqual(frameColorStart, -1);
