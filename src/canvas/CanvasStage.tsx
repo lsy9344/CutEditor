@@ -329,6 +329,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedImageId = selectedImage?.id ?? null;
   const [isAdjustDetailOpen, setIsAdjustDetailOpen] = useState(false);
+  const [appliedToAllCount, setAppliedToAllCount] = useState<number | null>(null); // '모든 사진에 적용' 결과 표시
   const [editedPhotoDisplays, setEditedPhotoDisplays] = useState<Map<string, EditedPhotoDisplay>>(new Map());
   const editedPhotoDisplaysRef = useRef(editedPhotoDisplays);
   const userImagesRef = useRef(userImages);
@@ -343,6 +344,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   useEffect(() => {
     setIsAdjustDetailOpen(false);
+  }, [selectedImageId]);
+
+  useEffect(() => {
+    setAppliedToAllCount(null);
   }, [selectedImageId]);
 
   useEffect(() => {
@@ -2843,6 +2848,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
               {photoEditSections.showAdjust && (
                 <>
+                  {isDefaultPhotoEdits(selectedImage.edits) && (
+                    <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-neutral-50)' }}>
+                      버튼을 누르면 바로 바뀌어요. [되돌리기]로 돌아갈 수 있어요.
+                    </p>
+                  )}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     {PHOTO_PRESETS.map((preset) => (
                       <button
@@ -2864,18 +2874,33 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   </div>
 
                   {userImages.length >= 2 && (
-                    <button
-                      type="button"
-                      className="linear-button linear-button--secondary"
-                      onClick={() => photoEdit.onApplyAdjustToAll(selectedImage.id)}
-                      style={{
-                        height: '32px',
-                        fontSize: '14px',
-                        border: 'var(--border-width) solid var(--linear-neutral-500)'
-                      }}
-                    >
-                      모든 사진에 적용
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <button
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => {
+                          photoEdit.onApplyAdjustToAll(selectedImage.id);
+                          setAppliedToAllCount(userImages.length);
+                        }}
+                        style={{
+                          height: '32px',
+                          fontSize: '14px',
+                          border: 'var(--border-width) solid var(--linear-neutral-500)'
+                        }}
+                      >
+                        모든 사진에 적용
+                      </button>
+                      <div role="status">
+                        {appliedToAllCount !== null && (
+                          <p
+                            className="linear-status--success"
+                            style={{ margin: '10px 0 0', fontSize: '14px' }}
+                          >
+                            사진 {appliedToAllCount}장에 적용했어요
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
 
                   <button
@@ -2955,6 +2980,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   type="button"
                   className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
                   onClick={() => onStickerUpdate?.(selectedSticker.id, { flipX: !selectedSticker.flipX })}
+                  aria-pressed={Boolean(selectedSticker.flipX)}
                   style={{
                     flex: 1,
                     height: '32px',
@@ -2967,19 +2993,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     fontSize: '14px',
                     border: 'var(--border-width) solid var(--linear-neutral-500)',
                   }}
-                  title="좌우 반전"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="7 2 3 6 7 10" />
                     <polyline points="17 2 21 6 17 10" />
                     <line x1="3" y1="6" x2="21" y2="6" />
                   </svg>
-                  좌우 반전
+                  좌우 뒤집기
                 </button>
                 <button
                   type="button"
                   className={`linear-button ${selectedSticker.flipY ? 'linear-button--primary' : 'linear-button--secondary'}`}
                   onClick={() => onStickerUpdate?.(selectedSticker.id, { flipY: !selectedSticker.flipY })}
+                  aria-pressed={Boolean(selectedSticker.flipY)}
                   style={{
                     flex: 1,
                     height: '32px',
@@ -2992,21 +3018,20 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     fontSize: '14px',
                     border: 'var(--border-width) solid var(--linear-neutral-500)',
                   }}
-                  title="상하 반전"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="2 7 6 3 10 7" />
                     <polyline points="2 17 6 21 10 17" />
                     <line x1="6" y1="3" x2="6" y2="21" />
                   </svg>
-                  상하 반전
+                  위아래 뒤집기
                 </button>
               </div>
 
               {/* 색상 틴트 */}
               <div>
                 {!selectedSticker.cutout && (
-                  <p style={{ fontSize: '14px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색상 변경</p>
+                  <p style={{ fontSize: '14px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색 바꾸기</p>
                 )}
                 <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                   {!selectedSticker.cutout && (
@@ -3022,7 +3047,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         border: 'var(--border-width) solid var(--linear-neutral-500)',
                         cursor: 'pointer',
                       }}
-                      title="틴트 색상 선택"
+                      title="스티커 색 고르기"
+                      aria-label="스티커 색 고르기"
                     />
                   )}
                   <button
@@ -3037,9 +3063,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       border: 'var(--border-width) solid var(--linear-neutral-500)',
                       opacity: canResetStickerEdit ? 1 : 0.5,
                     }}
-                    title="스티커 편집 상태를 기본값으로 복원"
                   >
-                    리셋
+                    처음대로
                   </button>
                 </div>
               </div>
@@ -3100,10 +3125,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       type="button"
                       className={`linear-button ${outline ? 'linear-button--primary' : 'linear-button--secondary'}`}
                       onClick={() => cutoutEdit.onRegenerate(selectedSticker.id, { outline: !outline })}
+                      aria-pressed={outline}
                       disabled={isCutoutCacheMissing}
                       style={cutoutToolButtonStyle}
                     >
-                      {outline ? CUTOUT_COPY.outlineOn : CUTOUT_COPY.outlineOff}
+                      {CUTOUT_COPY.outline}
                     </button>
                     {photoEdit.toolMode !== "erase-cutout" ? (
                       <button

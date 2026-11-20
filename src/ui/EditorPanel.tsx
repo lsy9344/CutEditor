@@ -5,6 +5,7 @@ import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
 import { getDefaultTextPosition } from "./defaultTextPosition";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
+import { getStickerAltText } from "../state/editorLabels";
 import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
 
 type TextAlign = "left" | "center" | "right";
@@ -861,7 +862,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   >
                     {STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.stickers
                       .filter((slot) => (stickerPreviewIndexes[slot.key] ?? 0) < slot.candidates.length)
-                      .map((slot) => {
+                      .map((slot, stickerIndex) => {
                       const currentIndex = stickerPreviewIndexes[slot.key] ?? 0;
                       const previewSrc = slot.candidates[currentIndex];
                       const isReady = currentIndex < slot.candidates.length && Boolean(previewSrc);
@@ -892,7 +893,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                           {!isReady ? null : (
                             <img
                               src={previewSrc}
-                              alt={`${slot.key} sticker`}
+                              alt={getStickerAltText(STICKER_CATEGORIES.find(c => c.id === selectedStickerCategory)?.label ?? '', stickerIndex)}
                               loading="lazy"
                               onLoad={() => handleStickerPreviewLoad(slot.key)}
                               onError={() => handleStickerPreviewError(slot.key, slot.candidates.length)}
@@ -912,22 +913,21 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
               <div className="linear-mt-4" style={{ display: 'flex', justifyContent: 'center', paddingRight: 'var(--linear-space-3)' }}>
                 <button
+                  type="button"
                   className="linear-button linear-button--secondary"
                   onClick={() => {
-                    if (selectedSticker && onStickerDelete) {
-                      onStickerDelete(selectedSticker.id);
-                    } else if (!selectedSticker) {
-                      alert("삭제할 스티커를 선택해주세요.");
-                    }
+                    if (selectedSticker && onStickerDelete) onStickerDelete(selectedSticker.id);
                   }}
                   disabled={!selectedSticker}
                   style={{
                     opacity: selectedSticker ? 1 : 0.5,
-                    borderColor: selectedSticker ? 'var(--linear-accent-error)' : 'var(--linear-neutral-500)',
-                    color: selectedSticker ? 'var(--linear-accent-error)' : 'inherit'
+                    borderColor: 'var(--linear-neutral-500)',
+                    color: 'var(--linear-neutral-50)',
+                    minHeight: '44px',
+                    fontSize: '14px'
                   }}
                 >
-                  선택한 스티커 삭제
+                  이 스티커 지우기
                 </button>
               </div>
             </div>
