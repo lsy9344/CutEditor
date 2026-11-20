@@ -162,7 +162,7 @@ export const SidebarLeft: React.FC<SidebarLeftProps> = ({
                       onLoad={() => handleImageLoad(option.value)}
                       onError={() => handleImageError(option)}
                     />
-                    {canvasMode === 'editor' && selectedFrame === option.value && (
+                    {selectedFrame === option.value && (
                       <div style={{
                         position: 'absolute',
                         top: '8px',

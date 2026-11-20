@@ -96,8 +96,9 @@ export type CanvasStageProps = {
   historyControls: CanvasHistoryControls;
   photoEdit: CanvasPhotoEditProps;
   cutoutEdit: CanvasCutoutEditProps;
-  onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[]) => void;
-  onCutoutImagesStateChange: (state: CutoutImagesState) => void;
+  // 준비 보고는 보고를 낸 Stage와 함께 보냅니다. 저장이 렌더할 Stage의 보고인지 알아보는 데 씁니다(UX3-1).
+  onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[], stage: Konva.Stage | null) => void;
+  onCutoutImagesStateChange: (state: CutoutImagesState, stage: Konva.Stage | null) => void;
   isEditLocked: boolean;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
@@ -941,7 +942,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     : photoImagesState.kind;
 
   useEffect(() => {
-    onPhotoImagesStateChange(photoImagesState, userImages);
+    onPhotoImagesStateChange(photoImagesState, userImages, stageRef.current);
   }, [onPhotoImagesStateChange, photoImagesStateKey, userImages]);
 
   useEffect(() => {
@@ -1029,7 +1030,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     ? `failed:${cutoutImagesState.stickerIds.join(",")}`
     : cutoutImagesState.kind;
   useEffect(() => {
-    onCutoutImagesStateChange(cutoutImagesState);
+    onCutoutImagesStateChange(cutoutImagesState, stageRef.current);
   }, [cutoutImagesStateKey, stickers]);
 
   useEffect(() => {

@@ -1,18 +1,29 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { countEmptySlots, getSaveRequestStep, getSaveRoute, isPickerAbort, makeSaveFilename, runSaveFlow } from "../../src/state/saveFlow.ts";
-import type { SaveFlowDeps, SaveRetry, SaveRoute } from "../../src/state/saveFlow.ts";
+import {
+  countEmptySlots,
+  getCanvasPreparation,
+  getSaveRequestStep,
+  getSaveRoute,
+  isPickerAbort,
+  makeSaveFilename,
+  runSaveFlow,
+} from "../../src/state/saveFlow.ts";
+import type { CanvasPreparationInput, SaveFlowDeps, SaveRetry, SaveRoute } from "../../src/state/saveFlow.ts";
+import type { PhotoImagesState } from "../../src/state/photoLoadState.ts";
 
 type FakeHandle = { name: string };
+type FakeStage = { id: string };
+const READY_STAGE: FakeStage = { id: "ready-stage" };
 const FILENAME = "컷사진_2026-11-20_090507.png";
 const namedError = (name: string) => Object.assign(new Error(name), { name });
 
-const makeDeps = (override: (calls: string[]) => Partial<SaveFlowDeps<FakeHandle>> = () => ({})) => {
+const makeDeps = (override: (calls: string[]) => Partial<SaveFlowDeps<FakeHandle, FakeStage>> = () => ({})) => {
   const calls: string[] = [];
-  const deps: SaveFlowDeps<FakeHandle> = {
+  const deps: SaveFlowDeps<FakeHandle, FakeStage> = {
     pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); return { name: suggestedName }; },
-    isCanvasReady: () => true,
+    prepareCanvas: async () => ({ kind: "ready", stage: READY_STAGE }),
     showProgress: () => { calls.push("showProgress"); },
     render: async () => { calls.push("render"); return new Blob(["png"], { type: "image/png" }); },
     saveToBoothy: async () => { calls.push("saveToBoothy"); return true; },
@@ -30,7 +41,7 @@ const makeDeps = (override: (calls: string[]) => Partial<SaveFlowDeps<FakeHandle
   };
   return { calls, deps };
 };
-const run = (route: SaveRoute, deps: SaveFlowDeps<FakeHandle>, retry: SaveRetry<FakeHandle> | null = null) =>
+const run = (route: SaveRoute, deps: SaveFlowDeps<FakeHandle, FakeStage>, retry: SaveRetry<FakeHandle> | null = null) =>
   runSaveFlow({ route, filename: FILENAME, retry }, deps);
 const KEPT_RETRY: SaveRetry<FakeHandle> = { route: "picker-first", filename: "kept-name.png", fileHandle: { name: "kept.png" } };
 
@@ -149,38 +160,96 @@ test("같은 핸들로 다시 저장하면 창을 열지 않고 그 파일에 �
   assert.deepEqual(result, { kind: "done", location: "picked" });
 });
 
-// UX2-1: 저장 위치 창이 열린 사이 캔버스가 바뀔 수 있으므로, 창이 돌아온 뒤 렌더할 캔버스의 사진 준비를 다시 확인한다.
-test("저장 위치 창이 돌아온 뒤에 준비를 확인한다", async () => {
+// UX3-1·UX3-3: 확인은 렌더 직전 한 번이다. 두 프레임 기다린 뒤 읽은 캔버스 하나를 확인하고 그 캔버스로 렌더한다.
+test("진행 안내 뒤에 렌더할 캔버스를 한 번 준비·확인하고 그다음 렌더한다", async () => {
   const { calls, deps } = makeDeps((calls) => ({
-    isCanvasReady: () => { calls.push("isCanvasReady"); return true; },
+    prepareCanvas: async () => { calls.push("prepareCanvas"); return { kind: "ready", stage: READY_STAGE }; },
   }));
   await run("picker-first", deps);
-  assert.deepEqual(calls.slice(0, 3), [`pickFile:${FILENAME}`, "isCanvasReady", "showProgress"]);
+  assert.deepEqual(calls.slice(0, 4), [`pickFile:${FILENAME}`, "showProgress", "prepareCanvas", "render"]);
+  assert.equal(calls.filter((call) => call === "prepareCanvas").length, 1);
 });
 
-test("창이 돌아온 뒤 사진이 준비되지 않았으면 진행·렌더·쓰기·다운로드 없이 멈추고 고른 핸들을 남긴다", async () => {
+test("렌더 함수에는 확인한 바로 그 캔버스 객체를 넘긴다", async () => {
+  const checkedStage: FakeStage = { id: "checked-stage" };
+  const otherStage: FakeStage = { id: "other-stage" };
+  const rendered: FakeStage[] = [];
+  const { deps } = makeDeps(() => ({
+    prepareCanvas: async () => ({ kind: "ready", stage: checkedStage }),
+    render: async (stage) => { rendered.push(stage); return new Blob(["png"], { type: "image/png" }); },
+  }));
+  await run("picker-first", deps);
+  assert.equal(rendered.length, 1);
+  assert.equal(rendered[0], checkedStage);
+  assert.notEqual(rendered[0], otherStage);
+});
+
+test("렌더 직전 확인에서 사진이 준비되지 않았으면 렌더·쓰기·다운로드 없이 멈추고 고른 핸들을 남긴다", async () => {
   const { calls, deps } = makeDeps((calls) => ({
-    isCanvasReady: () => { calls.push("isCanvasReady"); return false; },
+    prepareCanvas: async () => { calls.push("prepareCanvas"); return { kind: "waiting" }; },
   }));
   const result = await run("picker-first", deps);
-  assert.deepEqual(calls, [`pickFile:${FILENAME}`, "isCanvasReady"]);
+  assert.deepEqual(calls, [`pickFile:${FILENAME}`, "showProgress", "prepareCanvas"]);
   assert.deepEqual(result, {
     kind: "photos-not-ready",
     retry: { route: "picker-first", filename: FILENAME, fileHandle: { name: FILENAME } },
   });
 });
 
-test("준비가 끝난 뒤 다시 저장하면 창을 다시 열지 않고 멈췄던 때 고른 핸들에 쓴다", async () => {
-  let isReady = false;
+test("사진을 불러오지 못한 캔버스도 렌더·쓰기 없이 멈추고 고른 핸들을 남긴다", async () => {
   const { calls, deps } = makeDeps((calls) => ({
-    isCanvasReady: () => isReady,
+    prepareCanvas: async () => { calls.push("prepareCanvas"); return { kind: "failed" }; },
+  }));
+  const result = await run("picker-first", deps);
+  assert.deepEqual(calls, [`pickFile:${FILENAME}`, "showProgress", "prepareCanvas"]);
+  assert.deepEqual(result, {
+    kind: "photos-failed",
+    retry: { route: "picker-first", filename: FILENAME, fileHandle: { name: FILENAME } },
+  });
+});
+
+test("캔버스를 준비하다 던지면 failed와 고른 핸들을 남기고 렌더하지 않는다", async () => {
+  const { calls, deps } = makeDeps((calls) => ({
+    prepareCanvas: async () => { calls.push("prepareCanvas"); throw new Error("prepare failed"); },
+  }));
+  const result = await run("picker-first", deps);
+  assert.equal(result.kind, "failed");
+  if (result.kind !== "failed") return;
+  assert.deepEqual(result.retry, { route: "picker-first", filename: FILENAME, fileHandle: { name: FILENAME } });
+  assert.deepEqual(calls, [`pickFile:${FILENAME}`, "showProgress", "prepareCanvas"]);
+});
+
+test("새 캔버스까지 다 준비됐으면 위치 창을 한 번만 열고 한 번에 그 파일에 저장한다", async () => {
+  const { calls, deps } = makeDeps((calls) => ({
+    pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); return { name: "picked.png" }; },
+    prepareCanvas: async () => { calls.push("prepareCanvas"); return { kind: "ready", stage: { id: "new-stage" } }; },
+  }));
+  const result = await run("picker-first", deps);
+  assert.deepEqual(calls, [
+    `pickFile:${FILENAME}`,
+    "showProgress",
+    "prepareCanvas",
+    "render",
+    "openWritable:picked.png",
+    "write",
+    "close",
+  ]);
+  assert.deepEqual(result, { kind: "done", location: "picked" });
+});
+
+test("준비가 끝난 뒤 다시 저장하면 창을 다시 열지 않고 멈췄던 때 고른 핸들에 쓴다", async () => {
+  let preparation: "waiting" | "ready" = "waiting";
+  const { calls, deps } = makeDeps((calls) => ({
+    prepareCanvas: async () => (preparation === "ready"
+      ? { kind: "ready", stage: READY_STAGE }
+      : { kind: "waiting" }),
     pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); return { name: "picked.png" }; },
   }));
   const stopped = await run("picker-first", deps);
   assert.equal(stopped.kind, "photos-not-ready");
   if (stopped.kind !== "photos-not-ready") return;
 
-  isReady = true;
+  preparation = "ready";
   calls.length = 0;
   const result = await run("picker-first", deps, stopped.retry);
   assert.deepEqual(calls, ["showProgress", "render", "openWritable:picked.png", "write", "close"]);
@@ -189,21 +258,89 @@ test("준비가 끝난 뒤 다시 저장하면 창을 다시 열지 않고 멈�
 
 test("준비가 안 됐고 아직 고른 핸들이 없던 경로(Boothy·공유·다운로드)도 렌더 전에 멈추고 그 경로를 남긴다", async () => {
   for (const route of ["boothy", "share-sheet", "download"] as const) {
-    const { calls, deps } = makeDeps(() => ({ isCanvasReady: () => false }));
+    const { calls, deps } = makeDeps(() => ({ prepareCanvas: async () => ({ kind: "waiting" }) }));
     const result = await run(route, deps);
     assert.deepEqual(result, { kind: "photos-not-ready", retry: { route, filename: FILENAME, fileHandle: null } }, route);
-    assert.deepEqual(calls, [], route);
+    assert.deepEqual(calls, ["showProgress"], route);
   }
 });
 
-test("저장 위치 창을 취소하면 준비를 확인하지 않는다", async () => {
+test("저장 위치 창을 취소하면 캔버스를 준비하지 않는다", async () => {
   const { calls, deps } = makeDeps((calls) => ({
     pickFile: async (suggestedName) => { calls.push(`pickFile:${suggestedName}`); throw namedError("AbortError"); },
-    isCanvasReady: () => { calls.push("isCanvasReady"); return false; },
+    prepareCanvas: async () => { calls.push("prepareCanvas"); return { kind: "waiting" }; },
   }));
   const result = await run("picker-first", deps);
   assert.deepEqual(result, { kind: "cancelled" });
   assert.deepEqual(calls, [`pickFile:${FILENAME}`]);
+});
+
+// 준비 판단(순수 함수): 렌더할 캔버스와 그 캔버스가 낸 준비 보고를 함께 봅니다.
+const PHOTO_LIST = [{ id: "photo-1" }];
+const preparationInput = (override: Partial<CanvasPreparationInput<FakeStage>> = {}): CanvasPreparationInput<FakeStage> => ({
+  stage: READY_STAGE,
+  reportedStage: READY_STAGE,
+  reportedUserImages: PHOTO_LIST,
+  documentUserImages: PHOTO_LIST,
+  photoImagesState: { kind: "ready" },
+  cutoutImagesState: { kind: "ready" },
+  ...override,
+});
+
+test("렌더할 캔버스가 보고한 사진·누끼가 모두 준비됐으면 그 캔버스와 함께 ready다", () => {
+  const preparation = getCanvasPreparation(preparationInput());
+  assert.deepEqual(preparation, { kind: "ready", stage: READY_STAGE });
+  assert.ok(preparation.kind === "ready" && preparation.stage === READY_STAGE, "렌더할 캔버스 객체를 그대로 돌려주지 않습니다");
+});
+
+test("새 캔버스의 보고가 아직 없으면 옛 캔버스가 준비였어도 waiting이다(UX3-1)", () => {
+  const newStage: FakeStage = { id: "new-stage" };
+  assert.deepEqual(getCanvasPreparation(preparationInput({ stage: newStage, reportedStage: READY_STAGE })), { kind: "waiting" });
+  assert.deepEqual(getCanvasPreparation(preparationInput({ stage: newStage, reportedStage: null })), { kind: "waiting" });
+});
+
+test("새 캔버스가 자기 보고로 준비를 알렸으면 클릭 때와 다른 캔버스여도 그 캔버스로 ready다(UX3-3)", () => {
+  const newStage: FakeStage = { id: "new-stage" };
+  const preparation = getCanvasPreparation(preparationInput({ stage: newStage, reportedStage: newStage }));
+  assert.ok(preparation.kind === "ready" && preparation.stage === newStage);
+});
+
+test("렌더할 캔버스가 없으면 waiting이다", () => {
+  assert.deepEqual(getCanvasPreparation(preparationInput({ stage: null })), { kind: "waiting" });
+});
+
+test("보고한 사진 목록이 지금 문서의 목록과 다르면 waiting이다", () => {
+  assert.deepEqual(getCanvasPreparation(preparationInput({ documentUserImages: [{ id: "photo-1" }] })), { kind: "waiting" });
+  assert.deepEqual(getCanvasPreparation(preparationInput({ reportedUserImages: null })), { kind: "waiting" });
+});
+
+test("사진이나 누끼를 불러오는 중이면 waiting이다", () => {
+  assert.deepEqual(getCanvasPreparation(preparationInput({ photoImagesState: { kind: "loading" } })), { kind: "waiting" });
+  assert.deepEqual(getCanvasPreparation(preparationInput({ cutoutImagesState: { kind: "loading" } })), { kind: "waiting" });
+});
+
+test("사진을 불러오지 못했으면 failed이고 누끼를 기다리는 중이어도 failed다", () => {
+  const failedPhotos: PhotoImagesState = { kind: "failed", imageIds: ["photo-1"] };
+  assert.deepEqual(getCanvasPreparation(preparationInput({ photoImagesState: failedPhotos })), { kind: "failed" });
+  assert.deepEqual(
+    getCanvasPreparation(preparationInput({ photoImagesState: failedPhotos, cutoutImagesState: { kind: "loading" } })),
+    { kind: "failed" },
+  );
+});
+
+test("다른 캔버스가 보고한 사진 실패는 이 캔버스의 실패로 세지 않는다", () => {
+  const failedPhotos: PhotoImagesState = { kind: "failed", imageIds: ["photo-1"] };
+  assert.deepEqual(
+    getCanvasPreparation(preparationInput({ stage: { id: "new-stage" }, photoImagesState: failedPhotos })),
+    { kind: "waiting" },
+  );
+});
+
+test("누끼 불러오기 실패는 저장을 막지 않는다(없는 스티커로 알림)", () => {
+  const preparation = getCanvasPreparation(
+    preparationInput({ cutoutImagesState: { kind: "failed", stickerIds: ["sticker-1"] } }),
+  );
+  assert.equal(preparation.kind, "ready");
 });
 
 test("고른 파일을 열지 못하면 알리고 다운로드하며 쓰기·닫기는 하지 않는다", async () => {

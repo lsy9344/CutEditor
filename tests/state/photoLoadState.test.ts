@@ -128,7 +128,7 @@ test("CanvasStage는 현재 문서 URL 기준으로 사진 로딩 상태를 알�
   assert.match(source, /const basePhotoImagesState = getPhotoImagesState\(userImages, loadedImages\);/);
   assert.match(
     source,
-    /useEffect\(\(\) => \{\s*onPhotoImagesStateChange\(photoImagesState, userImages\);\s*\}, \[onPhotoImagesStateChange, photoImagesStateKey, userImages\]\);/,
+    /useEffect\(\(\) => \{\s*onPhotoImagesStateChange\(photoImagesState, userImages, stageRef\.current\);\s*\}, \[onPhotoImagesStateChange, photoImagesStateKey, userImages\]\);/,
   );
   assert.match(source, /if \(!isCurrentPhotoLoad\(userImage\.id, userImage\.url, userImageUrlsRef\.current\)\) return;/);
   assert.match(source, /pendingLoad\.image\.onload = null;/);

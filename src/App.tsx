@@ -22,7 +22,7 @@ import {
   undoHistory,
 } from './state/history'
 import type { PhotoImagesState } from './state/photoLoadState'
-import { getPhotoSaveBlockMessage, PHOTO_LOADING_SAVE_MESSAGE } from './state/photoLoadState'
+import { getPhotoSaveBlockMessage, PHOTO_FAILED_SAVE_MESSAGE, PHOTO_LOADING_SAVE_MESSAGE } from './state/photoLoadState'
 import {
   beginPointer,
   createPointerPresence,
@@ -83,7 +83,7 @@ import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin } from './state/modalFocus'
 import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
-import { countEmptySlots, getSaveRequestStep, getSaveRoute, makeSaveFilename, runSaveFlow } from './state/saveFlow'
+import { countEmptySlots, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, runSaveFlow } from './state/saveFlow'
 import type { SaveRetry } from './state/saveFlow'
 
 type FileSystemWritableFileStream = {
@@ -530,9 +530,16 @@ function App() {
   const lastHeldStickerIdRef = useRef<string | null>(null);
   const photoImagesStateRef = useRef<PhotoImagesState>({ kind: 'ready' });
   const photoImagesSourceRef = useRef<UserImage[] | null>(null);
-  const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState, userImages: UserImage[]) => {
+  const reportedStageRef = useRef<Konva.Stage | null>(null); // 사진·누끼 준비 보고를 마지막으로 낸 캔버스. 새 캔버스의 보고가 오기 전에는 그 캔버스를 준비로 보지 않습니다(UX3-1)
+  const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState, userImages: UserImage[], stage: Konva.Stage | null) => {
     photoImagesStateRef.current = state;
     photoImagesSourceRef.current = userImages;
+    reportedStageRef.current = stage;
+  }, []);
+  const handleCutoutImagesStateChange = useCallback((state: CutoutImagesState, stage: Konva.Stage | null) => {
+    cutoutImagesStateRef.current = state; // 다음 렌더를 기다리지 않고 이 보고를 바로 읽을 수 있게 합니다
+    reportedStageRef.current = stage;
+    setCutoutImagesState(state);
   }, []);
 
   useEffect(() => {
@@ -714,24 +721,6 @@ function App() {
     applyEditorDocument(next.present);
   };
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (exportMode) return;
-      const target = event.target;
-      const isEditableTarget = target instanceof HTMLInputElement
-        || target instanceof HTMLTextAreaElement
-        || target instanceof HTMLSelectElement
-        || (target instanceof HTMLElement && target.isContentEditable);
-      const command = getHistoryShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey, isEditableTarget });
-      if (!command) return;
-      event.preventDefault();
-      if (command === "undo") handleUndo();
-      else handleRedo();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [exportMode, handleUndo, handleRedo]);
-
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   // 저장이 끝나기 전에 같은 Stage로 두 번째 저장이 들어와 임시 크기·배율을 복원값으로
@@ -766,6 +755,25 @@ function App() {
   const tutorialLayerRef = useRef<HTMLDivElement>(null); // 튜토리얼 덮개(app-container의 직계 자식)
   const tutorialOpenerRef = useRef<HTMLElement | null>(null); // '사용법'을 누른 버튼
   const isTutorialOpen = tutorialStep !== null;
+
+  // 되돌리기·다시 하기 단축키. 내보내는 중과 튜토리얼이 열린 동안은 포커스가 어디 있든 뒤 문서를 바꾸지 않습니다(UX3-4).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (exportMode || isTutorialOpen) return;
+      const target = event.target;
+      const isEditableTarget = target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || target instanceof HTMLSelectElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+      const command = getHistoryShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey, isEditableTarget });
+      if (!command) return;
+      event.preventDefault();
+      if (command === "undo") handleUndo();
+      else handleRedo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [exportMode, isTutorialOpen, handleUndo, handleRedo]);
 
   // 튜토리얼이 떠 있는 동안 나머지 화면에 inert를 겁니다. 닫히면 자기가 건 것만 풉니다(설계 6.5).
   useEffect(() => {
@@ -1640,7 +1648,6 @@ function App() {
       setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
       return;
     }
-    const stageAtClick = stageRef.current; // 위치 창이 열린 사이 캔버스가 다시 마운트됐는지 알아보는 기준(UX2-1)
     const missingStickerCount = cutoutImagesState.kind === "failed" ? cutoutImagesState.stickerIds.length : 0; // 화면에도 그려지지 않는 스티커 수. 저장을 막지 않음
 
     const expectsBoothySessionSave = Boolean(
@@ -1673,20 +1680,17 @@ function App() {
             startIn: 'desktop',
             types: [{ description: 'PNG 이미지', accept: { 'image/png': ['.png'] } }],
           }),
-          // 창이 돌아온 뒤 지금 렌더할 캔버스를 ref로 다시 읽습니다. 캔버스가 바뀌었으면 사진 준비를 확인할 수 없으므로 준비가 안 된 것으로 봅니다.
-          isCanvasReady: () => stageRef.current === stageAtClick
-            && !isSaveWaitingForImages()
-            && getPhotoSaveBlockMessage(photoImagesStateRef.current) === null,
           showProgress: () => setNotice({ kind: 'save-progress' }),
-          render: async () => {
+          // 위치 창과 두 프레임 사이에 캔버스가 바뀔 수 있으므로 확인은 기다린 뒤 읽은 캔버스 하나에만 합니다(UX3-1). 렌더도 그 캔버스로 합니다.
+          prepareCanvas: async () => {
             setCompareHeld(false);
             setPhotoToolMode("none");
             setExportMode(true);
             await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-            const stage = stageRef.current;
-            if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
-            return exportBlobFromStage({ frameType, stage });
+            const stage = stageRef.current; // 기다린 뒤 한 번만 읽습니다. 이 캔버스를 확인하고 이 캔버스로 렌더합니다
+            return readCanvasPreparation(stage);
           },
+          render: (stage) => exportBlobFromStage({ frameType, stage }),
           saveToBoothy: (blob) => saveToBoothySession({ blob, frameType }),
           openWritable: (fileHandle) => fileHandle.createWritable(),
           download: (blob, name) => {
@@ -1719,6 +1723,13 @@ function App() {
         // 렌더·쓰기 전에 멈췄습니다. 고른 경로·이름·핸들을 남기고 기존 사진 기다림 안내로 [다시 저장하기]를 보입니다(결정 F).
         retrySaveRef.current = result.retry;
         setNotice({ kind: 'save-failed', hasPickedFile: result.retry.fileHandle !== null, isWaitingForPhotos: true });
+        return;
+      }
+      if (result.kind === 'photos-failed') {
+        // 기다려도 풀리지 않는 사진 실패입니다. 고른 경로·이름·핸들은 남기고 저장 전에 막을 때와 같은 사진 실패 안내를 보입니다.
+        retrySaveRef.current = result.retry;
+        setNotice(null);
+        setInlineStatus({ kind: 'save-blocked', message: PHOTO_FAILED_SAVE_MESSAGE });
         return;
       }
       if (result.kind === 'failed') {
@@ -1910,13 +1921,20 @@ function App() {
     void handleExport();
   };
 
-  // 다시 저장하기를 눌렀을 때 기다리면 풀리는 막힘인지 봅니다(결정 F). 새 상태가 아니라 handleExport 앞 검사와 같은 값을 읽습니다.
+  // 렌더할 캔버스와 그 캔버스가 낸 사진·누끼 준비 보고로 저장해도 되는지 한 곳에서 판단합니다(UX3-1·UX3-3).
+  // ref만 읽어서 저장 위치 창을 기다린 뒤 옛 렌더의 클로저에서 불러도 지금 값을 봅니다.
+  const readCanvasPreparation = (stage: Konva.Stage | null) => getCanvasPreparation({
+    stage,
+    reportedStage: reportedStageRef.current,
+    reportedUserImages: photoImagesSourceRef.current,
+    documentUserImages: currentDocumentRef.current.userImages,
+    photoImagesState: photoImagesStateRef.current,
+    cutoutImagesState: cutoutImagesStateRef.current,
+  });
+
+  // 다시 저장하기를 눌렀을 때 기다리면 풀리는 막힘인지 봅니다(결정 F). 같은 판단을 씁니다.
   // 사진 실패(failed)는 기다려도 풀리지 않으므로 넣지 않습니다. 그때는 안내를 닫고 handleExport가 상태 줄 save-blocked를 보입니다.
-  // ref만 읽어서 저장 위치 창을 기다린 뒤 옛 렌더의 클로저에서 불러도 지금 값을 봅니다(UX2-1).
-  const isSaveWaitingForImages = () =>
-    photoImagesSourceRef.current !== currentDocumentRef.current.userImages
-    || photoImagesStateRef.current.kind === 'loading'
-    || cutoutImagesStateRef.current.kind === 'loading';
+  const isSaveWaitingForImages = () => readCanvasPreparation(stageRef.current).kind === 'waiting';
 
   const activeCategory = selectedCategory || Object.keys(FRAME_OPTIONS_BY_CATEGORY).find(cat =>
     FRAME_OPTIONS_BY_CATEGORY[cat].some(opt => opt.value === editorState.selectedFrame)
@@ -2018,7 +2036,7 @@ function App() {
       texts={texts}
       stickers={stickers}
       onPhotoImagesStateChange={handlePhotoImagesStateChange}
-      onCutoutImagesStateChange={setCutoutImagesState}
+      onCutoutImagesStateChange={handleCutoutImagesStateChange}
       onSelect={handleSelect}
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}

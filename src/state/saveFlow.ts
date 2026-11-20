@@ -1,4 +1,6 @@
 import type { SaveLocation } from "./appNotice.ts";
+import type { PhotoImagesState } from "./photoLoadState.ts";
+import type { CutoutImagesState } from "../photo/cutoutTypes.ts";
 import { getExportExperience } from "../utils/exportBehavior.ts";
 
 export type SaveRoute = "boothy" | "share-sheet" | "picker-first" | "download";
@@ -6,12 +8,15 @@ export type SaveRoute = "boothy" | "share-sheet" | "picker-first" | "download";
 export type SaveRetry<THandle> = { route: SaveRoute; filename: string; fileHandle: THandle | null };
 export type SaveFlowInput<THandle> = { route: SaveRoute; filename: string; retry: SaveRetry<THandle> | null };
 export type SaveWritable = { write: (data: Blob) => Promise<void>; close: () => Promise<void> };
-export type SaveFlowDeps<THandle> = {
+// 렌더 직전 캔버스 준비 판단. waiting은 기다리면 풀리고 failed는 기다려도 풀리지 않습니다. ready는 렌더할 캔버스를 함께 돌려줍니다.
+export type CanvasPreparation<TStage> = { kind: "ready"; stage: TStage } | { kind: "waiting" } | { kind: "failed" };
+export type SaveFlowDeps<THandle, TStage> = {
   pickFile: (suggestedName: string) => Promise<THandle>;
-  // 렌더할 캔버스와 그 사진이 지금 준비됐는지 그 자리에서 읽습니다. 위치 창이 열린 사이 캔버스가 바뀔 수 있습니다(UX2-1).
-  isCanvasReady: () => boolean;
   showProgress: () => void;
-  render: () => Promise<Blob>;
+  // 내보내기 모양으로 바꾸고 그려질 때까지 기다린 뒤, 렌더할 캔버스를 그 자리에서 한 번만 읽고 그 캔버스의 준비를 확인합니다.
+  // 위치 창과 기다리는 동안 캔버스가 바뀔 수 있으므로 확인은 이 호출 하나뿐이고, 렌더는 여기서 돌려준 캔버스로만 합니다(UX3-1).
+  prepareCanvas: () => Promise<CanvasPreparation<TStage>>;
+  render: (stage: TStage) => Promise<Blob>;
   saveToBoothy: (blob: Blob) => Promise<boolean>;
   openWritable: (fileHandle: THandle) => Promise<SaveWritable>;
   download: (blob: Blob, filename: string) => void;
@@ -24,6 +29,7 @@ export type SaveFlowResult<THandle> =
   | { kind: "done"; location: SaveLocation }
   // 렌더·쓰기 전에 멈춘 저장. 고른 경로·이름·핸들을 남기므로 준비가 끝난 뒤 다시 저장할 수 있습니다.
   | { kind: "photos-not-ready"; retry: SaveRetry<THandle> }
+  | { kind: "photos-failed"; retry: SaveRetry<THandle> }
   | { kind: "failed"; error: unknown; retry: SaveRetry<THandle> };
 export type SaveRequestStep =
   | { kind: "blocked"; message: string }
@@ -60,6 +66,32 @@ export const getSaveRequestStep = ({
   return { kind: "save" };
 };
 
+export type CanvasPreparationInput<TStage> = {
+  stage: TStage | null; // 렌더할 캔버스
+  reportedStage: TStage | null; // 사진·누끼 준비 보고를 마지막으로 낸 캔버스
+  reportedUserImages: ReadonlyArray<unknown> | null; // 그 보고가 센 사진 목록
+  documentUserImages: ReadonlyArray<unknown>; // 지금 문서의 사진 목록
+  photoImagesState: PhotoImagesState;
+  cutoutImagesState: CutoutImagesState;
+};
+
+// 렌더할 캔버스가 자기 보고로 현재 문서의 사진·누끼 준비를 알렸을 때만 ready입니다(UX3-1·UX3-3).
+// 새 캔버스의 보고가 오기 전에는 옛 캔버스의 준비 값이 남아 있어도 waiting입니다.
+export const getCanvasPreparation = <TStage>({
+  stage,
+  reportedStage,
+  reportedUserImages,
+  documentUserImages,
+  photoImagesState,
+  cutoutImagesState,
+}: CanvasPreparationInput<TStage>): CanvasPreparation<TStage> => {
+  if (stage === null || reportedStage !== stage) return { kind: "waiting" };
+  if (reportedUserImages !== documentUserImages) return { kind: "waiting" };
+  if (photoImagesState.kind === "failed") return { kind: "failed" };
+  if (photoImagesState.kind === "loading" || cutoutImagesState.kind === "loading") return { kind: "waiting" };
+  return { kind: "ready", stage };
+};
+
 export const countEmptySlots = ({ slotIds, photoSlotIds }: { slotIds: string[]; photoSlotIds: string[] }): number => {
   const filledSlotIdSet = new Set(photoSlotIds);
   return slotIds.filter((slotId) => !filledSlotIdSet.has(slotId)).length;
@@ -78,9 +110,9 @@ export const makeSaveFilename = (date: Date): string => {
 export const isPickerAbort = (error: unknown): boolean =>
   typeof error === "object" && error !== null && (error as { name?: unknown }).name === "AbortError";
 
-export const runSaveFlow = async <THandle>(
+export const runSaveFlow = async <THandle, TStage>(
   { route: requestedRoute, filename: requestedFilename, retry }: SaveFlowInput<THandle>,
-  deps: SaveFlowDeps<THandle>,
+  deps: SaveFlowDeps<THandle, TStage>,
 ): Promise<SaveFlowResult<THandle>> => {
   // 다시 저장하기는 지금 배치와 상관없이 처음 저장의 경로·이름·핸들을 씁니다.
   let route = retry?.route ?? requestedRoute;
@@ -98,14 +130,18 @@ export const runSaveFlow = async <THandle>(
       downloadLocation = "downloads-after-picker-error";
     }
   }
-  // 위치 창이 돌아온 뒤 렌더할 캔버스를 다시 확인합니다. 사진이 덜 올라온 캔버스로 내보내면 사진 빠진 파일이 성공으로 남습니다.
-  if (!deps.isCanvasReady()) return { kind: "photos-not-ready", retry: { route, filename, fileHandle } };
+  // 여기서부터 route는 바뀌지 않으므로 멈추거나 실패한 저장의 재시도 정보를 한 번 만듭니다.
+  const keptRetry: SaveRetry<THandle> = { route, filename, fileHandle };
   deps.showProgress();
   let blob: Blob;
   try {
-    blob = await deps.render();
+    // 사진이 덜 올라온 캔버스로 내보내면 사진 빠진 파일이 성공으로 남습니다. 렌더 직전에 한 번만 확인합니다.
+    const canvas = await deps.prepareCanvas();
+    if (canvas.kind === "waiting") return { kind: "photos-not-ready", retry: keptRetry };
+    if (canvas.kind === "failed") return { kind: "photos-failed", retry: keptRetry };
+    blob = await deps.render(canvas.stage);
   } catch (error) {
-    return { kind: "failed", error, retry: { route, filename, fileHandle } };
+    return { kind: "failed", error, retry: keptRetry };
   }
   if (route === "boothy") {
     let savedToBoothy: boolean;
