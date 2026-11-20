@@ -211,12 +211,9 @@ type PendingBoothyImportState = {
   slotId: string;
 };
 
-type BoothySaveNoticeState = 'idle' | 'saving' | 'saved';
-
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
-const BOOTHY_SAVE_NOTICE_AUTO_CLOSE_MS = 1_500;
 
 declare global {
   interface Window {
@@ -727,7 +724,6 @@ function App() {
   }, [exportMode, handleUndo, handleRedo]);
 
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
-  const [boothySaveNoticeState, setBoothySaveNoticeState] = useState<BoothySaveNoticeState>('idle');
   const stageRef = useRef<Konva.Stage | null>(null);
   // 저장이 끝나기 전에 같은 Stage로 두 번째 저장이 들어와 임시 크기·배율을 복원값으로
   // 기억하지 않도록 동기 ref로 중복 진입을 막는다.
@@ -792,20 +788,6 @@ function App() {
       && resolveBoothyHostTargetWindow(),
     );
   }, [boothyLaunchContext]);
-
-  useEffect(() => {
-    if (boothySaveNoticeState !== 'saved') {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      setBoothySaveNoticeState('idle');
-    }, BOOTHY_SAVE_NOTICE_AUTO_CLOSE_MS);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [boothySaveNoticeState]);
 
   useEffect(() => {
     const readyTimer = window.setTimeout(() => {
@@ -2005,102 +1987,6 @@ function App() {
 
   return (
     <div ref={appContainerRef} className="app-container">
-      {boothySaveNoticeState !== 'idle' && (
-        <div
-          aria-live="polite"
-          role="status"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.32)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '24px',
-            zIndex: 10000,
-          }}
-        >
-          <div
-            className="linear-card"
-            style={{
-              width: 'min(360px, 100%)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '12px',
-              textAlign: 'center',
-              boxShadow: 'var(--shadow-lg)',
-            }}
-          >
-            <div
-              aria-hidden="true"
-              style={{
-                width: '52px',
-                height: '52px',
-                borderRadius: '999px',
-                backgroundColor:
-                  boothySaveNoticeState === 'saving'
-                    ? '#fef3c7'
-                    : '#dcfce7',
-                color:
-                  boothySaveNoticeState === 'saving'
-                    ? '#92400e'
-                    : '#15803d',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {boothySaveNoticeState === 'saving' ? (
-                <svg
-                  width="28"
-                  height="28"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.25"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M6 2h12" />
-                  <path d="M6 22h12" />
-                  <path d="M8 2v6a4 4 0 0 0 1.17 2.83L12 13.66l2.83-2.83A4 4 0 0 0 16 8V2" />
-                  <path d="M16 22v-6a4 4 0 0 0-1.17-2.83L12 10.34l-2.83 2.83A4 4 0 0 0 8 16v6" />
-                </svg>
-              ) : (
-                <span style={{ fontSize: '24px', fontWeight: 700 }}>✓</span>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <strong
-                style={{
-                  fontSize: '18px',
-                  color:
-                    boothySaveNoticeState === 'saving'
-                      ? '#92400e'
-                      : '#15803d',
-                }}
-              >
-                {boothySaveNoticeState === 'saving'
-                  ? '편집 사진 저장중..'
-                  : '저장 완료'}
-              </strong>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '14px',
-                  lineHeight: 1.5,
-                  color: 'var(--linear-secondary-500)',
-                }}
-              >
-                {boothySaveNoticeState === 'saving'
-                  ? '편집 결과를 현재 세션에 반영하고 있어요. 잠시만 기다려 주세요.'
-                  : '현재 세션 폴더에 저장 완료됐어요. 잠시 후 이 안내는 자동으로 닫혀요.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
       {cutoutBusyId && (
         <div
           ref={cutoutLockRef}
