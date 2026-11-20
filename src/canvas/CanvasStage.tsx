@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line, Transformer } from "react-konva";
 import Konva from "konva";
 import type { Template } from "../state/types";
@@ -85,6 +85,7 @@ export type CanvasStageProps = {
   historyControls: CanvasHistoryControls;
   photoEdit: CanvasPhotoEditProps;
   onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[]) => void;
+  isEditLocked: boolean;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
   texts?: Array<{
@@ -205,6 +206,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   historyControls,
   photoEdit,
   onPhotoImagesStateChange,
+  isEditLocked,
   exportMode = false,
   stageRefExternal,
   texts = [],
@@ -213,17 +215,35 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   onSlotSelect,
   onImageUpload,
   onRequestImageImport,
-  onImageTransform,
+  onImageTransform: onImageTransformProp,
   onFrameColorChange,
-  onTextMove,
-  onTextUpdate,
+  onTextMove: onTextMoveProp,
+  onTextUpdate: onTextUpdateProp,
   onZoomChange,
   onImageDelete,
   onTextDelete,
   onStickerDelete,
-  onStickerUpdate
+  onStickerUpdate: onStickerUpdateProp
 }) => {
   // 모든 hook들을 먼저 호출 (조건부 렌더링 전에)
+  const editLockedRef = useRef(isEditLocked);
+  editLockedRef.current = isEditLocked; // 렌더 중에 대입: 잠금 커밋에서 없어지는 노드의 끝 이벤트도 잠금을 봄
+  const onImageTransform: NonNullable<CanvasStageProps["onImageTransform"]> = (imageId, transform) => {
+    if (editLockedRef.current) return; // 잠금 중 이동·종료 콜백은 문서를 바꾸지 않음
+    onImageTransformProp?.(imageId, transform);
+  };
+  const onTextMove: NonNullable<CanvasStageProps["onTextMove"]> = (textId, x, y) => {
+    if (editLockedRef.current) return;
+    onTextMoveProp?.(textId, x, y);
+  };
+  const onTextUpdate: NonNullable<CanvasStageProps["onTextUpdate"]> = (textId, updates) => {
+    if (editLockedRef.current) return;
+    onTextUpdateProp?.(textId, updates);
+  };
+  const onStickerUpdate: NonNullable<CanvasStageProps["onStickerUpdate"]> = (stickerId, updates) => {
+    if (editLockedRef.current) return;
+    onStickerUpdateProp?.(stickerId, updates);
+  };
   const stageRef = useRef<Konva.Stage | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -1418,6 +1438,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
   };
 
+  useLayoutEffect(() => {
+    if (!isEditLocked) return;
+    const stage = stageRef.current;
+    stage?.find<Konva.Transformer>("Transformer").forEach((transformer) => transformer.stopTransform()); // 손잡이 조작
+    stage?.find((node: Konva.Node) => node.isDragging()).forEach((node) => node.stopDrag()); // 끌기
+    pinchRef.current = null; // 두 손가락 확대
+    cancelBrushStroke(); // 붓 획(Phase 3)
+  }, [isEditLocked]);
+
   // 이미지 드래그 이동 제한 핸들러
   const handleImageDragMove = (e: Konva.KonvaEventObject<DragEvent>, imageId: string, slot: { x: number; y: number; width: number; height: number }, displayWidth: number, displayHeight: number) => {
     const userImage = userImages.find(img => img.id === imageId);
@@ -1869,6 +1898,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           scaleY={uScaleY}
                           rotation={uRotation}
                           draggable={!exportMode && isSelectedImage && photoEdit.toolMode === "none"}
+                          _useStrictMode={isEditLocked}
                           onClick={() => {
                             selectImage(userImage.id, slot.id);
                           }}
@@ -2176,6 +2206,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           offsetY={sticker.flipY ? sticker.height : 0}
                           rotation={sticker.rotation}
                           draggable={!exportMode && isSelected}
+                          _useStrictMode={isEditLocked}
                           onClick={() => selectSticker(sticker.id)}
                           onTap={() => selectSticker(sticker.id)}
                           onDragStart={() => selectSticker(sticker.id)}

@@ -455,6 +455,9 @@ function App() {
   const [cutoutError, setCutoutError] = useState<{ targetId: string; message: string } | null>(null);
   const cutoutRunRef = useRef(0); // 누끼 작업마다 1 올림. '취소'를 누르면 1 올려 그 작업의 결과를 버림
   const cutoutLockRef = useRef<HTMLDivElement>(null);
+  const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
+  const heldBoothyImportRef = useRef<{ file: File; slotId: string } | null>(null); // 잠금 중 도착한 Boothy 사진(마지막 한 건)
+  const isCutoutLocked = () => cutoutLockRef.current !== null; // 덮개가 떠 있으면 잠금. 옛 클로저의 비동기 콜백에서도 지금 값을 읽음
   const flushHistory = useCallback(() => {
     // 호출 시점의 문서를 고정한다. 같은 배치의 후속 setState가 updater 실행 전에 반영되어
     // 기록 경계가 다음 변경까지 함께 닫히는 일을 막는다.
@@ -538,6 +541,31 @@ function App() {
     }
   }, [history, currentDocument, cutoutBusyId]);
 
+  useEffect(() => {
+    const container = appContainerRef.current;
+    const lock = cutoutLockRef.current;
+    if (!cutoutBusyId || !container || !lock) return;
+    const returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null; // 누끼를 시작한 썸네일
+    const lockedElements = Array.from(container.children)
+      .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== lock);
+    lockedElements.forEach((element) => { element.inert = true; });
+    lock.querySelector("button")?.focus();
+    const blockLockedKey = (event: KeyboardEvent) => {
+      const isCancelKey = lock.contains(event.target as Node) && (event.key === "Enter" || event.key === " ");
+      if (isCancelKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    window.addEventListener("keydown", blockLockedKey, true);
+    window.addEventListener("keyup", blockLockedKey, true);
+    return () => {
+      window.removeEventListener("keydown", blockLockedKey, true);
+      window.removeEventListener("keyup", blockLockedKey, true);
+      lockedElements.forEach((element) => { element.inert = false; });
+      if (returnFocusTarget?.isConnected) returnFocusTarget.focus();
+    };
+  }, [cutoutBusyId]);
+
   const applyEditorDocument = (nextDocument: EditorDocument) => {
     setEditorState((previous) => ({
       ...previous,
@@ -553,6 +581,7 @@ function App() {
   };
 
   const handleUndo = () => {
+    if (isCutoutLocked()) return;
     const flushed = pushHistory(history, currentDocument, isSameEditorDocument);
     const next = undoHistory(flushed);
     if (next === flushed) return;
@@ -561,6 +590,7 @@ function App() {
   };
 
   const handleRedo = () => {
+    if (isCutoutLocked()) return;
     const flushed = pushHistory(history, currentDocument, isSameEditorDocument);
     const next = redoHistory(flushed);
     if (next === flushed) return;
@@ -706,6 +736,7 @@ function App() {
   }
 
   const applyFrameChange = (frameType: FrameType) => {
+    if (isCutoutLocked()) return;
     const newFrameLayout = FRAME_LAYOUTS[frameType];
     const validSlotIds = new Set(newFrameLayout.slots.map(s => s.id));
 
@@ -880,7 +911,11 @@ function App() {
             return;
           }
 
-          handleImageUpload(file, pendingBoothyImport.slotId);
+          if (isCutoutLocked()) {
+            heldBoothyImportRef.current = { file, slotId: pendingBoothyImport.slotId }; // 잠금 중: 마지막 한 건만 보관했다가 풀린 뒤 적용
+          } else {
+            handleImageUpload(file, pendingBoothyImport.slotId);
+          }
           setPendingBoothyImport(null);
         })
         .catch((error) => {
@@ -905,6 +940,13 @@ function App() {
     };
   }, [handleImageUpload, pendingBoothyImport]);
 
+  useEffect(() => {
+    if (cutoutBusyId) return;
+    flushHistory(); // 누끼 결과까지를 한 단계로 닫음
+    const heldImport = heldBoothyImportRef.current;
+    heldBoothyImportRef.current = null;
+    if (heldImport) handleImageUpload(heldImport.file, heldImport.slotId);
+  }, [cutoutBusyId]);
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
     console.log('[App] onImageTransform', { imageId, transform });
@@ -1139,6 +1181,11 @@ function App() {
     });
     const newSticker = buildCenteredSticker(src, dimensions);
 
+    if (isCutoutLocked()) {
+      heldStickerRef.current.push(newSticker); // 잠금 중: 완료 순서대로 모두 보관했다가 풀린 뒤 하나씩 붙임
+      return;
+    }
+
     if (shouldHoldStickerInsert()) {
       heldStickerRef.current.push(newSticker); // 완료 순서대로 보관했다가 포인터를 뗀 뒤 하나씩 붙임
       return;
@@ -1151,7 +1198,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (shouldHoldStickerInsert()) return;
+    if (isCutoutLocked() || shouldHoldStickerInsert()) return;
     const nextHeldSticker = heldStickerRef.current[0];
     if (!nextHeldSticker) {
       lastHeldStickerIdRef.current = null;
@@ -1169,6 +1216,19 @@ function App() {
     setStickers((previous) => [...previous, nextHeldSticker]);
     selectInsertedSticker(nextHeldSticker.id);
   }, [flushHistory, isPointerActive, shouldHoldStickerInsert, selectInsertedSticker, stickers]);
+
+  // 잠금 중에 끝난 일반 스티커는 잠금이 풀린 뒤 완료 순서대로 렌더마다 하나씩 붙인다.
+  useEffect(() => {
+    if (cutoutBusyId || hasActivePointers(pointerPresenceRef.current)) return;
+    const lastHeldStickerId = lastHeldStickerIdRef.current;
+    if (lastHeldStickerId && !stickers.some((sticker) => sticker.id === lastHeldStickerId)) return;
+    const nextHeldSticker = heldStickerRef.current.shift();
+    if (!nextHeldSticker) return;
+    flushHistory(); // 바로 앞 단계(누끼 결과나 바로 앞에 붙인 보류 스티커)를 닫음
+    setStickers((previous) => [...previous, nextHeldSticker]);
+    lastHeldStickerIdRef.current = nextHeldSticker.id;
+    selectInsertedSticker(nextHeldSticker.id);
+  }, [cutoutBusyId, stickers]);
 
   const handleCutoutCancel = () => {
     cutoutRunRef.current += 1; // 진행 중인 작업의 결과를 버림
@@ -1393,6 +1453,7 @@ function App() {
 
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
   const handleExport = async () => {
+    if (isCutoutLocked()) return;
     const frameType = editorState.selectedFrame;
     if (!frameType) {
       alert('프레임을 먼저 선택해주세요.');
@@ -1696,6 +1757,7 @@ function App() {
         onBrushSizeChange: setBrushSize,
       }}
       exportMode={exportMode}
+      isEditLocked={cutoutBusyId !== null}
       stageRefExternal={stageRef}
       texts={texts}
       stickers={stickers}
@@ -1723,7 +1785,7 @@ function App() {
       : '스티커 편집';
 
   return (
-    <div className="app-container">
+    <div ref={appContainerRef} className="app-container">
       {boothySaveNoticeState !== 'idle' && (
         <div
           aria-live="polite"
