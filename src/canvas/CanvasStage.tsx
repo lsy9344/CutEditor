@@ -29,7 +29,8 @@ import {
 import { getZoomToFit } from "./zoomSizing";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 import type { PhotoEdits } from "../photo/photoEdits";
-import type { CutoutSource } from "../photo/cutoutTypes";
+import { getCutoutImagesState } from "../photo/cutoutTypes";
+import type { CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
 import {
   applyPresetToEdits,
   isDefaultPhotoEdits,
@@ -85,6 +86,7 @@ export type CanvasStageProps = {
   historyControls: CanvasHistoryControls;
   photoEdit: CanvasPhotoEditProps;
   onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[]) => void;
+  onCutoutImagesStateChange: (state: CutoutImagesState) => void;
   isEditLocked: boolean;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
@@ -206,6 +208,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   historyControls,
   photoEdit,
   onPhotoImagesStateChange,
+  onCutoutImagesStateChange,
   isEditLocked,
   exportMode = false,
   stageRefExternal,
@@ -258,6 +261,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
   const [loadedImages, setLoadedImages] = useState<Map<string, LoadedPhotoImage<HTMLImageElement>>>(new Map());
   const [loadedStickerImages, setLoadedStickerImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
+  const [failedStickerSources, setFailedStickerSources] = useState<Map<string, string>>(new Map()); // 스티커 id → 모든 후보를 읽지 못한 src
   const pendingImageLoadsRef = useRef<Map<string, { url: string; image: HTMLImageElement }>>(new Map());
   const userImageUrlsRef = useRef<Map<string, string>>(new Map());
   userImageUrlsRef.current = new Map(userImages.map((userImage) => [userImage.id, userImage.url] as const));
@@ -921,6 +925,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       return next;
     });
 
+    setFailedStickerSources((prev) => {
+      const next = new Map(Array.from(prev).filter(([stickerId]) => activeStickerIds.has(stickerId)));
+      return next.size === prev.size ? prev : next;
+    });
+
     Array.from(stickerLoadSourcesRef.current.keys()).forEach((stickerId) => {
       if (!activeStickerIds.has(stickerId)) {
         stickerLoadSourcesRef.current.delete(stickerId);
@@ -933,6 +942,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
 
       stickerLoadSourcesRef.current.set(sticker.id, sticker.src);
+      setFailedStickerSources((prev) => {
+        if (!prev.has(sticker.id)) return prev;
+        const next = new Map(prev);
+        next.delete(sticker.id);
+        return next;
+      });
       const candidates = getStickerAssetCandidates(sticker.src);
       let candidateIndex = 0;
 
@@ -941,6 +956,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         if (!candidateSrc) {
           if (stickerLoadSourcesRef.current.get(sticker.id) !== sticker.src) return;
           setLoadedStickerImages((prev) => new Map(prev).set(sticker.id, null));
+          setFailedStickerSources((prev) => new Map(prev).set(sticker.id, sticker.src));
           return;
         }
 
@@ -960,6 +976,21 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       tryLoadStickerImage();
     });
   }, [stickers]);
+
+  const cutoutImagesState = getCutoutImagesState(stickers
+    .filter((sticker) => sticker.cutout)
+    .map((sticker) => ({
+      id: sticker.id,
+      src: sticker.src,
+      loadedSrc: loadedStickerImages.get(sticker.id)?.src ?? null,
+      failedSrc: failedStickerSources.get(sticker.id) ?? null,
+    })));
+  const cutoutImagesStateKey = cutoutImagesState.kind === "failed"
+    ? `failed:${cutoutImagesState.stickerIds.join(",")}`
+    : cutoutImagesState.kind;
+  useEffect(() => {
+    onCutoutImagesStateChange(cutoutImagesState);
+  }, [cutoutImagesStateKey, stickers]);
 
   useEffect(() => {
     stickers.forEach((sticker) => {
