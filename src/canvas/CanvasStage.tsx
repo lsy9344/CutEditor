@@ -54,6 +54,7 @@ import {
 } from "../photo/photoTool";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
+import { getSlotLabel } from "../state/editorLabels";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -2204,33 +2205,34 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
                       {/* 슬롯 레이블 */}
                       {!hasImage && !exportMode && (() => {
-                        let labelText = onRequestImageImport
-                          ? "클릭해서 세션 사진 선택"
-                          : "클릭해서 이미지 추가";
-                        if (userImage && loadedEntry?.url === userImage.url && loadedEntry.image === null) {
-                          labelText = "이미지 로딩 실패";
-                        } else if (userImage) {
-                          labelText = "이미지 로딩 중...";
-                        }
+                        const labelText = getSlotLabel({
+                          hasUserImage: Boolean(userImage),
+                          loadFailed: Boolean(userImage && loadedEntry?.url === userImage.url && loadedEntry.image === null),
+                        });
+                        const labelWidth = Math.min(180, slot.width - 16);
+                        const labelX = slot.x + (slot.width - labelWidth) / 2;
+                        const labelY = slot.y + slot.height / 2 - 15;
 
                         return (
                           <Group listening={false}>
                             <Rect
-                              x={slot.x + slot.width / 2 - 60}
-                              y={slot.y + slot.height / 2 - 10}
-                              width={140}
+                              x={labelX}
+                              y={labelY}
+                              width={labelWidth}
                               height={30}
                               fill="rgba(0, 0, 0, 0.7)"
                               cornerRadius={10}
                             />
                             <Text
-                              x={slot.x + slot.width / 2 - 60}
-                              y={slot.y + slot.height / 2 - 2}
-                              width={140}
+                              x={labelX}
+                              y={labelY}
+                              width={labelWidth}
+                              height={30}
                               text={labelText}
                               fontSize={14}
                               fill="white"
                               align="center"
+                              verticalAlign="middle"
                             />
                           </Group>
                         );

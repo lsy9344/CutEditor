@@ -1988,7 +1988,7 @@ function App() {
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}
       onImageUpload={handleImageUpload}
-      onRequestImageImport={handleBoothyImportRequest}
+      onRequestImageImport={isBoothyImportBridgeAvailable ? handleBoothyImportRequest : undefined}
       onImageTransform={handleImageTransform}
       onFrameColorChange={handleFrameColorChange}
       onTextMove={handleTextMove}
