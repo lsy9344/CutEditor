@@ -83,7 +83,8 @@ import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin } from './state/modalFocus'
 import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
-import { countEmptySlots, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, runSaveFlow } from './state/saveFlow'
+import { countEmptySlots, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
+import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
 
 type FileSystemWritableFileStream = {
@@ -498,6 +499,7 @@ function App() {
   const [notice, setNotice] = useState<AppNotice | null>(null); // 확인창 하나(설계 4.5)
   const [inlineStatus, setInlineStatus] = useState<InlineStatus | null>(null); // 상태 줄 하나(설계 4.6)
   const [isExportInFlight, setIsExportInFlight] = useState(false); // 저장 버튼 잠금 표시용
+  const [lockedMobileLayout, setLockedMobileLayout] = useState<boolean | null>(null); // 저장하는 동안 고정한 배치. null이면 지금 화면 폭을 따릅니다(UX4-1)
   const retrySaveRef = useRef<SaveRetry<FileSystemFileHandle> | null>(null); // [다시 저장하기]가 쓸 처음 저장의 경로·이름·핸들
   const noticeRef = useRef<HTMLDivElement>(null); // 확인창 배경(app-container의 직계 자식)
   const noticeCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 카드
@@ -530,7 +532,8 @@ function App() {
   const lastHeldStickerIdRef = useRef<string | null>(null);
   const photoImagesStateRef = useRef<PhotoImagesState>({ kind: 'ready' });
   const photoImagesSourceRef = useRef<UserImage[] | null>(null);
-  const reportedStageRef = useRef<Konva.Stage | null>(null); // 사진·누끼 준비 보고를 마지막으로 낸 캔버스. 새 캔버스의 보고가 오기 전에는 그 캔버스를 준비로 보지 않습니다(UX3-1)
+  const decorImagesStateRef = useRef<DecorImagesState>({ kind: 'ready' }); // 프레임 이미지·색 처리와 일반 스티커의 준비(UX4-2)
+  const reportedStageRef = useRef<Konva.Stage | null>(null); // 사진·누끼·프레임·스티커 준비 보고를 마지막으로 낸 캔버스. 새 캔버스의 보고가 오기 전에는 그 캔버스를 준비로 보지 않습니다(UX3-1)
   const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState, userImages: UserImage[], stage: Konva.Stage | null) => {
     photoImagesStateRef.current = state;
     photoImagesSourceRef.current = userImages;
@@ -540,6 +543,10 @@ function App() {
     cutoutImagesStateRef.current = state; // 다음 렌더를 기다리지 않고 이 보고를 바로 읽을 수 있게 합니다
     reportedStageRef.current = stage;
     setCutoutImagesState(state);
+  }, []);
+  const handleDecorImagesStateChange = useCallback((state: DecorImagesState, stage: Konva.Stage | null) => {
+    decorImagesStateRef.current = state;
+    reportedStageRef.current = stage;
   }, []);
 
   useEffect(() => {
@@ -817,6 +824,8 @@ function App() {
   const isResponsiveMobile = useMemo(() => {
     return viewportWidth <= 768 || (hasCoarsePointer && viewportWidth <= 1024);
   }, [hasCoarsePointer, viewportWidth]);
+  // 저장하는 동안에는 화면 폭이 바뀌어도 고정한 배치를 씁니다. 그래야 캔버스가 다시 마운트되지 않습니다(UX4-1).
+  const isMobileEditor = resolveMobileEditor({ lockedMobileLayout, isResponsiveMobile });
 
   const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
   const isBoothyImportBridgeAvailable = useMemo(() => {
@@ -1098,7 +1107,7 @@ function App() {
     setEditorState((previous) => ({ ...previous, userImages: copyAdjustToAll(previous.userImages, sourceImageId) }));
   }
 
-  const photoWorkingMaxSide = isResponsiveMobile ? PHOTO_WORKING_MAX_SIDE.mobile : PHOTO_WORKING_MAX_SIDE.desktop;
+  const photoWorkingMaxSide = isMobileEditor ? PHOTO_WORKING_MAX_SIDE.mobile : PHOTO_WORKING_MAX_SIDE.desktop;
 
   const handleFrameColorChange = (color: string) => {
     setEditorState(prev => ({ ...prev, frameColor: color }))
@@ -1648,13 +1657,15 @@ function App() {
       setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
       return;
     }
-    const missingStickerCount = cutoutImagesState.kind === "failed" ? cutoutImagesState.stickerIds.length : 0; // 화면에도 그려지지 않는 스티커 수. 저장을 막지 않음
+    let missingStickerCount = 0; // 화면에도 그려지지 않는 누끼 스티커 수. 렌더할 캔버스의 보고로 prepareCanvas에서 셉니다. 저장을 막지 않음
 
     const expectsBoothySessionSave = Boolean(
       boothyLaunchContext?.completion?.saveUrl?.trim()
       && boothyLaunchContext?.sessionId?.trim()
       && boothyLaunchContext?.launchId?.trim(),
     );
+
+    const isMobileLayoutAtSave = isResponsiveMobile; // 누른 순간의 배치. 저장이 끝날 때까지 이 배치를 지킵니다(UX4-1)
 
     // 사진 준비 확인을 통과한 저장만 Stage를 사용한다. Stage를 만지기 전에 동기 ref로
     // 중복 진입을 막아, 두 번째 저장이 첫 저장의 임시 크기·배율을 복원값으로 기억하지 않게 한다.
@@ -1663,10 +1674,11 @@ function App() {
 
     try {
       setIsExportInFlight(true);
+      setLockedMobileLayout(isMobileLayoutAtSave); // 위치 창을 열기 전에 고정합니다. 풀기는 아래 finally 한 곳입니다
       setInlineStatus(null);
       const route = getSaveRoute({
         expectsBoothySessionSave,
-        isMobileLayout: isResponsiveMobile,
+        isMobileLayout: isMobileLayoutAtSave,
         hasFilePicker: typeof window.showSaveFilePicker === 'function',
       });
       // 여기부터 pickFile까지 await가 없어야 클릭의 사용자 활성화 안에서 창이 열립니다.
@@ -1681,14 +1693,20 @@ function App() {
             types: [{ description: 'PNG 이미지', accept: { 'image/png': ['.png'] } }],
           }),
           showProgress: () => setNotice({ kind: 'save-progress' }),
-          // 위치 창과 두 프레임 사이에 캔버스가 바뀔 수 있으므로 확인은 기다린 뒤 읽은 캔버스 하나에만 합니다(UX3-1). 렌더도 그 캔버스로 합니다.
+          // 확인은 기다린 뒤 읽은 캔버스 하나에만 합니다(UX3-1). 렌더도 그 캔버스로 합니다.
           prepareCanvas: async () => {
             setCompareHeld(false);
             setPhotoToolMode("none");
             setExportMode(true);
             await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
             const stage = stageRef.current; // 기다린 뒤 한 번만 읽습니다. 이 캔버스를 확인하고 이 캔버스로 렌더합니다
-            return readCanvasPreparation(stage);
+            const preparation = readCanvasPreparation(stage);
+            if (preparation.kind === 'ready') {
+              // 준비 확인이 본 보고가 이 캔버스의 보고이므로, 누락 안내의 장수도 그 보고에서 셉니다(UX4-2).
+              const renderedCutoutState = cutoutImagesStateRef.current;
+              missingStickerCount = renderedCutoutState.kind === "failed" ? renderedCutoutState.stickerIds.length : 0;
+            }
+            return preparation;
           },
           render: (stage) => exportBlobFromStage({ frameType, stage }),
           saveToBoothy: (blob) => saveToBoothySession({ blob, frameType }),
@@ -1757,6 +1775,7 @@ function App() {
       exportInFlightRef.current = false;
       setExportMode(false);
       setIsExportInFlight(false);
+      setLockedMobileLayout(null); // 완료·취소·실패·대기·예외 어느 끝에서든 풉니다. 풀리면 지금 화면 폭의 배치로 돌아갑니다
     }
   }
 
@@ -1921,7 +1940,7 @@ function App() {
     void handleExport();
   };
 
-  // 렌더할 캔버스와 그 캔버스가 낸 사진·누끼 준비 보고로 저장해도 되는지 한 곳에서 판단합니다(UX3-1·UX3-3).
+  // 렌더할 캔버스와 그 캔버스가 낸 사진·누끼·프레임·스티커 준비 보고로 저장해도 되는지 한 곳에서 판단합니다(UX3-1·UX3-3·UX4-2).
   // ref만 읽어서 저장 위치 창을 기다린 뒤 옛 렌더의 클로저에서 불러도 지금 값을 봅니다.
   const readCanvasPreparation = (stage: Konva.Stage | null) => getCanvasPreparation({
     stage,
@@ -1930,6 +1949,7 @@ function App() {
     documentUserImages: currentDocumentRef.current.userImages,
     photoImagesState: photoImagesStateRef.current,
     cutoutImagesState: cutoutImagesStateRef.current,
+    decorImagesState: decorImagesStateRef.current,
   });
 
   // 다시 저장하기를 눌렀을 때 기다리면 풀리는 막힘인지 봅니다(결정 F). 같은 판단을 씁니다.
@@ -1941,7 +1961,6 @@ function App() {
   ) || null;
 
   const availableOptions = activeCategory ? FRAME_OPTIONS_BY_CATEGORY[activeCategory] : [];
-  const isMobileEditor = isResponsiveMobile;
 
   const handleTutorialNext = () => {
     if (tutorialStep === null) return;
@@ -2037,6 +2056,7 @@ function App() {
       stickers={stickers}
       onPhotoImagesStateChange={handlePhotoImagesStateChange}
       onCutoutImagesStateChange={handleCutoutImagesStateChange}
+      onDecorImagesStateChange={handleDecorImagesStateChange}
       onSelect={handleSelect}
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}

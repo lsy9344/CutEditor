@@ -8,10 +8,12 @@ import {
   getSaveRoute,
   isPickerAbort,
   makeSaveFilename,
+  resolveMobileEditor,
   runSaveFlow,
 } from "../../src/state/saveFlow.ts";
 import type { CanvasPreparationInput, SaveFlowDeps, SaveRetry, SaveRoute } from "../../src/state/saveFlow.ts";
 import type { PhotoImagesState } from "../../src/state/photoLoadState.ts";
+import type { DecorImagesState } from "../../src/state/decorImagesState.ts";
 
 type FakeHandle = { name: string };
 type FakeStage = { id: string };
@@ -284,6 +286,7 @@ const preparationInput = (override: Partial<CanvasPreparationInput<FakeStage>> =
   documentUserImages: PHOTO_LIST,
   photoImagesState: { kind: "ready" },
   cutoutImagesState: { kind: "ready" },
+  decorImagesState: { kind: "ready" },
   ...override,
 });
 
@@ -332,6 +335,27 @@ test("다른 캔버스가 보고한 사진 실패는 이 캔버스의 실패로 
   const failedPhotos: PhotoImagesState = { kind: "failed", imageIds: ["photo-1"] };
   assert.deepEqual(
     getCanvasPreparation(preparationInput({ stage: { id: "new-stage" }, photoImagesState: failedPhotos })),
+    { kind: "waiting" },
+  );
+});
+
+test("프레임 이미지를 불러오는 중이면 사진이 준비됐어도 waiting이다(UX4-2)", () => {
+  assert.deepEqual(getCanvasPreparation(preparationInput({ decorImagesState: { kind: "loading" } })), { kind: "waiting" });
+});
+
+test("프레임 이미지를 읽지 못했으면 기존 실패 흐름으로 가도록 failed다(UX4-2)", () => {
+  const failedDecor: DecorImagesState = { kind: "failed" };
+  assert.deepEqual(getCanvasPreparation(preparationInput({ decorImagesState: failedDecor })), { kind: "failed" });
+  assert.deepEqual(
+    getCanvasPreparation(preparationInput({ decorImagesState: failedDecor, cutoutImagesState: { kind: "loading" } })),
+    { kind: "failed" },
+  );
+});
+
+test("프레임·스티커 보고가 오기 전의 새 캔버스는 사진이 준비됐어도 waiting이다(UX4-2)", () => {
+  const newStage: FakeStage = { id: "new-stage" };
+  assert.deepEqual(
+    getCanvasPreparation(preparationInput({ stage: newStage, reportedStage: READY_STAGE, decorImagesState: { kind: "ready" } })),
     { kind: "waiting" },
   );
 });
@@ -495,4 +519,43 @@ test("휴대폰 실패 뒤 넓은 화면에서 다시 저장해도 공유 화면
   const result = await run("picker-first", deps, { route: "share-sheet", filename: "kept-name.png", fileHandle: null });
   assert.deepEqual(calls, ["showProgress", "render", "openShareSheet:kept-name.png"]);
   assert.deepEqual(result, { kind: "share-sheet" });
+});
+
+// UX4-1: 렌더가 마지막 대기 뒤 캔버스가 이미 사라진 것을 알리면(null) 쓰기 전에 멈추고 경로·이름·핸들을 남깁니다.
+test("렌더가 캔버스가 사라졌다고 알리면 쓰기 없이 photos-not-ready와 재시도 정보로 끝난다", async () => {
+  for (const route of ["boothy", "share-sheet", "download", "picker-first"] as const) {
+    const { calls, deps } = makeDeps((calls) => ({
+      render: async () => { calls.push("render"); return null; },
+    }));
+    const result = await run(route, deps);
+    const expectedHandle = route === "picker-first" ? { name: FILENAME } : null;
+    assert.deepEqual(result, { kind: "photos-not-ready", retry: { route, filename: FILENAME, fileHandle: expectedHandle } }, route);
+    for (const forbidden of ["saveToBoothy", "write", "close", "openShareSheet"]) {
+      assert.equal(calls.includes(forbidden), false, `${route}: ${forbidden}를 불렀습니다`);
+    }
+    assert.equal(calls.some((call) => call.startsWith("download:") || call.startsWith("openWritable:")), false, route);
+  }
+});
+
+test("캔버스가 사라져 멈춘 저장도 다시 저장하면 처음 고른 핸들로 쓴다", async () => {
+  const first = makeDeps((calls) => ({ render: async () => { calls.push("render"); return null; } }));
+  const stopped = await run("picker-first", first.deps);
+  assert.equal(stopped.kind, "photos-not-ready");
+  if (stopped.kind !== "photos-not-ready") return;
+  const second = makeDeps();
+  const result = await run("download", second.deps, stopped.retry);
+  assert.equal(second.calls.some((call) => call.startsWith("pickFile:")), false, "위치 창을 다시 열었습니다");
+  assert.deepEqual(second.calls.slice(-3), [`openWritable:${FILENAME}`, "write", "close"]);
+  assert.deepEqual(result, { kind: "done", location: "picked" });
+});
+
+// UX4-1: 저장하는 동안 배치를 고정합니다. 고정 값이 있으면 지금 화면 폭의 배치를 따르지 않습니다.
+test("배치를 고정한 동안에는 화면 폭이 바뀌어도 고정한 배치를 쓴다", () => {
+  assert.equal(resolveMobileEditor({ lockedMobileLayout: false, isResponsiveMobile: true }), false);
+  assert.equal(resolveMobileEditor({ lockedMobileLayout: true, isResponsiveMobile: false }), true);
+});
+
+test("고정이 풀리면(null) 지금 화면 폭의 배치로 돌아간다", () => {
+  assert.equal(resolveMobileEditor({ lockedMobileLayout: null, isResponsiveMobile: true }), true);
+  assert.equal(resolveMobileEditor({ lockedMobileLayout: null, isResponsiveMobile: false }), false);
 });

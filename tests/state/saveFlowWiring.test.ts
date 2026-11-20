@@ -112,3 +112,80 @@ test("사진·누끼 준비 보고는 낸 캔버스를 함께 담고 App은 그 
   assert.ok(cutoutReport.includes("cutoutImagesStateRef.current = state"), "누끼 보고를 바로 ref에 쓰지 않습니다");
   assert.ok(appSource.includes("onCutoutImagesStateChange={handleCutoutImagesStateChange}"), "누끼 보고를 새 함수로 받지 않습니다");
 });
+
+// UX4-1: 저장하는 동안 배치를 고정해 Stage가 다시 마운트되지 않게 합니다. 끝은 handleExport의 finally 하나입니다.
+test("저장 배치 고정: 상태 하나를 두고 isMobileEditor가 그 값을 먼저 쓴다", () => {
+  assert.equal(
+    appSource.split("const [lockedMobileLayout, setLockedMobileLayout] = useState<boolean | null>(null)").length - 1,
+    1,
+    "고정 배치 상태가 하나가 아닙니다",
+  );
+  assert.equal(
+    appSource.split("const isMobileEditor = resolveMobileEditor({ lockedMobileLayout, isResponsiveMobile })").length - 1,
+    1,
+    "isMobileEditor가 고정 값을 쓰지 않습니다",
+  );
+  assert.ok(!appSource.includes("const isMobileEditor = isResponsiveMobile;"), "옛 isMobileEditor가 남아 있습니다");
+  assert.ok(
+    appSource.indexOf("const isMobileEditor = resolveMobileEditor(") < appSource.indexOf("const photoWorkingMaxSide ="),
+    "사진 작업 크기보다 뒤에서 배치를 정합니다",
+  );
+  assert.ok(appSource.includes("const photoWorkingMaxSide = isMobileEditor ?"), "저장 중 사진 작업 크기가 화면 폭을 따라 바뀝니다");
+});
+
+test("저장 배치 고정: 위치 창보다 먼저 현재 배치를 고정하고 저장 흐름에는 그 값을 넘긴다", () => {
+  const exportBody = getAppSection("const handleExport = async", "// 모바일: '사진에 저장' 버튼 핸들러");
+  const claim = exportBody.indexOf("exportInFlightRef.current = true;");
+  const tryStart = exportBody.indexOf("try {", claim);
+  const lock = exportBody.indexOf("setLockedMobileLayout(isMobileLayoutAtSave);");
+  const flow = exportBody.indexOf("await runSaveFlow(");
+  assert.ok(claim >= 0 && tryStart > claim, "저장 진입 표시 뒤 try를 찾지 못했습니다");
+  assert.ok(lock > tryStart && lock < flow, "저장 흐름보다 먼저 try 안에서 배치를 고정하지 않습니다");
+  assert.ok(exportBody.includes("const isMobileLayoutAtSave = isResponsiveMobile;"), "고정할 값이 누르는 순간의 배치가 아닙니다");
+  assert.ok(exportBody.includes("isMobileLayout: isMobileLayoutAtSave,"), "저장 흐름에 고정 값을 넘기지 않습니다");
+  assert.ok(!exportBody.includes("isMobileLayout: isResponsiveMobile"), "저장 흐름에 지금 화면 폭의 배치를 넘기고 있습니다");
+});
+
+test("저장 배치 고정: 완료·취소·실패·대기·예외 모두 같은 finally 하나에서 푼다", () => {
+  const exportBody = getAppSection("const handleExport = async", "// 모바일: '사진에 저장' 버튼 핸들러");
+  assert.equal(exportBody.split("} finally {").length - 1, 1, "finally가 하나가 아닙니다");
+  const finallyBody = exportBody.slice(exportBody.indexOf("} finally {"));
+  assert.ok(finallyBody.includes("setLockedMobileLayout(null);"), "finally에서 고정을 풀지 않습니다");
+  assert.equal(appSource.split("setLockedMobileLayout(").length - 1, 2, "고정을 다른 곳에서도 건드립니다(고정·풀기 두 곳만)");
+  // 고정한 뒤의 모든 return은 try 안에 있어 finally를 지납니다. 고정 이전의 return은 아직 고정하지 않은 때입니다.
+  const afterLock = exportBody.slice(exportBody.indexOf("setLockedMobileLayout(isMobileLayoutAtSave);"), exportBody.indexOf("} finally {"));
+  assert.ok(afterLock.includes("result.kind === 'cancelled'"), "취소가 try 밖에서 처리됩니다");
+  assert.ok(afterLock.includes("result.kind === 'photos-not-ready'"), "대기가 try 밖에서 처리됩니다");
+  assert.ok(afterLock.includes("} catch (error) {"), "예외를 잡는 catch가 try 안에 없습니다");
+});
+
+// UX4-2: 프레임·일반 스티커의 준비 보고도 사진·누끼와 같은 방식으로 Stage와 함께 보냅니다.
+test("프레임·스티커 준비 보고는 낸 캔버스를 함께 담고 App은 같은 보고한 캔버스 ref에 기억한다", () => {
+  const canvasSource = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+  assert.match(canvasSource, /onDecorImagesStateChange\(decorImagesState, stageRef\.current\);/);
+  assert.ok(appSource.includes("const decorImagesStateRef = useRef<DecorImagesState>"), "프레임·스티커 준비 ref가 없습니다");
+  const decorReport = getAppSection("const handleDecorImagesStateChange = ", "useEffect(() => {");
+  assert.ok(decorReport.includes("decorImagesStateRef.current = state"), "프레임·스티커 보고를 ref에 쓰지 않습니다");
+  assert.ok(decorReport.includes("reportedStageRef.current = stage"), "프레임·스티커 보고가 낸 캔버스를 기억하지 않습니다");
+  assert.ok(appSource.includes("onDecorImagesStateChange={handleDecorImagesStateChange}"), "캔버스에 프레임·스티커 보고를 받는 함수를 넘기지 않습니다");
+  const readiness = getAppSection("const readCanvasPreparation = ", "const activeCategory");
+  assert.ok(readiness.includes("decorImagesState: decorImagesStateRef.current"), "준비 판단이 프레임·스티커 준비를 보지 않습니다");
+});
+
+test("캔버스는 프레임을 어느 프레임용으로 불러왔는지와 어느 색을 적용했는지를 준비 판단에 쓴다", () => {
+  const canvasSource = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
+  assert.ok(canvasSource.includes("getDecorImagesState({"), "준비 판단 함수를 쓰지 않습니다");
+  assert.ok(canvasSource.includes("isFrameColorApplied(processedFrame, frameImage, frameColor)"), "색 적용 여부를 같은 함수로 보지 않습니다");
+  assert.ok(canvasSource.includes("frameLoad !== null && frameLoad.frame === selectedFrame"), "프레임을 바꾼 직후 옛 프레임 이미지를 준비로 봅니다");
+  assert.ok(!canvasSource.includes("setProcessedFrameCanvas"), "옛 색 적용 상태가 남아 있습니다");
+  assert.ok(!canvasSource.includes("setFrameImage("), "옛 프레임 이미지 상태가 남아 있습니다");
+});
+
+test("누끼 누락 안내의 장수는 저장 시작 때가 아니라 렌더할 캔버스의 보고에서 센다", () => {
+  const exportBody = getAppSection("const handleExport = async", "// 모바일: '사진에 저장' 버튼 핸들러");
+  assert.ok(!exportBody.includes('cutoutImagesState.kind === "failed"'), "저장 시작 때의 누끼 상태로 누락 수를 셉니다");
+  const prepare = getAppSection("prepareCanvas: async", "render: (stage)");
+  assert.ok(prepare.includes("missingStickerCount = "), "준비 확인 뒤 누락 수를 세지 않습니다");
+  assert.ok(prepare.includes("cutoutImagesStateRef.current"), "렌더할 캔버스의 누끼 보고를 읽지 않습니다");
+  assert.ok(prepare.indexOf("readCanvasPreparation(stage)") < prepare.indexOf("missingStickerCount = "), "준비를 확인하기 전에 누락 수를 셉니다");
+});

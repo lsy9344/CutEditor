@@ -56,6 +56,8 @@ import {
 } from "../photo/photoTool";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
+import { getDecorImagesState, isFrameColorApplied } from "../state/decorImagesState";
+import type { DecorImagesState, FrameColorResult, FrameLoad } from "../state/decorImagesState";
 import { getSlotButtonLabel, getSlotLabel } from "../state/editorLabels";
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
@@ -101,6 +103,7 @@ export type CanvasStageProps = {
   // 준비 보고는 보고를 낸 Stage와 함께 보냅니다. 저장이 렌더할 Stage의 보고인지 알아보는 데 씁니다(UX3-1).
   onPhotoImagesStateChange: (state: PhotoImagesState, userImages: UserImage[], stage: Konva.Stage | null) => void;
   onCutoutImagesStateChange: (state: CutoutImagesState, stage: Konva.Stage | null) => void;
+  onDecorImagesStateChange: (state: DecorImagesState, stage: Konva.Stage | null) => void; // 프레임 이미지·색 처리와 일반 스티커(UX4-2)
   isEditLocked: boolean;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
@@ -238,6 +241,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   cutoutEdit,
   onPhotoImagesStateChange,
   onCutoutImagesStateChange,
+  onDecorImagesStateChange,
   isEditLocked,
   exportMode = false,
   stageRefExternal,
@@ -288,14 +292,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const paletteCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const paletteAnchorRef = useRef<HTMLDivElement | null>(null);
   const customPickButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [frameImage, setFrameImage] = useState<HTMLImageElement | null>(null);
+  // 어느 프레임용으로 읽었는지와 함께 둡니다. image가 null이면 모든 후보를 읽지 못한 것입니다. 프레임을 바꾼 직후에는 옛 프레임 결과를 쓰지 않습니다(UX4-2).
+  const [frameLoad, setFrameLoad] = useState<{ frame: FrameType; image: HTMLImageElement | null } | null>(null);
+  const isFrameLoadCurrent = frameLoad !== null && frameLoad.frame === selectedFrame;
+  const frameImage = isFrameLoadCurrent ? frameLoad.image : null;
   const [loadedImages, setLoadedImages] = useState<Map<string, LoadedPhotoImage<HTMLImageElement>>>(new Map());
   const [loadedStickerImages, setLoadedStickerImages] = useState<Map<string, HTMLImageElement | null>>(new Map());
   const [failedStickerSources, setFailedStickerSources] = useState<Map<string, string>>(new Map()); // 스티커 id → 모든 후보를 읽지 못한 src
   const pendingImageLoadsRef = useRef<Map<string, { url: string; image: HTMLImageElement }>>(new Map());
   const userImageUrlsRef = useRef<Map<string, string>>(new Map());
   userImageUrlsRef.current = new Map(userImages.map((userImage) => [userImage.id, userImage.url] as const));
-  const [processedFrameCanvas, setProcessedFrameCanvas] = useState<HTMLCanvasElement | null>(null);
+  // 색 처리 결과는 처리한 이미지·색과 함께 둡니다. 지금 이미지·색에 대한 결과일 때만 그립니다(UX4-2).
+  const [processedFrame, setProcessedFrame] = useState<(FrameColorResult<HTMLImageElement> & { canvas: HTMLCanvasElement | null }) | null>(null);
+  const processedFrameCanvas = isFrameColorApplied(processedFrame, frameImage, frameColor) ? processedFrame?.canvas ?? null : null;
   const [draggedSlotId, setDraggedSlotId] = useState<string | null>(null);
   const [isSlotListFocused, setIsSlotListFocused] = useState(false); // 칸 버튼 목록은 포커스가 안에 있을 때만 보입니다
   const currentSlotIdRef = useRef<string | null>(null);
@@ -785,7 +794,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         const source = sources[currentSourceIndex];
         if (!source) {
           console.warn(`[CanvasStage] 프레임 이미지를 불러오지 못했습니다: ${selectedFrame}`);
-          setFrameImage(null);
+          setFrameLoad({ frame: selectedFrame, image: null });
           return;
         }
 
@@ -793,7 +802,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           if (!cancelled) {
-            setFrameImage(img);
+            setFrameLoad({ frame: selectedFrame, image: img });
           }
         };
         img.onerror = () => {
@@ -805,14 +814,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         img.src = bust;
       };
 
-      setFrameImage(null);
+      setFrameLoad(null);
       tryLoad();
 
       return () => {
         cancelled = true;
       };
     } else {
-      setFrameImage(null);
+      setFrameLoad(null);
     }
   }, [selectedFrame, frameLayout?.imagePath]);
 
@@ -836,21 +845,27 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   // 프레임 이미지의 흰색 영역을 선택된 색으로 치환
   useEffect(() => {
-    if (!frameImage || !frameColor) {
-      setProcessedFrameCanvas(null);
+    if (!frameImage) {
+      setProcessedFrame(null);
+      return;
+    }
+    // 색이 없거나 처리할 수 없으면 원본을 그리지만, 처리를 마친 것으로 기록해 저장이 기다리지 않게 합니다.
+    const useOriginalFrame = () => setProcessedFrame({ image: frameImage, color: frameColor, canvas: null });
+    if (!frameColor) {
+      useOriginalFrame();
       return;
     }
 
     const rgb = hexToRgb(frameColor);
     if (!rgb) {
-      setProcessedFrameCanvas(null);
+      useOriginalFrame();
       return;
     }
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      setProcessedFrameCanvas(null);
+      useOriginalFrame();
       return;
     }
 
@@ -883,10 +898,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       }
 
       ctx.putImageData(imageData, 0, 0);
-      setProcessedFrameCanvas(canvas);
+      setProcessedFrame({ image: frameImage, color: frameColor, canvas });
     } catch {
       // CORS 또는 다른 이유로 접근 실패 시 원본 사용
-      setProcessedFrameCanvas(null);
+      useOriginalFrame();
     }
   }, [frameImage, frameColor]);
 
@@ -1048,6 +1063,28 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   useEffect(() => {
     onCutoutImagesStateChange(cutoutImagesState, stageRef.current);
   }, [cutoutImagesStateKey, stickers]);
+
+  // 프레임 이미지·색 처리와 일반 스티커(누끼가 아닌 것)가 그려질 준비가 됐는지 같은 방식으로 보고합니다(UX4-2).
+  const frameLoadStatus: FrameLoad = !selectedFrame
+    ? "none"
+    : !isFrameLoadCurrent
+      ? "loading"
+      : frameLoad.image === null
+        ? "failed"
+        : "loaded";
+  const decorImagesState = getDecorImagesState({
+    frameLoad: frameLoadStatus,
+    isFrameColorApplied: isFrameColorApplied(processedFrame, frameImage, frameColor),
+    stickers: stickers
+      .filter((sticker) => !sticker.cutout)
+      .map((sticker) => ({
+        isLoaded: Boolean(loadedStickerImages.get(sticker.id)),
+        isFailed: failedStickerSources.get(sticker.id) === sticker.src,
+      })),
+  });
+  useEffect(() => {
+    onDecorImagesStateChange(decorImagesState, stageRef.current);
+  }, [decorImagesState.kind]);
 
   useEffect(() => {
     stickers.forEach((sticker) => {

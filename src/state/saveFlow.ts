@@ -1,5 +1,6 @@
 import type { SaveLocation } from "./appNotice.ts";
 import type { PhotoImagesState } from "./photoLoadState.ts";
+import type { DecorImagesState } from "./decorImagesState.ts";
 import type { CutoutImagesState } from "../photo/cutoutTypes.ts";
 import { getExportExperience } from "../utils/exportBehavior.ts";
 
@@ -14,9 +15,10 @@ export type SaveFlowDeps<THandle, TStage> = {
   pickFile: (suggestedName: string) => Promise<THandle>;
   showProgress: () => void;
   // 내보내기 모양으로 바꾸고 그려질 때까지 기다린 뒤, 렌더할 캔버스를 그 자리에서 한 번만 읽고 그 캔버스의 준비를 확인합니다.
-  // 위치 창과 기다리는 동안 캔버스가 바뀔 수 있으므로 확인은 이 호출 하나뿐이고, 렌더는 여기서 돌려준 캔버스로만 합니다(UX3-1).
+  // 확인은 이 호출 하나뿐이고, 렌더는 여기서 돌려준 캔버스로만 합니다(UX3-1).
   prepareCanvas: () => Promise<CanvasPreparation<TStage>>;
-  render: (stage: TStage) => Promise<Blob>;
+  // 캔버스를 그리고 PNG로 만듭니다. 마지막 대기 뒤 캔버스가 이미 사라졌으면 캡처하지 않고 null을 돌려줍니다(UX4-1).
+  render: (stage: TStage) => Promise<Blob | null>;
   saveToBoothy: (blob: Blob) => Promise<boolean>;
   openWritable: (fileHandle: THandle) => Promise<SaveWritable>;
   download: (blob: Blob, filename: string) => void;
@@ -27,7 +29,7 @@ export type SaveFlowResult<THandle> =
   | { kind: "cancelled" }
   | { kind: "share-sheet" }
   | { kind: "done"; location: SaveLocation }
-  // 렌더·쓰기 전에 멈춘 저장. 고른 경로·이름·핸들을 남기므로 준비가 끝난 뒤 다시 저장할 수 있습니다.
+  // 렌더·쓰기 전에 멈춘 저장(캔버스가 아직 준비 전이거나 렌더 직전에 사라짐). 고른 경로·이름·핸들을 남기므로 준비가 끝난 뒤 다시 저장할 수 있습니다.
   | { kind: "photos-not-ready"; retry: SaveRetry<THandle> }
   | { kind: "photos-failed"; retry: SaveRetry<THandle> }
   | { kind: "failed"; error: unknown; retry: SaveRetry<THandle> };
@@ -73,10 +75,12 @@ export type CanvasPreparationInput<TStage> = {
   documentUserImages: ReadonlyArray<unknown>; // 지금 문서의 사진 목록
   photoImagesState: PhotoImagesState;
   cutoutImagesState: CutoutImagesState;
+  decorImagesState: DecorImagesState; // 프레임 이미지·색 처리와 일반 스티커
 };
 
-// 렌더할 캔버스가 자기 보고로 현재 문서의 사진·누끼 준비를 알렸을 때만 ready입니다(UX3-1·UX3-3).
+// 렌더할 캔버스가 자기 보고로 현재 문서의 사진·누끼·프레임·스티커 준비를 알렸을 때만 ready입니다(UX3-1·UX3-3·UX4-2).
 // 새 캔버스의 보고가 오기 전에는 옛 캔버스의 준비 값이 남아 있어도 waiting입니다.
+// 프레임 실패는 사진 실패와 같은 failed로 가서 기존 사진 실패 안내를 씁니다(새 문구 없음).
 export const getCanvasPreparation = <TStage>({
   stage,
   reportedStage,
@@ -84,13 +88,25 @@ export const getCanvasPreparation = <TStage>({
   documentUserImages,
   photoImagesState,
   cutoutImagesState,
+  decorImagesState,
 }: CanvasPreparationInput<TStage>): CanvasPreparation<TStage> => {
   if (stage === null || reportedStage !== stage) return { kind: "waiting" };
   if (reportedUserImages !== documentUserImages) return { kind: "waiting" };
-  if (photoImagesState.kind === "failed") return { kind: "failed" };
-  if (photoImagesState.kind === "loading" || cutoutImagesState.kind === "loading") return { kind: "waiting" };
+  if (photoImagesState.kind === "failed" || decorImagesState.kind === "failed") return { kind: "failed" };
+  if (photoImagesState.kind === "loading" || cutoutImagesState.kind === "loading" || decorImagesState.kind === "loading") {
+    return { kind: "waiting" };
+  }
   return { kind: "ready", stage };
 };
+
+// 저장하는 동안 배치를 고정해 Stage가 다시 마운트되지 않게 합니다(UX4-1). 고정 값이 있으면 지금 화면 폭을 따르지 않습니다.
+export const resolveMobileEditor = ({
+  lockedMobileLayout,
+  isResponsiveMobile,
+}: {
+  lockedMobileLayout: boolean | null;
+  isResponsiveMobile: boolean;
+}): boolean => lockedMobileLayout ?? isResponsiveMobile;
 
 export const countEmptySlots = ({ slotIds, photoSlotIds }: { slotIds: string[]; photoSlotIds: string[] }): number => {
   const filledSlotIdSet = new Set(photoSlotIds);
@@ -139,7 +155,10 @@ export const runSaveFlow = async <THandle, TStage>(
     const canvas = await deps.prepareCanvas();
     if (canvas.kind === "waiting") return { kind: "photos-not-ready", retry: keptRetry };
     if (canvas.kind === "failed") return { kind: "photos-failed", retry: keptRetry };
-    blob = await deps.render(canvas.stage);
+    const rendered = await deps.render(canvas.stage);
+    // 렌더 직전에 캔버스가 사라졌습니다. 쓰지 않고 대기로 끝내 처음 고른 경로·이름·핸들을 남깁니다.
+    if (rendered === null) return { kind: "photos-not-ready", retry: keptRetry };
+    blob = rendered;
   } catch (error) {
     return { kind: "failed", error, retry: keptRetry };
   }
