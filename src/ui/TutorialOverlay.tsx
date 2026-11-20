@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { getWrappedFocusIndex } from '../state/modalFocus';
 
 type Step = {
   title: string;
@@ -7,20 +8,20 @@ type Step = {
 
 const STEPS: Step[] = [
   {
-    title: '① 프레임 선택',
-    description: '컷 수와 레이아웃 스타일을 골라요.\n2컷, 4컷, 9컷 등 다양한 구성을 지원해요.',
+    title: '① 프레임 고르기',
+    description: '사진 몇 장으로 만들지 골라요.\n빈 칸을 누르면 사진을 넣을 수 있어요.',
   },
   {
-    title: '② 글씨 추가',
-    description: '사진 위에 레터링을 올릴 수 있어요.\n폰트, 색상, 크기를 자유롭게 바꿔보세요.',
+    title: '② 글씨 넣기',
+    description: '사진 위에 글씨를 쓸 수 있어요.',
   },
   {
-    title: '③ 스티커 꾸미기',
-    description: '귀여운 스티커로 사진을 꾸며요.\n드래그해서 원하는 위치에 놓으세요.',
+    title: '③ 스티커 붙이기',
+    description: '스티커를 누르면 사진에 붙어요.',
   },
   {
     title: '④ 저장',
-    description: '완성된 이미지를 저장해요.\n편집이 끝나면 저장 버튼을 눌러보세요.',
+    description: '다 꾸몄으면 [저장]을 눌러요.',
   },
 ];
 
@@ -45,6 +46,27 @@ type Props = {
 export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, mobile = false }) => {
   const [layout, setLayout] = useState<Layout>({ top: MARGIN, left: 85, arrowOffset: 80 });
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = typeof window !== 'undefined'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 튜토리얼 상자 안에서만 Tab이 돌고, Esc로 건너뜁니다(설계 6.5, 4.8)
+  const handleTooltipKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onSkip();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+    const focusMove = getWrappedFocusIndex({
+      focusableCount: buttons.length,
+      activeIndex: buttons.findIndex((button) => button === document.activeElement),
+      isShiftKey: event.shiftKey,
+    });
+    if (focusMove.kind === 'native') return;
+    event.preventDefault();
+    if (focusMove.kind === 'move') buttons[focusMove.index].focus();
+  };
 
   useEffect(() => {
     const el = buttonRefs[step]?.current;
@@ -100,6 +122,10 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
       {/* 툴팁 박스 */}
       <div
         ref={tooltipRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tutorial-title"
+        onKeyDown={handleTooltipKeyDown}
         style={{
           position: 'fixed',
           left: `${layout.left}px`,
@@ -111,7 +137,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           boxShadow: '4px 4px 0px 0px #000',
           padding: '16px',
           fontFamily: 'var(--linear-font-family)',
-          transition: 'top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)',
+          transition: prefersReducedMotion ? 'none' : 'top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
         {/* 화살표 — 데스크톱: 왼쪽, 모바일: 아래쪽 */}
@@ -164,33 +190,36 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
         )}
 
         {/* 단계 표시 */}
-        <div style={{ fontSize: '11px', fontWeight: 800, color: '#888', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
+        <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--linear-secondary-400)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
           {step + 1} / {STEPS.length}
         </div>
 
         {/* 제목 */}
-        <div style={{ fontSize: '15px', fontWeight: 800, color: '#000', lineHeight: 1.3, marginBottom: '8px' }}>
+        <div id="tutorial-title" style={{ fontSize: '15px', fontWeight: 800, color: '#000', lineHeight: 1.3, marginBottom: '8px' }}>
           {currentStep.title}
         </div>
 
         {/* 설명 */}
-        <p style={{ fontSize: '13px', color: '#333', lineHeight: 1.6, marginBottom: '14px', whiteSpace: 'pre-line' }}>
+        <p style={{ fontSize: '14px', color: '#333', lineHeight: 1.6, marginBottom: '14px', whiteSpace: 'pre-line' }}>
           {currentStep.description}
         </p>
 
         {/* 버튼 */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
+            type="button"
             className="linear-button linear-button--secondary"
             onClick={onSkip}
-            style={{ flex: 1, height: '36px', fontSize: '12px', padding: 0 }}
+            style={{ flex: 1, minHeight: '44px', fontSize: '14px', padding: 0 }}
           >
             건너뛰기
           </button>
           <button
+            type="button"
             className="linear-button linear-button--primary"
             onClick={onNext}
-            style={{ flex: 1, height: '36px', fontSize: '12px', padding: 0 }}
+            autoFocus
+            style={{ flex: 1, minHeight: '44px', fontSize: '14px', padding: 0 }}
           >
             {isLast ? '시작하기' : '다음 →'}
           </button>
