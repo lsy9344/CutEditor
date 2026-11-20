@@ -3,14 +3,18 @@ import { FRAME_LAYOUTS, type FrameType, type FrameOption } from '../types/frame'
 
 interface FrameGalleryProps {
     selectedCategory: string | null;
+    categories: string[];
     options: FrameOption[];
     onSelectFrame: (frame: FrameType) => void;
+    onSelectCategory: (category: string) => void;
 }
 
 export const FrameGallery: React.FC<FrameGalleryProps> = ({
     selectedCategory,
+    categories,
     options,
     onSelectFrame,
+    onSelectCategory,
 }) => {
     const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
     const [previewSources, setPreviewSources] = useState<Record<string, string>>({});
@@ -53,10 +57,27 @@ export const FrameGallery: React.FC<FrameGalleryProps> = ({
                 <h2 style={{
                     fontSize: 'var(--linear-text-xl)',
                     fontWeight: 'var(--linear-font-bold)',
-                    color: 'var(--linear-text-primary)'
+                    color: 'var(--linear-text-primary)',
+                    marginBottom: '24px'
                 }}>
-                    왼쪽에서 원하는 컷 수를 먼저 선택해 주세요!
+                    먼저 사진 몇 장으로 만들지 골라 주세요
                 </h2>
+                <div
+                    className="linear-flex"
+                    style={{ flexWrap: 'wrap', justifyContent: 'center', gap: '12px' }}
+                >
+                    {categories.map((category) => (
+                        <button
+                            key={category}
+                            type="button"
+                            className="linear-button linear-button--secondary"
+                            onClick={() => onSelectCategory(category)}
+                            style={{ minHeight: '48px', minWidth: '88px', fontSize: '16px' }}
+                        >
+                            {category}
+                        </button>
+                    ))}
+                </div>
             </div>
         );
     }
@@ -75,7 +96,7 @@ export const FrameGallery: React.FC<FrameGalleryProps> = ({
                 marginBottom: '24px',
                 color: 'var(--linear-text-primary)'
             }}>
-                {selectedCategory} 프레임 선택
+                {selectedCategory} 모양을 골라 주세요
             </h2>
 
             <div className="frame-gallery-grid">
@@ -88,7 +109,7 @@ export const FrameGallery: React.FC<FrameGalleryProps> = ({
                         <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`}>
                             <img
                                 src={getPreviewSource(option)}
-                                alt={option.label}
+                                alt=""
                                 loading="lazy"
                                 onLoad={() => handleImageLoad(option.value)}
                                 onError={() => handleImageError(option)}

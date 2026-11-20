@@ -49,7 +49,7 @@ import {
   getMinimumTextBoxWidthForMeasuredWidth,
   resolveTextBoxWidth,
 } from './canvas/textBoxWidth'
-import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
+import { getCategorySelectionOutcome, getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import type { PhotoEdits } from './photo/photoEdits'
 import { copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
 import type { BrushSize, PhotoToolMode } from './photo/photoTool'
@@ -882,6 +882,12 @@ function App() {
 
     applyFrameChange(decision.frameType);
   }
+
+  const handleCategoryPick = (category: string) => {
+    const outcome = getCategorySelectionOutcome({ selectedCategory, category });
+    setSelectedCategory(outcome.nextCategory);
+    setCanvasMode(outcome.nextCanvasMode);
+  };
 
   const handleImageUpload = useCallback((file: File, slotId: string) => {
     const imageId = `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -1943,8 +1949,10 @@ function App() {
   const mainCanvasContent = canvasMode === 'gallery' ? (
     <FrameGallery
       selectedCategory={activeCategory}
+      categories={Object.keys(FRAME_OPTIONS_BY_CATEGORY)}
       options={availableOptions}
       onSelectFrame={handleFrameSelect}
+      onSelectCategory={handleCategoryPick}
     />
   ) : (
     <CanvasStage
@@ -1989,6 +1997,7 @@ function App() {
       onZoomChange={handleZoomChange}
       onImageUpload={handleImageUpload}
       onRequestImageImport={isBoothyImportBridgeAvailable ? handleBoothyImportRequest : undefined}
+      onOpenFrameGallery={() => setCanvasMode('gallery')}
       onImageTransform={handleImageTransform}
       onFrameColorChange={handleFrameColorChange}
       onTextMove={handleTextMove}
@@ -2141,7 +2150,7 @@ function App() {
                 onClick={() => setCanvasMode('gallery')}
                 style={{ position: 'absolute', top: '16px', left: '16px', zIndex: 10 }}
               >
-                ← 돌아가기
+                ← 프레임 다시 고르기
               </button>
             )}
             {mainCanvasContent}
@@ -2192,6 +2201,7 @@ function App() {
                   onCanvasModeChange={setCanvasMode}
                   selectedCategory={selectedCategory}
                   onCategoryChange={setSelectedCategory}
+                  onCategoryPicked={() => setMobilePanel(null)}
                 />
               ) : (
                 <EditorPanel
