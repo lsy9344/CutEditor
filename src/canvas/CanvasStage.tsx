@@ -3075,7 +3075,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   aria-pressed={Boolean(selectedSticker.flipX)}
                   style={{
                     flex: 1,
-                    height: '32px',
+                    minHeight: '32px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -3100,7 +3100,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   aria-pressed={Boolean(selectedSticker.flipY)}
                   style={{
                     flex: 1,
-                    height: '32px',
+                    minHeight: '32px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
