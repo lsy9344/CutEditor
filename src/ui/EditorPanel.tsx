@@ -7,7 +7,8 @@ import { getDefaultTextPosition } from "./defaultTextPosition";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
 import { getStickerAltText } from "../state/editorLabels";
 import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
-import { KEYBOARD_MOVE_FAST_STEP, KEYBOARD_SCALE_FACTOR, getAngleInputDegrees } from "../canvas/keyboardShortcuts";
+import { KEYBOARD_MOVE_FAST_STEP, KEYBOARD_SCALE_FACTOR, getAngleInputDegrees, getAngleInputValue } from "../canvas/keyboardShortcuts";
+import type { AngleDraft } from "../canvas/keyboardShortcuts";
 import { getNextTextTransformState, getRenderedTextWidth } from "../canvas/textTransform";
 
 type TextAlign = "left" | "center" | "right";
@@ -176,7 +177,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   const [activeTab, setActiveTab] = useState<"text" | "sticker" | null>(forcedTab ?? null);
   const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
   const [isTextDetailOpen, setIsTextDetailOpen] = useState(false); // 글씨 '자세히'는 기본으로 접어 둡니다
-  const [textAngleDraft, setTextAngleDraft] = useState<string | null>(null); // 각도 칸에 쓰는 중인 글자(스티커와 같은 까닭)
+  const [textAngleDraft, setTextAngleDraft] = useState<AngleDraft | null>(null); // 각도 칸에 쓰는 중인 글자(스티커와 같은 까닭). 글씨 ID에 묶어 다른 글씨가 선택되면 버립니다(UX5-6)
   const [categoryPreviewIndexes, setCategoryPreviewIndexes] = useState<Record<string, number>>({});
   const [loadedCategoryPreviews, setLoadedCategoryPreviews] = useState<Record<string, boolean>>({});
   const [stickerPreviewIndexes, setStickerPreviewIndexes] = useState<Record<string, number>>({});
@@ -653,7 +654,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                           <button
                             type="button"
                             className="linear-button linear-button--secondary"
-                            onClick={onUndoTextDelete}
+                            onClick={(event) => {
+                              // 키보드로 포커스한 '되돌리기'는 안내와 함께 사라지므로, 되살아난 글씨를 이어 고칠 수 있게 글씨 입력 칸으로 포커스를 옮깁니다(UX5-7).
+                              // 마우스·터치로 누른 경우는 옮기지 않습니다(휴대폰에서 키보드가 올라오지 않게).
+                              const isKeyboardFocused = event.currentTarget.matches(':focus-visible');
+                              onUndoTextDelete();
+                              if (isKeyboardFocused) textInputRef.current?.focus();
+                            }}
                             style={{ minHeight: '44px', minWidth: '44px', fontSize: '14px' }}
                           >
                             되돌리기
@@ -843,12 +850,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                           type="number"
                           className="linear-input"
                           step="1"
-                          value={textAngleDraft ?? String(selectedText ? Math.round(selectedText.rotation) : 0)}
+                          value={getAngleInputValue({ draft: textAngleDraft, targetId: selectedText?.id ?? null, rotation: selectedText?.rotation ?? 0 })}
                           disabled={!selectedText}
                           onChange={(event) => {
+                            if (!selectedText) return;
                             const degrees = getAngleInputDegrees(event.currentTarget.valueAsNumber);
-                            setTextAngleDraft(degrees === null ? event.currentTarget.value : String(degrees)); // 보이는 값 = 적용한 값(UP-6)
-                            if (degrees === null || !selectedText || !onTextUpdate) return;
+                            setTextAngleDraft({ targetId: selectedText.id, text: degrees === null ? event.currentTarget.value : String(degrees) }); // 보이는 값 = 적용한 값(UP-6)
+                            if (degrees === null || !onTextUpdate) return;
                             onTextUpdate(selectedText.id, { rotation: degrees }); // rotateSelectedTextBy와 같이 rotation만 바꿉니다
                           }}
                           onBlur={() => setTextAngleDraft(null)}

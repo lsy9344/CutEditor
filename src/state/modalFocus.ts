@@ -44,3 +44,13 @@ export const getFocusReturnCandidates = <Candidate>({
 }): (Candidate | null)[] => origin === "save"
   ? [opener, ...sheetCandidates, ...saves, canvas]
   : [opener, ...sheetCandidates, canvas, ...saves];
+
+// 저장이 끝난 뒤 배치가 바뀌어 눌러 둔 저장 버튼이 사라졌을 때, 지금 배치의 저장 버튼으로 다시 돌려줄지 정합니다(UX5-5).
+// 복귀 요청이 남아 있고 활성 요소가 body이거나 문서에서 사라졌을 때만 돌려주고, 다른 곳에 있는 포커스는 뺏지 않습니다.
+export const shouldRefocusAfterLayoutChange = ({
+  isPending,
+  activeElement,
+}: {
+  isPending: boolean;
+  activeElement: { isBody: boolean; isConnected: boolean } | null;
+}): boolean => isPending && (activeElement === null || activeElement.isBody || !activeElement.isConnected);

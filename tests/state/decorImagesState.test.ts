@@ -12,11 +12,11 @@ const readyInput = (override: Partial<DecorImagesInput> = {}): DecorImagesInput 
 });
 
 test("프레임을 불러왔고 색도 적용했고 스티커도 올라왔으면 ready다", () => {
-  assert.deepEqual(getDecorImagesState(readyInput()), { kind: "ready" });
+  assert.deepEqual(getDecorImagesState(readyInput()), { kind: "ready", failedStickerCount: 0 });
 });
 
 test("프레임을 고르지 않았거나 스티커가 없으면 기다릴 것이 없다", () => {
-  assert.deepEqual(getDecorImagesState(readyInput({ frameLoad: "none", isFrameColorApplied: false, stickers: [] })), { kind: "ready" });
+  assert.deepEqual(getDecorImagesState(readyInput({ frameLoad: "none", isFrameColorApplied: false, stickers: [] })), { kind: "ready", failedStickerCount: 0 });
 });
 
 test("프레임 이미지를 불러오는 중이면 loading이다(UX4-2)", () => {
@@ -38,9 +38,14 @@ test("프레임 이미지를 모든 후보에서 읽지 못하면 failed이고 �
   assert.deepEqual(getDecorImagesState(readyInput({ frameLoad: "failed", isFrameColorApplied: false, stickers })), { kind: "failed" });
 });
 
-test("읽지 못한 일반 스티커는 저장을 막지 않는다(누끼 실패와 같게 그리지 않고 지나간다)", () => {
-  const stickers = [{ isLoaded: false, isFailed: true }, { isLoaded: true, isFailed: false }];
-  assert.deepEqual(getDecorImagesState(readyInput({ stickers })), { kind: "ready" });
+test("읽지 못한 일반 스티커는 저장을 막지 않고 몇 개인지 함께 알린다(UX5-4)", () => {
+  const stickers = [{ isLoaded: false, isFailed: true }, { isLoaded: true, isFailed: false }, { isLoaded: false, isFailed: true }];
+  assert.deepEqual(getDecorImagesState(readyInput({ stickers })), { kind: "ready", failedStickerCount: 2 });
+});
+
+test("일반 스티커를 기다리는 중이면 이미 읽지 못한 스티커가 있어도 loading이다(UX5-4)", () => {
+  const stickers = [{ isLoaded: false, isFailed: true }, { isLoaded: false, isFailed: false }];
+  assert.deepEqual(getDecorImagesState(readyInput({ stickers })), { kind: "loading" });
 });
 
 test("색 적용 기록은 같은 이미지·같은 색일 때만 적용됨으로 본다", () => {

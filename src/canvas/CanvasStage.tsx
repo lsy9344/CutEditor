@@ -4,10 +4,12 @@ import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
 import { FRAME_LAYOUTS } from "../types/frame";
+import type { AngleDraft } from "./keyboardShortcuts";
 import { getNextTextTransformState } from "./textTransform";
 import { getTextDimensions } from "./textTransform";
 import {
   getAngleInputDegrees,
+  getAngleInputValue,
   getCenterRotatedTransform,
   getCenterScaledTransform,
   getClampedKeyboardMove,
@@ -33,7 +35,8 @@ import {
   createStickerTintFilter,
   getStickerTintMode,
 } from "./stickerTint";
-import { getZoomToFit } from "./zoomSizing";
+import { getAutoFitZoomChange, getZoomToFit } from "./zoomSizing";
+import { getReadableMarkColor } from "../utils/colorContrast";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 import type { PhotoEdits } from "../photo/photoEdits";
 import { getCutoutImagesState } from "../photo/cutoutTypes";
@@ -343,7 +346,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedImageId = selectedImage?.id ?? null;
   const [isAdjustDetailOpen, setIsAdjustDetailOpen] = useState(false);
   const [isStickerDetailOpen, setIsStickerDetailOpen] = useState(false); // 스티커 '자세히'는 기본으로 접어 둡니다
-  const [stickerAngleDraft, setStickerAngleDraft] = useState<string | null>(null); // 각도 칸에 쓰는 중인 글자
+  const [stickerAngleDraft, setStickerAngleDraft] = useState<AngleDraft | null>(null); // 각도 칸에 쓰는 중인 글자. 스티커 ID에 묶어 다른 스티커가 선택되면 버립니다(UX5-6)
   const [appliedToAllCount, setAppliedToAllCount] = useState<number | null>(null); // '모든 사진에 적용' 결과 표시
   const [editedPhotoDisplays, setEditedPhotoDisplays] = useState<Map<string, EditedPhotoDisplay>>(new Map());
   const editedPhotoDisplaysRef = useRef(editedPhotoDisplays);
@@ -1080,9 +1083,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         isFailed: failedStickerSources.get(sticker.id) === sticker.src,
       })),
   });
+  const decorImagesStateKey = decorImagesState.kind === "ready"
+    ? `ready:${decorImagesState.failedStickerCount}`
+    : decorImagesState.kind;
   useEffect(() => {
     onDecorImagesStateChange(decorImagesState, stageRef.current);
-  }, [decorImagesState.kind]);
+  }, [decorImagesStateKey]);
 
   useEffect(() => {
     stickers.forEach((sticker) => {
@@ -1755,7 +1761,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (!containerSize.width || !containerSize.height) return;
     const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 768;
 
-    const clamped = getZoomToFit({
+    const fittedZoom = getZoomToFit({
       containerWidth: containerSize.width,
       containerHeight: containerSize.height,
       canvasWidth: frameLayout.canvasWidth,
@@ -1763,10 +1769,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       fitMode: isMobileViewport ? "width" : "contain",
     });
 
-    if (Math.abs(clamped - zoom) > 0.005) {
-      onZoomChange(clamped);
+    // 저장 중(exportMode)에는 Stage 배율을 바꾸지 않습니다. 컨테이너 크기는 계속 기억하므로 저장이 끝나면 이 효과가 최신 크기로 한 번 맞춥니다(UX5-1).
+    const nextZoom = getAutoFitZoomChange({ isSaving: exportMode, currentZoom: zoom, fittedZoom });
+    if (nextZoom !== null) {
+      onZoomChange(nextZoom);
     }
-  }, [frameLayout, containerSize, onZoomChange, zoom]);
+  }, [frameLayout, containerSize, onZoomChange, zoom, exportMode]);
 
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
@@ -2758,6 +2766,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         key={color}
                         type="button"
                         aria-label={getSwatchName(color)}
+                        aria-pressed={isSelected}
                         className="linear-button linear-button--secondary"
                         onClick={() => onFrameColorChange?.(color)}
                         style={{
@@ -2767,12 +2776,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           borderRadius: '0',
                           padding: 0,
                           backgroundColor: color,
-                          border: isSelected ? 'var(--border-width) solid var(--linear-primary-500)' : 'var(--border-width) solid var(--linear-neutral-500)',
+                          border: 'var(--border-width) solid var(--linear-neutral-500)',
                           boxShadow: 'var(--shadow-sm)',
                           flexShrink: 0,
+                          color: getReadableMarkColor(color),
+                          fontSize: '18px',
+                          fontWeight: 900,
+                          lineHeight: 1,
                         }}
                         title={getSwatchName(color)}
-                      />
+                      >
+                        {isSelected ? <span aria-hidden="true">✓</span> : null}
+                      </button>
                     );
                   })}
                 </div>
@@ -3150,10 +3165,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       type="number"
                       className="linear-input"
                       step="1"
-                      value={stickerAngleDraft ?? String(Math.round(selectedSticker.rotation))}
+                      value={getAngleInputValue({ draft: stickerAngleDraft, targetId: selectedSticker.id, rotation: selectedSticker.rotation })}
                       onChange={(event) => {
                         const degrees = getAngleInputDegrees(event.currentTarget.valueAsNumber);
-                        setStickerAngleDraft(degrees === null ? event.currentTarget.value : String(degrees)); // 보이는 값 = 적용한 값(UP-6)
+                        setStickerAngleDraft({ targetId: selectedSticker.id, text: degrees === null ? event.currentTarget.value : String(degrees) }); // 보이는 값 = 적용한 값(UP-6)
                         if (degrees === null) return;
                         rotateSelectedStickerBy(degrees - selectedSticker.rotation);
                       }}

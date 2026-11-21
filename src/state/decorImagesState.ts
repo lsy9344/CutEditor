@@ -1,7 +1,7 @@
 // 프레임 이미지와 일반 스티커 이미지가 캔버스에 그려질 준비가 됐는지 한 가지 형태로 알립니다(UX4-2).
 // 사진·누끼의 준비 보고(PhotoImagesState, CutoutImagesState)와 같은 방식으로 저장 준비 판단에 들어갑니다.
 export type DecorImagesState =
-  | { kind: "ready" }
+  | { kind: "ready"; failedStickerCount: number } // failedStickerCount: 읽기를 모든 후보에서 실패해 그려지지 않는 일반 스티커 수(UX5-4)
   | { kind: "loading" }
   | { kind: "failed" }; // 프레임 이미지를 모든 후보에서 읽지 못함. 기다려도 풀리지 않습니다
 
@@ -15,13 +15,13 @@ export type DecorImagesInput = {
 };
 
 // 프레임이 임시 흰 배경이거나 색 처리 전이면 저장 PNG의 프레임이 틀립니다. 일반 스티커는 이미지가 없으면 그려지지 않습니다.
-// 읽지 못한 일반 스티커는 누끼 스티커 실패처럼 저장을 막지 않습니다(기다려도 그려지지 않으므로 기다릴 것이 없음).
+// 읽지 못한 일반 스티커는 누끼 스티커 실패처럼 저장을 막지 않습니다(기다려도 그려지지 않으므로 기다릴 것이 없음). 대신 수를 알려 저장 결과 안내에 보입니다.
 export function getDecorImagesState({ frameLoad, isFrameColorApplied, stickers }: DecorImagesInput): DecorImagesState {
   if (frameLoad === "failed") return { kind: "failed" };
   if (frameLoad === "loading") return { kind: "loading" };
   if (frameLoad === "loaded" && !isFrameColorApplied) return { kind: "loading" };
   if (stickers.some((sticker) => !sticker.isLoaded && !sticker.isFailed)) return { kind: "loading" };
-  return { kind: "ready" };
+  return { kind: "ready", failedStickerCount: stickers.filter((sticker) => sticker.isFailed).length };
 }
 
 export type FrameColorResult<TImage> = { image: TImage | null; color: string };

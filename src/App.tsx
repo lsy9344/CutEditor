@@ -82,8 +82,8 @@ import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin } from './state/modalFocus'
-import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from './state/modalFocus'
-import { countEmptySlots, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
+import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex, shouldRefocusAfterLayoutChange } from './state/modalFocus'
+import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
 
@@ -514,6 +514,7 @@ function App() {
   const noticeOpenerRef = useRef<HTMLElement | null>(null); // 확인창이나 저장을 시작한 요소
   const isFocusReturnPendingRef = useRef(false); // 확인창·저장이 끝나면 포커스를 돌려줄지
   const focusReturnOriginRef = useRef<FocusReturnOrigin>('frame-change'); // 안내가 저장에서 시작했는지(UX2-2)
+  const isSaveLayoutFocusPendingRef = useRef(false); // 저장에서 온 복귀 뒤 배치가 바뀌면 지금 배치의 저장 버튼으로 다시 돌려줄지(UX5-5)
   // 이어지는 안내(빈 칸 → 진행 → 완료) 동안 처음 연 곳과 시작한 곳을 지킵니다. 이미 기억 중이면 바꾸지 않습니다.
   const rememberNoticeOpener = (card: HTMLElement | null, origin: FocusReturnOrigin) => {
     if (isFocusReturnPendingRef.current) return;
@@ -540,7 +541,7 @@ function App() {
   const lastHeldStickerIdRef = useRef<string | null>(null);
   const photoImagesStateRef = useRef<PhotoImagesState>({ kind: 'ready' });
   const photoImagesSourceRef = useRef<UserImage[] | null>(null);
-  const decorImagesStateRef = useRef<DecorImagesState>({ kind: 'ready' }); // 프레임 이미지·색 처리와 일반 스티커의 준비(UX4-2)
+  const decorImagesStateRef = useRef<DecorImagesState>({ kind: 'ready', failedStickerCount: 0 }); // 프레임 이미지·색 처리와 일반 스티커의 준비(UX4-2)
   const reportedStageRef = useRef<Konva.Stage | null>(null); // 사진·누끼·프레임·스티커 준비 보고를 마지막으로 낸 캔버스. 새 캔버스의 보고가 오기 전에는 그 캔버스를 준비로 보지 않습니다(UX3-1)
   const handlePhotoImagesStateChange = useCallback((state: PhotoImagesState, userImages: UserImage[], stage: Konva.Stage | null) => {
     photoImagesStateRef.current = state;
@@ -689,19 +690,24 @@ function App() {
 
   // 닫힌 뒤 포커스 돌려주기: 연 곳 → 열린 시트의 닫기 버튼 → 캔버스·저장 버튼 가운데 쓸 수 있는 첫 요소
   // (저장에서 시작했으면 저장 버튼이 캔버스보다 앞)
-  useEffect(() => {
-    if (isNoticeOpen || isExportInFlight || cutoutBusyId || !isFocusReturnPendingRef.current) return;
+  const focusReturnTarget = ({ origin, opener }: { origin: FocusReturnOrigin; opener: HTMLElement | null }) => {
     const candidates = getFocusReturnCandidates({
-      origin: focusReturnOriginRef.current,
-      opener: noticeOpenerRef.current,
+      origin,
+      opener,
       sheetCandidates: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="sheet-close"]')),
       canvas: document.querySelector<HTMLElement>('[data-focus-return="canvas"]'),
       saves: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="save"]')),
     });
     const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
+    if (returnIndex >= 0) candidates[returnIndex]?.focus();
+  };
+  useEffect(() => {
+    if (isNoticeOpen || isExportInFlight || cutoutBusyId || !isFocusReturnPendingRef.current) return;
+    focusReturnTarget({ origin: focusReturnOriginRef.current, opener: noticeOpenerRef.current });
     isFocusReturnPendingRef.current = false;
     noticeOpenerRef.current = null;
-    if (returnIndex >= 0) candidates[returnIndex]?.focus();
+    // 저장 끝에 배치 고정이 풀려 배치가 바뀌는 중이면, 돌려준 버튼이 곧 사라질 수 있습니다. 새 배치가 반영된 뒤 다시 확인합니다(UX5-5).
+    isSaveLayoutFocusPendingRef.current = focusReturnOriginRef.current === 'save';
   }, [isNoticeOpen, isExportInFlight, cutoutBusyId, inlineStatus]);
 
   const applyEditorDocument = (nextDocument: EditorDocument) => {
@@ -841,6 +847,29 @@ function App() {
   }, [hasCoarsePointer, viewportWidth]);
   // 저장하는 동안에는 화면 폭이 바뀌어도 고정한 배치를 씁니다. 그래야 캔버스가 다시 마운트되지 않습니다(UX4-1).
   const isMobileEditor = resolveMobileEditor({ lockedMobileLayout, isResponsiveMobile });
+
+  // 저장에서 온 복귀 뒤 배치(isMobileEditor)가 바뀌어 활성 요소가 body이거나 사라졌으면 지금 배치의 저장 버튼으로 돌려줍니다(UX5-5).
+  // 복귀 요청은 손님이 키를 누르거나 눌러서 다른 곳으로 옮기면 버립니다.
+  useEffect(() => {
+    if (!isSaveLayoutFocusPendingRef.current) return;
+    const activeElement = document.activeElement;
+    const isRefocusNeeded = shouldRefocusAfterLayoutChange({
+      isPending: true,
+      activeElement: activeElement ? { isBody: activeElement === document.body, isConnected: activeElement.isConnected } : null,
+    });
+    if (!isRefocusNeeded) return;
+    isSaveLayoutFocusPendingRef.current = false;
+    focusReturnTarget({ origin: 'save', opener: null });
+  }, [isMobileEditor]);
+  useEffect(() => {
+    const dropSaveLayoutFocusRequest = () => { isSaveLayoutFocusPendingRef.current = false; };
+    window.addEventListener('keydown', dropSaveLayoutFocusRequest, true);
+    window.addEventListener('pointerdown', dropSaveLayoutFocusRequest, true);
+    return () => {
+      window.removeEventListener('keydown', dropSaveLayoutFocusRequest, true);
+      window.removeEventListener('pointerdown', dropSaveLayoutFocusRequest, true);
+    };
+  }, []);
 
   const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
   const isBoothyImportBridgeAvailable = useMemo(() => {
@@ -1679,7 +1708,7 @@ function App() {
       setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
       return;
     }
-    let missingStickerCount = 0; // 화면에도 그려지지 않는 누끼 스티커 수. 렌더할 캔버스의 보고로 prepareCanvas에서 셉니다. 저장을 막지 않음
+    let missingStickerCount = 0; // 화면에도 그려지지 않는 스티커(누끼·일반) 수. 렌더할 캔버스의 보고로 prepareCanvas에서 셉니다. 저장을 막지 않음
 
     const expectsBoothySessionSave = Boolean(
       boothyLaunchContext?.completion?.saveUrl?.trim()
@@ -1724,9 +1753,11 @@ function App() {
             const stage = stageRef.current; // 기다린 뒤 한 번만 읽습니다. 이 캔버스를 확인하고 이 캔버스로 렌더합니다
             const preparation = readCanvasPreparation(stage);
             if (preparation.kind === 'ready') {
-              // 준비 확인이 본 보고가 이 캔버스의 보고이므로, 누락 안내의 장수도 그 보고에서 셉니다(UX4-2).
-              const renderedCutoutState = cutoutImagesStateRef.current;
-              missingStickerCount = renderedCutoutState.kind === "failed" ? renderedCutoutState.stickerIds.length : 0;
+              // 준비 확인이 본 보고가 이 캔버스의 보고이므로, 누락 안내의 장수도 그 보고에서 셉니다(UX4-2). 누끼와 일반 스티커 실패를 합칩니다(UX5-4).
+              missingStickerCount = countMissingStickers({
+                cutoutImagesState: cutoutImagesStateRef.current,
+                decorImagesState: decorImagesStateRef.current,
+              });
             }
             return preparation;
           },

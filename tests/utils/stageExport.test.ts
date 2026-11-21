@@ -215,3 +215,80 @@ test("exportStageToBlob은 살아 있는 Stage면 지금처럼 Blob을 돌려준
     assert.ok(result instanceof Blob);
   });
 });
+
+// UX5-1: 기다리는 사이 화면 맞춤이 Stage 표시 크기·배율을 덮어써도 캡처는 렌더 계획의 크기·배율로 합니다.
+const OVERWRITTEN_SIZE = { width: 142, height: 212 };
+const OVERWRITTEN_SCALE = { x: 0.2938, y: 0.2938 };
+
+const withOverwritingFrames = async (stage: FakeStage, run: () => Promise<void>) => {
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    stage.size(OVERWRITTEN_SIZE);
+    stage.scale(OVERWRITTEN_SCALE);
+    callback(0);
+    return 1;
+  }) as typeof requestAnimationFrame;
+  try {
+    await run();
+  } finally {
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  }
+};
+
+test("exportStageToBlob은 기다리는 사이 Stage 크기·배율이 덮어써져도 캡처 직전에 렌더 계획 값으로 되돌린다", async () => {
+  const captured: Array<{ width: number; height: number; scaleX: number; scaleY: number; pixelRatio?: number }> = [];
+  const { stage } = createFakeStage(async (config) => {
+    captured.push({ width: stage.width(), height: stage.height(), scaleX: stage.scaleX(), scaleY: stage.scaleY(), pixelRatio: config.pixelRatio });
+    return new Blob(["ok"], { type: "image/png" });
+  });
+
+  await withOverwritingFrames(stage, async () => {
+    const result = await exportStageToBlob({ frameType: "4v_1", stage });
+    assert.ok(result instanceof Blob);
+  });
+
+  assert.deepEqual(captured, [{ width: 480, height: 720, scaleX: 1, scaleY: 1, pixelRatio: 9.8417 }]);
+});
+
+test("exportStageToBlob은 낮은 pixelRatio로 다시 렌더할 때도 캡처 직전에 계획 값을 확인한다", async () => {
+  const captured: Array<{ width: number; scaleX: number; pixelRatio?: number }> = [];
+  const { stage } = createFakeStage(async (config) => {
+    captured.push({ width: stage.width(), scaleX: stage.scaleX(), pixelRatio: config.pixelRatio });
+    if (captured.length === 1) throw new Error("initial render failed");
+    return new Blob(["ok"], { type: "image/png" });
+  });
+
+  await withOverwritingFrames(stage, async () => {
+    const result = await exportStageToBlob({ frameType: "4v_1", stage });
+    assert.ok(result instanceof Blob);
+  });
+
+  assert.deepEqual(captured, [
+    { width: 480, scaleX: 1, pixelRatio: 9.8417 },
+    { width: 480, scaleX: 1, pixelRatio: 6.4 },
+  ]);
+});
+
+test("exportStageToBlob은 캡처 뒤 Stage를 저장 중 마지막으로 들어온 표시 크기·배율로 돌린다", async () => {
+  const { stage } = createFakeStage(async () => new Blob(["ok"], { type: "image/png" }));
+
+  await withOverwritingFrames(stage, async () => {
+    await exportStageToBlob({ frameType: "4v_1", stage });
+  });
+
+  assert.deepEqual({ width: stage.width(), height: stage.height() }, OVERWRITTEN_SIZE, "옛 표시 크기로 되돌렸습니다");
+  assert.deepEqual({ x: stage.scaleX(), y: stage.scaleY() }, OVERWRITTEN_SCALE, "옛 표시 배율로 되돌렸습니다");
+});
+
+test("exportStageToBlob은 덮어쓰기가 없으면 크기·배율을 더 만지지 않고 처음 표시 값으로 돌린다", async () => {
+  await withImmediateFrames(async () => {
+    const { stage, sizeCalls, scaleCalls } = createFakeStage(async () => new Blob(["ok"], { type: "image/png" }));
+
+    await exportStageToBlob({ frameType: "4v_1", stage });
+
+    assert.equal(sizeCalls.length, 2, "계획 값 설정과 복원 말고 Stage 크기를 더 바꿨습니다");
+    assert.equal(scaleCalls.length, 2, "계획 값 설정과 복원 말고 Stage 배율을 더 바꿨습니다");
+    assert.deepEqual({ width: stage.width(), height: stage.height() }, { width: 480, height: 720 });
+    assert.deepEqual({ x: stage.scaleX(), y: stage.scaleY() }, { x: 1.5, y: 1.5 });
+  });
+});

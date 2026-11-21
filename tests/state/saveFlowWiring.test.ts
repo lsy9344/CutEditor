@@ -159,33 +159,14 @@ test("저장 배치 고정: 완료·취소·실패·대기·예외 모두 같은
   assert.ok(afterLock.includes("} catch (error) {"), "예외를 잡는 catch가 try 안에 없습니다");
 });
 
-// UX4-2: 프레임·일반 스티커의 준비 보고도 사진·누끼와 같은 방식으로 Stage와 함께 보냅니다.
-test("프레임·스티커 준비 보고는 낸 캔버스를 함께 담고 App은 같은 보고한 캔버스 ref에 기억한다", () => {
+// UX5-3: 프레임·스티커 준비 보고, 프레임 색 판정, 누락 수 계산은 순수 함수 동작 시험이 지킵니다
+// (decorImagesState.test.ts의 getDecorImagesState·isFrameColorApplied, saveFlow.test.ts의 getCanvasPreparation·countMissingStickers).
+// 여기서는 그 계산으로 바뀌며 지운 옛 코드가 남아 있지 않은지만 봅니다.
+test("옛 프레임 이미지·색 처리 상태와 저장 시작 때 누끼 실패를 세던 코드가 남아 있지 않다", () => {
   const canvasSource = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
-  assert.match(canvasSource, /onDecorImagesStateChange\(decorImagesState, stageRef\.current\);/);
-  assert.ok(appSource.includes("const decorImagesStateRef = useRef<DecorImagesState>"), "프레임·스티커 준비 ref가 없습니다");
-  const decorReport = getAppSection("const handleDecorImagesStateChange = ", "useEffect(() => {");
-  assert.ok(decorReport.includes("decorImagesStateRef.current = state"), "프레임·스티커 보고를 ref에 쓰지 않습니다");
-  assert.ok(decorReport.includes("reportedStageRef.current = stage"), "프레임·스티커 보고가 낸 캔버스를 기억하지 않습니다");
-  assert.ok(appSource.includes("onDecorImagesStateChange={handleDecorImagesStateChange}"), "캔버스에 프레임·스티커 보고를 받는 함수를 넘기지 않습니다");
-  const readiness = getAppSection("const readCanvasPreparation = ", "const activeCategory");
-  assert.ok(readiness.includes("decorImagesState: decorImagesStateRef.current"), "준비 판단이 프레임·스티커 준비를 보지 않습니다");
-});
-
-test("캔버스는 프레임을 어느 프레임용으로 불러왔는지와 어느 색을 적용했는지를 준비 판단에 쓴다", () => {
-  const canvasSource = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
-  assert.ok(canvasSource.includes("getDecorImagesState({"), "준비 판단 함수를 쓰지 않습니다");
-  assert.ok(canvasSource.includes("isFrameColorApplied(processedFrame, frameImage, frameColor)"), "색 적용 여부를 같은 함수로 보지 않습니다");
-  assert.ok(canvasSource.includes("frameLoad !== null && frameLoad.frame === selectedFrame"), "프레임을 바꾼 직후 옛 프레임 이미지를 준비로 봅니다");
-  assert.ok(!canvasSource.includes("setProcessedFrameCanvas"), "옛 색 적용 상태가 남아 있습니다");
-  assert.ok(!canvasSource.includes("setFrameImage("), "옛 프레임 이미지 상태가 남아 있습니다");
-});
-
-test("누끼 누락 안내의 장수는 저장 시작 때가 아니라 렌더할 캔버스의 보고에서 센다", () => {
+  for (const oldCode of ["setProcessedFrameCanvas", "setFrameImage("]) {
+    assert.ok(!canvasSource.includes(oldCode), `옛 프레임 상태가 남아 있습니다: ${oldCode}`);
+  }
   const exportBody = getAppSection("const handleExport = async", "// 모바일: '사진에 저장' 버튼 핸들러");
   assert.ok(!exportBody.includes('cutoutImagesState.kind === "failed"'), "저장 시작 때의 누끼 상태로 누락 수를 셉니다");
-  const prepare = getAppSection("prepareCanvas: async", "render: (stage)");
-  assert.ok(prepare.includes("missingStickerCount = "), "준비 확인 뒤 누락 수를 세지 않습니다");
-  assert.ok(prepare.includes("cutoutImagesStateRef.current"), "렌더할 캔버스의 누끼 보고를 읽지 않습니다");
-  assert.ok(prepare.indexOf("readCanvasPreparation(stage)") < prepare.indexOf("missingStickerCount = "), "준비를 확인하기 전에 누락 수를 셉니다");
 });

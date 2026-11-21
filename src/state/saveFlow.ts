@@ -99,6 +99,17 @@ export const getCanvasPreparation = <TStage>({
   return { kind: "ready", stage };
 };
 
+// 저장 그림에 들어가지 않는 스티커 수: 누끼 스티커와 일반 스티커의 영구 실패를 합칩니다(UX5-4).
+// 렌더할 캔버스의 ready 보고만 셉니다. 둘 다 저장을 막지 않지만 완료 안내와 휴대폰 미리보기에 알립니다.
+export const countMissingStickers = ({
+  cutoutImagesState,
+  decorImagesState,
+}: {
+  cutoutImagesState: CutoutImagesState;
+  decorImagesState: DecorImagesState;
+}): number => (cutoutImagesState.kind === "failed" ? cutoutImagesState.stickerIds.length : 0)
+  + (decorImagesState.kind === "ready" ? decorImagesState.failedStickerCount : 0);
+
 // 저장하는 동안 배치를 고정해 Stage가 다시 마운트되지 않게 합니다(UX4-1). 고정 값이 있으면 지금 화면 폭을 따르지 않습니다.
 export const resolveMobileEditor = ({
   lockedMobileLayout,

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   countEmptySlots,
+  countMissingStickers,
   getCanvasPreparation,
   getSaveRequestStep,
   getSaveRoute,
@@ -286,7 +287,7 @@ const preparationInput = (override: Partial<CanvasPreparationInput<FakeStage>> =
   documentUserImages: PHOTO_LIST,
   photoImagesState: { kind: "ready" },
   cutoutImagesState: { kind: "ready" },
-  decorImagesState: { kind: "ready" },
+  decorImagesState: { kind: "ready", failedStickerCount: 0 },
   ...override,
 });
 
@@ -355,7 +356,7 @@ test("프레임 이미지를 읽지 못했으면 기존 실패 흐름으로 가�
 test("프레임·스티커 보고가 오기 전의 새 캔버스는 사진이 준비됐어도 waiting이다(UX4-2)", () => {
   const newStage: FakeStage = { id: "new-stage" };
   assert.deepEqual(
-    getCanvasPreparation(preparationInput({ stage: newStage, reportedStage: READY_STAGE, decorImagesState: { kind: "ready" } })),
+    getCanvasPreparation(preparationInput({ stage: newStage, reportedStage: READY_STAGE, decorImagesState: { kind: "ready", failedStickerCount: 0 } })),
     { kind: "waiting" },
   );
 });
@@ -365,6 +366,25 @@ test("누끼 불러오기 실패는 저장을 막지 않는다(없는 스티커�
     preparationInput({ cutoutImagesState: { kind: "failed", stickerIds: ["sticker-1"] } }),
   );
   assert.equal(preparation.kind, "ready");
+});
+
+// UX5-4: 저장 그림에 들어가지 않는 스티커 수는 누끼 스티커와 일반 스티커의 영구 실패를 합칩니다.
+test("누락 스티커 수는 누끼 실패와 일반 스티커 실패를 합친다", () => {
+  assert.equal(
+    countMissingStickers({ cutoutImagesState: { kind: "failed", stickerIds: ["cutout-1"] }, decorImagesState: { kind: "ready", failedStickerCount: 1 } }),
+    2,
+  );
+});
+
+test("누락 스티커 수는 한쪽만 실패해도 그 수이고 둘 다 정상이면 0이다", () => {
+  const readyDecor: DecorImagesState = { kind: "ready", failedStickerCount: 0 };
+  assert.equal(countMissingStickers({ cutoutImagesState: { kind: "failed", stickerIds: ["a", "b"] }, decorImagesState: readyDecor }), 2);
+  assert.equal(countMissingStickers({ cutoutImagesState: { kind: "ready" }, decorImagesState: { kind: "ready", failedStickerCount: 3 } }), 3);
+  assert.equal(countMissingStickers({ cutoutImagesState: { kind: "ready" }, decorImagesState: readyDecor }), 0);
+});
+
+test("누락 스티커 수는 일반 스티커 실패 수를 ready 보고에서만 읽는다", () => {
+  assert.equal(countMissingStickers({ cutoutImagesState: { kind: "ready" }, decorImagesState: { kind: "loading" } }), 0);
 });
 
 test("고른 파일을 열지 못하면 알리고 다운로드하며 쓰기·닫기는 하지 않는다", async () => {

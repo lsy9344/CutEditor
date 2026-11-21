@@ -280,3 +280,17 @@ export const getScaleFromPercent = (percent: number): number | null => {
 
 // 각도 숫자 입력의 값(valueAsNumber)을 적용할 정수 각도로 바꿉니다. 빈 칸이나 숫자가 아닌 입력은 null이라 무시합니다(설계 8.2, UP-6).
 export const getAngleInputDegrees = (value: number): number | null => (Number.isFinite(value) ? Math.round(value) : null);
+
+// 각도 칸에 쓰는 중인 글자는 어느 대상(스티커·글씨)에 쓴 것인지와 함께 들고 있습니다.
+export type AngleDraft = { targetId: string; text: string };
+
+// 각도 칸에 보일 값. 임시값은 같은 대상에 쓴 것일 때만 쓰고, 대상이 바뀌었으면 버리고 새 대상의 각도를 보입니다(UX5-6).
+export const getAngleInputValue = ({
+  draft,
+  targetId,
+  rotation,
+}: {
+  draft: AngleDraft | null;
+  targetId: string | null;
+  rotation: number;
+}): string => (draft !== null && draft.targetId === targetId ? draft.text : String(Math.round(rotation)));

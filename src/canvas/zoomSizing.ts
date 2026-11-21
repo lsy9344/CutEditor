@@ -44,3 +44,20 @@ export function getZoomToFit({
 
   return Math.max(minZoom, Math.min(maxZoom, Number(ratio.toFixed(4))));
 }
+
+const AUTO_FIT_ZOOM_TOLERANCE = 0.005;
+
+// 컨테이너 크기에 맞춘 배율을 Stage에 적용할지 정합니다. 적용할 배율을 돌려주고, 바꾸지 않으면 null입니다.
+// 저장하는 동안에는 렌더가 Stage 크기·배율을 계획 값으로 맞춰 두므로 바꾸지 않고, 끝난 뒤 최신 컨테이너 크기로 한 번 맞춥니다(UX5-1).
+export function getAutoFitZoomChange({
+  isSaving,
+  currentZoom,
+  fittedZoom,
+}: {
+  isSaving: boolean;
+  currentZoom: number;
+  fittedZoom: number;
+}): number | null {
+  if (isSaving) return null;
+  return Math.abs(fittedZoom - currentZoom) > AUTO_FIT_ZOOM_TOLERANCE ? fittedZoom : null;
+}

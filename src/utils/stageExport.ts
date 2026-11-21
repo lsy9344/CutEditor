@@ -62,20 +62,39 @@ export async function exportStageToBlob({
   });
   const previousSize = { width: stage.width(), height: stage.height() };
   const previousScale = { x: stage.scaleX(), y: stage.scaleY() };
+  const planSize = { width: frameLayout.canvasWidth, height: frameLayout.canvasHeight };
+  const planScale = { x: 1, y: 1 };
+  // 끝난 뒤 돌려놓을 표시 값. 기다리는 사이 화면 맞춤이 새 값을 넣었으면 그 값으로 바뀝니다(UX5-1).
+  let displaySize = previousSize;
+  let displayScale = previousScale;
 
   const restoreStage = () => {
-    stage.size(previousSize);
-    stage.scale(previousScale);
+    stage.size(displaySize);
+    stage.scale(displayScale);
     stage.batchDraw();
   };
 
+  const isStageAtPlan = (): boolean => stage.width() === planSize.width
+    && stage.height() === planSize.height
+    && stage.scaleX() === planScale.x
+    && stage.scaleY() === planScale.y;
+
   // 마지막 대기 뒤 캡처 직전에 Stage가 살아 있는지 봅니다. 아니면 캡처하지 않고 null(대기)로 끝냅니다. 낮은 배율 재렌더도 같습니다.
   const renderBlob = async (pixelRatio: number): Promise<Blob | null> => {
-    stage.size({ width: frameLayout.canvasWidth, height: frameLayout.canvasHeight });
-    stage.scale({ x: 1, y: 1 });
+    stage.size(planSize);
+    stage.scale(planScale);
     stage.batchDraw();
     await waitForNextFrame();
     if (!isStageAlive(stage)) return null;
+
+    // 기다리는 사이 화면 맞춤이 표시 크기·배율을 덮어썼으면 그 값을 표시 값으로 기억하고, 계획 값을 그 자리에서 다시 설정합니다.
+    // 이 아래에는 await가 없어야 합니다(캡처 전에 또 덮어쓸 틈을 주지 않음).
+    if (!isStageAtPlan()) {
+      displaySize = { width: stage.width(), height: stage.height() };
+      displayScale = { x: stage.scaleX(), y: stage.scaleY() };
+      stage.size(planSize);
+      stage.scale(planScale);
+    }
 
     const blobResult = await stage.toBlob({
       mimeType: "image/png",

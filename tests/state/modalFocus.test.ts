@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex } from "../../src/state/modalFocus.ts";
+import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
 import type { FocusCandidate } from "../../src/state/modalFocus.ts";
 
 const NORMAL_CANDIDATE: FocusCandidate = { isConnected: true, isDisabled: false, isInert: false, isHidden: false };
@@ -131,4 +131,22 @@ test("프레임 바꾸기에서 시작한 안내는 연 곳을 못 쓰면 저장
   const described = candidates.map((candidate) => (candidate === "frame-card" ? DISCONNECTED_CANDIDATE : NORMAL_CANDIDATE));
 
   assert.equal(candidates[pickFocusReturnIndex(described)], "canvas");
+});
+
+// UX5-5: 저장이 끝난 뒤 배치가 바뀌어 포커스가 사라졌을 때만 지금 배치의 저장 버튼으로 돌려줍니다.
+test("저장에서 온 복귀 요청이 남아 있고 활성 요소가 body이면 배치가 바뀐 뒤 다시 돌려준다", () => {
+  assert.equal(shouldRefocusAfterLayoutChange({ isPending: true, activeElement: { isBody: true, isConnected: true } }), true);
+});
+
+test("저장에서 온 복귀 요청이 남아 있고 활성 요소가 사라졌으면 다시 돌려준다", () => {
+  assert.equal(shouldRefocusAfterLayoutChange({ isPending: true, activeElement: { isBody: false, isConnected: false } }), true);
+  assert.equal(shouldRefocusAfterLayoutChange({ isPending: true, activeElement: null }), true);
+});
+
+test("활성 요소가 문서에 남아 있는 다른 요소이면 포커스를 뺏지 않는다", () => {
+  assert.equal(shouldRefocusAfterLayoutChange({ isPending: true, activeElement: { isBody: false, isConnected: true } }), false);
+});
+
+test("복귀 요청이 없으면 활성 요소가 body여도 돌려주지 않는다", () => {
+  assert.equal(shouldRefocusAfterLayoutChange({ isPending: false, activeElement: { isBody: true, isConnected: true } }), false);
 });
