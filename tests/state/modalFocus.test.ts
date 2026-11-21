@@ -208,16 +208,53 @@ test("시트가 건 배경 격리 위에 누끼 잠금을 걸었다 풀어도 �
   assert.deepEqual([toolbar.inert, main.inert, sheet.inert], [false, false, false]);
 });
 
-test("시트를 먼저 닫아도 누끼 잠금이 푸는 것은 자기가 건 시트뿐이다", () => {
+// 같은 요소를 여러 잠금이 겹쳐 잠그면 마지막 잠금이 풀릴 때만 풀립니다(UX7-1). 먼저 건 쪽이 먼저 풀려도 배경 격리는 남아야 합니다.
+test("시트가 먼저 잠그고 누끼가 겹쳐 잠근 뒤 시트가 먼저 풀려도 누끼가 풀릴 때까지 배경은 격리된다", () => {
   const toolbar = makeInertChild();
   const sheet = makeInertChild();
   const container = { children: [toolbar, sheet] };
   const restoreSheetLock = setInertOutside({ container, keep: [sheet] });
   const restoreCutoutLock = setInertOutside({ container, keep: [] });
   restoreSheetLock();
-  assert.deepEqual([toolbar.inert, sheet.inert], [false, true]);
+  assert.deepEqual([toolbar.inert, sheet.inert], [true, true]);
   restoreCutoutLock();
   assert.deepEqual([toolbar.inert, sheet.inert], [false, false]);
+});
+
+test("누끼가 먼저 풀리고 시트가 나중에 풀려도 배경은 마지막 잠금이 풀릴 때 풀린다", () => {
+  const toolbar = makeInertChild();
+  const sheet = makeInertChild();
+  const container = { children: [toolbar, sheet] };
+  const restoreSheetLock = setInertOutside({ container, keep: [sheet] });
+  const restoreCutoutLock = setInertOutside({ container, keep: [] });
+  restoreCutoutLock();
+  assert.deepEqual([toolbar.inert, sheet.inert], [true, false]);
+  restoreSheetLock();
+  assert.deepEqual([toolbar.inert, sheet.inert], [false, false]);
+});
+
+test("처음부터 inert였던 요소는 겹친 잠금을 모두 풀어도 inert로 남는다", () => {
+  const alreadyInert = makeInertChild(true);
+  const target = makeInertChild();
+  const container = { children: [alreadyInert, target] };
+  const restoreFirstLock = setInertOutside({ container, keep: [] });
+  const restoreSecondLock = setInertOutside({ container, keep: [] });
+  restoreFirstLock();
+  assert.deepEqual([alreadyInert.inert, target.inert], [true, true]);
+  restoreSecondLock();
+  assert.deepEqual([alreadyInert.inert, target.inert], [true, false]);
+});
+
+test("같은 해제 함수를 두 번 불러도 잠금 횟수는 한 번만 줄어든다", () => {
+  const target = makeInertChild();
+  const container = { children: [target] };
+  const restoreFirstLock = setInertOutside({ container, keep: [] });
+  const restoreSecondLock = setInertOutside({ container, keep: [] });
+  restoreFirstLock();
+  restoreFirstLock();
+  assert.equal(target.inert, true);
+  restoreSecondLock();
+  assert.equal(target.inert, false);
 });
 
 test("App에는 inert를 직접 대입하는 코드가 없고 모든 배경 격리가 setInertOutside를 거친다", () => {
@@ -243,11 +280,9 @@ test("소수점 반올림으로 1px 안쪽만 벗어난 경우는 화면 안으�
   assert.equal(isRectInViewport({ rect: { top: 737.5, bottom: 845.5 }, viewportHeight: 844 }), false);
 });
 
-// 시트 카드에 첫 포커스를 줄 때도 닫힘 복귀와 같은 규칙을 씁니다(UX26a-1). 화면 안이면 스크롤하지 않고, 밖일 때만 브라우저가 보이게 합니다.
-test("시트 카드 첫 포커스는 복귀와 같은 한 함수를 거치고 맨 focus()가 남지 않는다", () => {
+// 시트 카드 첫 포커스는 복귀와 같은 규칙(화면 안이면 스크롤하지 않음)을 씁니다(UX26a-1). 포커스 결과는 aside로 잡고, 여기는 지운 코드가 없는지만 봅니다.
+test("옛 이름 focusReturnElement와 시트 카드의 맨 focus() 호출이 남아 있지 않다", () => {
   const appSource = readFileSync("src/App.tsx", "utf8");
-  assert.ok(/focusWithoutScrollIfVisible\(mobileSheetCardRef\.current\)/.test(appSource), "시트 카드 포커스가 공용 함수를 거치지 않습니다");
   assert.ok(!/mobileSheetCardRef\.current\??\.focus\(/.test(appSource), "시트 카드에 맨 focus()가 남아 있습니다");
   assert.ok(!appSource.includes("focusReturnElement"), "옛 이름 focusReturnElement가 남아 있습니다");
-  assert.equal(appSource.match(/const focusWithoutScrollIfVisible = /g)?.length, 1, "함수가 하나가 아닙니다");
 });

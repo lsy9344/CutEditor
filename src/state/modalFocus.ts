@@ -102,7 +102,11 @@ export const getPickFocusTarget = ({
 type InertTarget = { inert: boolean };
 const isInertTarget = (element: object): element is InertTarget => "inert" in element;
 
-// container의 직계 자식 가운데 keep에 없고 아직 inert가 아닌 것에 inert를 겁니다. 돌려주는 함수는 자기가 건 것만 풉니다.
+// 요소마다 지금 잠근 호출 수와 처음 잠기기 전의 inert 값을 기억합니다(UX7-1). 시트·공유 화면·누끼 잠금이 겹쳐도
+// 먼저 건 쪽이 먼저 풀려 배경이 열리지 않고, 마지막 잠금이 풀릴 때만 처음 값으로 돌아갑니다.
+const inertLocks = new WeakMap<object, { lockCount: number; initialInert: boolean }>();
+
+// container의 직계 자식 가운데 keep에 없는 것에 inert를 겁니다. 돌려주는 함수는 자기 호출분만 하나 줄이고, 두 번 불러도 한 번만 셉니다.
 // 받은 요소의 inert만 바꾸고 DOM 전역(document, window, HTMLElement)을 읽지 않습니다(0.2 순수 모듈 규칙).
 export const setInertOutside = ({
   container,
@@ -112,8 +116,25 @@ export const setInertOutside = ({
   keep: (object | null)[];
 }): (() => void) => {
   const lockedElements = Array.from(container.children).filter(
-    (element): element is InertTarget => isInertTarget(element) && !keep.includes(element) && !element.inert,
+    (element): element is InertTarget => isInertTarget(element) && !keep.includes(element),
   );
-  lockedElements.forEach((element) => { element.inert = true; });
-  return () => { lockedElements.forEach((element) => { element.inert = false; }); };
+  lockedElements.forEach((element) => {
+    const lock = inertLocks.get(element) ?? { lockCount: 0, initialInert: element.inert };
+    lock.lockCount += 1;
+    inertLocks.set(element, lock);
+    element.inert = true;
+  });
+  let isReleased = false;
+  return () => {
+    if (isReleased) return;
+    isReleased = true;
+    lockedElements.forEach((element) => {
+      const lock = inertLocks.get(element);
+      if (!lock) return;
+      lock.lockCount -= 1;
+      if (lock.lockCount > 0) return;
+      inertLocks.delete(element);
+      element.inert = lock.initialInert;
+    });
+  };
 };
