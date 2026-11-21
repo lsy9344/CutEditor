@@ -66,7 +66,7 @@ import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
 import { getDecorImagesState, isFrameColorApplied } from "../state/decorImagesState";
 import type { DecorImagesState, FrameColorResult, FrameLoad } from "../state/decorImagesState";
-import { getSlotButtonLabel, getSlotLabel, getSwatchName } from "../state/editorLabels";
+import { getSlotButtonLabel, getSlotLabel, getSwatchName, getToggleButtonLabel } from "../state/editorLabels";
 
 // 끌기 대안(설계 8.2): 한 번 누를 때 20px씩 옮깁니다(방향키 Shift와 같은 값).
 const MOVE_BUTTONS = [
@@ -3091,7 +3091,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     <polyline points="17 2 21 6 17 10" />
                     <line x1="3" y1="6" x2="21" y2="6" />
                   </svg>
-                  좌우 뒤집기
+                  {getToggleButtonLabel('좌우 뒤집기', Boolean(selectedSticker.flipX))}
                 </button>
                 <button
                   type="button"
@@ -3116,7 +3116,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     <polyline points="2 17 6 21 10 17" />
                     <line x1="6" y1="3" x2="6" y2="21" />
                   </svg>
-                  위아래 뒤집기
+                  {getToggleButtonLabel('위아래 뒤집기', Boolean(selectedSticker.flipY))}
                 </button>
               </div>
 
@@ -3277,7 +3277,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       disabled={isCutoutCacheMissing}
                       style={cutoutToolButtonStyle}
                     >
-                      {CUTOUT_COPY.outline}
+                      {getToggleButtonLabel(CUTOUT_COPY.outline, outline)}
                     </button>
                     {photoEdit.toolMode !== "erase-cutout" ? (
                       <button
