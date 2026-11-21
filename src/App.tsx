@@ -889,6 +889,44 @@ function App() {
     };
   }, []);
 
+  const exportOverlayRef = useRef<HTMLDivElement>(null); // 공유 화면 바깥(app-container의 직계 자식)
+  const exportOverlayCardRef = useRef<HTMLDivElement>(null);
+  const wasExportOverlayShownRef = useRef(false);
+
+  // 공유 화면이 떠 있는 동안 뒤 화면에 inert를 걸고 되돌리기·다시 하기 단축키를 막습니다(UP-12).
+  // 미리보기 뒤에서 편집 데이터가 바뀌지 않게 합니다. 확인창이 닫히고 저장이 끝난 뒤에 겁니다(확인창 → 공유 화면 넘겨주기).
+  useEffect(() => {
+    const container = appContainerRef.current;
+    const overlay = exportOverlayRef.current;
+    if (!exportOverlayOpen || isExportInFlight || isNoticeOpen || !container || !overlay) return;
+    const restoreInert = setInertOutside({ container, keep: [overlay, cutoutLockRef.current] });
+    const blockHistoryShortcut = (event: KeyboardEvent) => {
+      const command = getHistoryShortcut({ key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey, isEditableTarget: false });
+      if (!command) return;
+      event.preventDefault();
+      event.stopPropagation(); // window 캡처 단계에서 멈추므로 위의 전역 되돌리기 처리기(버블 단계)에 닿지 않습니다
+    };
+    window.addEventListener('keydown', blockHistoryShortcut, true);
+    return () => {
+      window.removeEventListener('keydown', blockHistoryShortcut, true);
+      restoreInert();
+    };
+  }, [exportOverlayOpen, isExportInFlight, isNoticeOpen]);
+
+  // 공유 화면이 뜨면 카드에 포커스를 주고, 닫히면 '저장'으로 돌아갑니다(설계 10장).
+  // 저장이 진행 중이거나 확인창이 아직 떠 있으면 기다립니다. 위 확인창 복귀 effect가 '저장'에 준 포커스를 카드가 이어받습니다.
+  useEffect(() => {
+    if (exportOverlayOpen) {
+      if (isExportInFlight || isNoticeOpen) return;
+      wasExportOverlayShownRef.current = true;
+      exportOverlayCardRef.current?.focus();
+      return;
+    }
+    if (!wasExportOverlayShownRef.current) return;
+    wasExportOverlayShownRef.current = false;
+    focusReturnTarget({ origin: 'save', opener: null });
+  }, [exportOverlayOpen, isExportInFlight, isNoticeOpen]);
+
   const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
   const isBoothyImportBridgeAvailable = useMemo(() => {
     return Boolean(
@@ -1872,10 +1910,10 @@ function App() {
     setExportManualSaveRequired(false);
 
     try {
-      const file = new File([exportBlob], exportFilename || 'cut_export.png', { type: 'image/png' });
+      const file = new File([exportBlob], exportFilename || makeSaveFilename(new Date()), { type: 'image/png' });
       const nav = navigator as unknown as { canShare?: (data: { files: File[] }) => boolean; share?: (data: { files: File[]; title: string }) => Promise<void> };
       if (canShareExportFile(file) && 'share' in navigator) {
-        await nav.share?.({ files: [file], title: '컷 내보내기' });
+        await nav.share?.({ files: [file], title: '우리 사진' });
         // 공유 완료 후 오버레이 닫기
         handleCloseExportOverlay();
         return;
@@ -1903,7 +1941,7 @@ function App() {
       const url = exportObjectUrl || URL.createObjectURL(exportBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = exportFilename || 'cut_export.png';
+      a.download = exportFilename || makeSaveFilename(new Date());
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -2001,6 +2039,26 @@ function App() {
     if (focusMove.kind === 'native') return;
     event.preventDefault();
     if (focusMove.kind === 'move') focusables[focusMove.index].focus();
+  };
+
+  // 공유 화면 안에서 Tab이 돌고, Esc로 닫습니다(설계 D12).
+  const handleExportOverlayKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      handleCloseExportOverlay();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+    const focusMove = getWrappedFocusIndex({
+      focusableCount: buttons.length,
+      activeIndex: buttons.findIndex((button) => button === document.activeElement),
+      isShiftKey: event.shiftKey,
+    });
+    if (focusMove.kind === 'native') return;
+    event.preventDefault();
+    if (focusMove.kind === 'move') buttons[focusMove.index].focus();
   };
 
   const handleSaveRequest = () => {
@@ -2505,8 +2563,10 @@ function App() {
       {/* 모바일: 내보내기 오버레이 (사진에 저장) */}
       {exportOverlayOpen && (
         <div
+          ref={exportOverlayRef}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="export-overlay-title"
           style={{
             position: 'fixed',
             inset: 0,
@@ -2520,23 +2580,27 @@ function App() {
           className="linear-fade-in"
         >
           <div
+            ref={exportOverlayCardRef}
+            tabIndex={-1}
+            onKeyDown={handleExportOverlayKeyDown}
             className="linear-card"
-            style={{ maxWidth: 520, width: '100%', boxShadow: 'var(--shadow-lg)' }}
+            style={{ maxWidth: 520, width: '100%', maxHeight: '100%', overflowY: 'auto', boxShadow: 'var(--shadow-lg)' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3>내보내기 완료</h3>
+              <h3 id="export-overlay-title">사진이 준비됐어요</h3>
               <button
                 type="button"
                 className="linear-button linear-button--secondary"
                 onClick={handleCloseExportOverlay}
+                style={{ minHeight: '44px', minWidth: '44px', fontSize: '14px' }}
               >
                 닫기
               </button>
             </div>
             <p style={{ marginBottom: 12 }}>
               {exportManualSaveRequired
-                ? '이 브라우저에서는 자동 저장이 불안정할 수 있어요. 아래 미리보기를 길게 눌러 이미지를 저장해 주세요.'
-                : '공유 시트로 저장하거나 이미지를 직접 열어 사진 앱에 보관해 주세요.'}
+                ? '아래 사진을 길게 눌러 저장해 주세요.'
+                : '[사진에 저장]을 누르면 사진 앱에 넣을 수 있어요.'}
             </p>
             {exportMissingStickerCount > 0 && (
               <p className="linear-status--warning" style={{ marginBottom: 12 }}>{CUTOUT_COPY.missingStickers(exportMissingStickerCount)}</p>
@@ -2544,7 +2608,7 @@ function App() {
             {exportObjectUrl && (
               <img
                 src={exportObjectUrl}
-                alt="내보낸 이미지 미리보기"
+                alt="저장할 사진 미리보기"
                 draggable={false}
                 style={{ width: '100%', height: 'auto', borderRadius: 8, marginBottom: 12 }}
               />
@@ -2570,7 +2634,7 @@ function App() {
                   }
                 }}
               >
-                이미지 열기
+                사진 크게 보기
               </button>
               <button
                 type="button"
