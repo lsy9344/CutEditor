@@ -32,7 +32,7 @@ test("갤럭시 계열 모바일 저장 시트는 열리자마자 길게 눌러 
 
   assert.match(source, /shouldShowManualSaveHintImmediately/);
   assert.match(source, /setExportManualSaveRequired\(shouldShowManualSaveHintImmediately\(\{/);
-  assert.match(source, /아래 미리보기를 길게 눌러 이미지를 저장해 주세요/);
+  assert.match(source, /아래 사진을 길게 눌러 저장해 주세요\./);
 });
 
 test("공유 시트 취소는 후속 다운로드로 이어지지 않고 조용히 종료한다", () => {
