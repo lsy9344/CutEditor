@@ -54,3 +54,38 @@ export const shouldRefocusAfterLayoutChange = ({
   isPending: boolean;
   activeElement: { isBody: boolean; isConnected: boolean } | null;
 }): boolean => isPending && (activeElement === null || activeElement.isBody || !activeElement.isConnected);
+
+export type TextDeleteFocusTarget = "undo" | "text-input" | "none";
+
+// '글씨 지우기'를 누른 뒤 포커스를 보낼 곳을 정합니다. 지운 글씨가 선택에서 빠지면 눌렀던 버튼이 잠겨 포커스가 body로 사라집니다.
+// 키보드로 눌렀을 때만 옮깁니다(UX5-7과 같은 규칙. 마우스·터치에서는 휴대폰 키보드가 올라오지 않게 옮기지 않음).
+// 그 자리에 새로 나타난 '되돌리기'가 있으면 거기로, 없으면 글씨 입력 칸으로 갑니다.
+export const getTextDeleteFocusTarget = ({
+  isKeyboardFocused,
+  hasUndoButton,
+}: {
+  isKeyboardFocused: boolean;
+  hasUndoButton: boolean;
+}): TextDeleteFocusTarget => {
+  if (!isKeyboardFocused) return "none";
+  return hasUndoButton ? "undo" : "text-input";
+};
+
+type InertTarget = { inert: boolean };
+const isInertTarget = (element: object): element is InertTarget => "inert" in element;
+
+// container의 직계 자식 가운데 keep에 없고 아직 inert가 아닌 것에 inert를 겁니다. 돌려주는 함수는 자기가 건 것만 풉니다.
+// 받은 요소의 inert만 바꾸고 DOM 전역(document, window, HTMLElement)을 읽지 않습니다(0.2 순수 모듈 규칙).
+export const setInertOutside = ({
+  container,
+  keep,
+}: {
+  container: { children: ArrayLike<object> };
+  keep: (object | null)[];
+}): (() => void) => {
+  const lockedElements = Array.from(container.children).filter(
+    (element): element is InertTarget => isInertTarget(element) && !keep.includes(element) && !element.inert,
+  );
+  lockedElements.forEach((element) => { element.inert = true; });
+  return () => { lockedElements.forEach((element) => { element.inert = false; }); };
+};

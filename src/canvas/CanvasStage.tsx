@@ -1776,6 +1776,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
   }, [frameLayout, containerSize, onZoomChange, zoom, exportMode]);
 
+  // 휴대폰 세로 CSS의 html scroll-padding-top이 읽도록 캔버스 높이를 문서 루트에도 둡니다(설계 10장, E-2 4).
+  // 세로 블록 밖에는 이 변수를 읽는 규칙이 없어 화면 크기를 따지지 않습니다.
+  useEffect(() => {
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--mobile-canvas-height', `${containerSize.height}px`);
+    return () => { rootStyle.removeProperty('--mobile-canvas-height'); };
+  }, [containerSize.height]);
+
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
     return (
