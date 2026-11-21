@@ -1784,6 +1784,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     return () => { rootStyle.removeProperty('--mobile-canvas-height'); };
   }, [containerSize.height]);
 
+  // 칸 버튼 목록은 숨겨진 동안 패널 가운데에 절대 위치로 놓여, 포커스가 들어오면 브라우저가 그 옛 자리로 스크롤합니다.
+  // 휴대폰 세로에서는 목록이 제자리에 펼쳐진 뒤 버튼이 위쪽 캔버스 뒤로 사라지므로, 펼쳐진 뒤 그 버튼을 화면 안으로 다시 옮깁니다(2.4.11).
+  useLayoutEffect(() => {
+    if (!isSlotListFocused) return;
+    const focusedElement = document.activeElement;
+    if (focusedElement instanceof HTMLElement) focusedElement.scrollIntoView({ block: 'nearest' });
+  }, [isSlotListFocused]);
+
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
     return (
