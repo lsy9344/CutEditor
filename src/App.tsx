@@ -243,8 +243,8 @@ const describeFocusCandidate = (element: HTMLElement | null) => {
   };
 };
 
-// 닫힌 뒤 포커스를 돌려줍니다. 요소가 화면 안에 보이면 스크롤하지 않고, 보이지 않을 때만 브라우저가 보이게 합니다(UX6-2).
-const focusReturnElement = (element: HTMLElement) => {
+// 요소에 포커스를 줍니다(닫힌 뒤 복귀, 시트 첫 포커스). 요소가 화면 안에 보이면 스크롤하지 않고, 보이지 않을 때만 브라우저가 보이게 합니다(UX6-2).
+const focusWithoutScrollIfVisible = (element: HTMLElement) => {
   const isVisible = isRectInViewport({ rect: element.getBoundingClientRect(), viewportHeight: document.documentElement.clientHeight });
   element.focus({ preventScroll: isVisible });
 };
@@ -699,7 +699,7 @@ function App() {
     });
     const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
     const returnTarget = returnIndex >= 0 ? candidates[returnIndex] : null;
-    if (returnTarget) focusReturnElement(returnTarget);
+    if (returnTarget) focusWithoutScrollIfVisible(returnTarget);
   };
   useEffect(() => {
     if (isNoticeOpen || isExportInFlight || cutoutBusyId || !isFocusReturnPendingRef.current) return;
@@ -830,7 +830,7 @@ function App() {
     if (mobilePanel !== null || isTutorialOpen) return;
     const opener = mobileSheetOpenerRef.current;
     mobileSheetOpenerRef.current = null;
-    if (opener && pickFocusReturnIndex([describeFocusCandidate(opener)]) === 0) focusReturnElement(opener);
+    if (opener && pickFocusReturnIndex([describeFocusCandidate(opener)]) === 0) focusWithoutScrollIfVisible(opener);
   }, [mobilePanel, isTutorialOpen]);
 
   useEffect(() => {
@@ -868,7 +868,7 @@ function App() {
     const sheet = mobileSheetRef.current;
     if (!isMobileEditor || mobilePanel === null || !container || !sheet) return;
     const restoreInert = setInertOutside({ container, keep: [sheet, cutoutLockRef.current] });
-    mobileSheetCardRef.current?.focus();
+    if (mobileSheetCardRef.current) focusWithoutScrollIfVisible(mobileSheetCardRef.current);
     return restoreInert;
   }, [isMobileEditor, mobilePanel]);
 
