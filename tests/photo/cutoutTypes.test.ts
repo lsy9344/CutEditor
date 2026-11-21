@@ -14,7 +14,7 @@ test("#13 CUTOUT_COPY는 설계 6.4·6.6의 문구를 쓴다", () => {
   assert.equal(CUTOUT_COPY.notFound, "사람을 찾지 못했어요. 사람이 크게 나온 사진으로 해 보세요.");
   assert.equal(
     CUTOUT_COPY.missingStickers(2),
-    "불러오지 못한 내 사진 스티커 2개는 저장 그림에 들어가지 않아요.",
+    "불러오지 못한 스티커 2개는 저장 그림에 들어가지 않아요.",
   );
 });
 

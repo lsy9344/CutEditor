@@ -7,7 +7,7 @@ export const CUTOUT_COPY = {
   notFound: "사람을 찾지 못했어요. 사람이 크게 나온 사진으로 해 보세요.",
   loadFailed: "내 사진 스티커를 준비하지 못했어요. 잠시 후 다시 눌러 주세요.",
   exportBlocked: "내 사진 스티커를 만드는 중이에요. 잠시 후 저장해 주세요.",
-  missingStickers: (count: number) => `불러오지 못한 내 사진 스티커 ${count}개는 저장 그림에 들어가지 않아요.`,
+  missingStickers: (count: number) => `불러오지 못한 스티커 ${count}개는 저장 그림에 들어가지 않아요.`,
   pickOne: "한 사람만 고르기",
   pickGuide: "남길 사람을 눌러 주세요",
   everyone: "모두 함께",
