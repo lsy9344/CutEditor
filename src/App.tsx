@@ -82,7 +82,7 @@ import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin, PickFocusTarget } from './state/modalFocus'
-import { getFocusReturnCandidates, getPickFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from './state/modalFocus'
+import { getFocusReturnCandidates, getPickFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldCloseMobileSheet, shouldRefocusAfterLayoutChange } from './state/modalFocus'
 import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
@@ -860,6 +860,22 @@ function App() {
   }, [hasCoarsePointer, viewportWidth]);
   // 저장하는 동안에는 화면 폭이 바뀌어도 고정한 배치를 씁니다. 그래야 캔버스가 다시 마운트되지 않습니다(UX4-1).
   const isMobileEditor = resolveMobileEditor({ lockedMobileLayout, isResponsiveMobile });
+
+  // 배치가 데스크톱으로 바뀌면 열려 있던 휴대폰 시트 상태를 닫습니다(UX8-1). 다시 좁혀도 시트가 저절로 열려 누끼 작업 중 포커스를 뺏지 않게 합니다.
+  // 시트가 사라지며 포커스가 body로 갔으면 기존 복귀 후보(캔버스·저장 버튼)로 돌려줍니다. 누끼 '취소'처럼 다른 곳에 있는 포커스는 건드리지 않습니다.
+  const previousIsMobileEditorRef = useRef(isMobileEditor);
+  useEffect(() => {
+    const wasMobileEditor = previousIsMobileEditorRef.current;
+    previousIsMobileEditorRef.current = isMobileEditor;
+    if (!shouldCloseMobileSheet({ wasMobileEditor, isMobileEditor, isSheetOpen: mobilePanel !== null })) return;
+    setMobilePanel(null);
+    const activeElement = document.activeElement;
+    const isRefocusNeeded = shouldRefocusAfterLayoutChange({
+      isPending: true,
+      activeElement: activeElement ? { isBody: activeElement === document.body, isConnected: activeElement.isConnected } : null,
+    });
+    if (isRefocusNeeded) focusReturnTarget({ origin: 'frame-change', opener: null });
+  }, [isMobileEditor, mobilePanel]);
 
   // 휴대폰 시트가 떠 있는 동안 뒤 화면에 inert를 걸고, 카드에 포커스를 줍니다(미리 고른 버튼 없음, 설계 10장).
   // 시트는 isMobileEditor일 때만 그려지므로 같은 값으로 거릅니다. 시트가 안 그려지면 mobileSheetRef가 비어 아무것도 하지 않습니다.

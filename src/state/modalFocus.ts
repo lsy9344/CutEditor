@@ -55,6 +55,18 @@ export const shouldRefocusAfterLayoutChange = ({
   activeElement: { isBody: boolean; isConnected: boolean } | null;
 }): boolean => isPending && (activeElement === null || activeElement.isBody || !activeElement.isConnected);
 
+// 배치가 휴대폰에서 데스크톱으로 바뀌었는데 휴대폰 시트가 열려 있으면 시트 상태를 닫을지 정합니다(UX8-1).
+// 데스크톱 배치에는 시트가 없어서, 상태를 남기면 창을 다시 좁힐 때 시트가 저절로 다시 열립니다.
+export const shouldCloseMobileSheet = ({
+  wasMobileEditor,
+  isMobileEditor,
+  isSheetOpen,
+}: {
+  wasMobileEditor: boolean;
+  isMobileEditor: boolean;
+  isSheetOpen: boolean;
+}): boolean => isSheetOpen && wasMobileEditor && !isMobileEditor;
+
 // 포커스를 돌려줄 요소가 화면 높이 안에 모두 들어와 있는지 봅니다(UX6-2). 보이면 스크롤하지 않고 포커스를 줍니다.
 // 보이는 버튼에 focus()를 하면 브라우저가 문서 아래 스크롤 여백(툴바 높이)만큼 문서를 밀기 때문입니다.
 // 소수점 반올림으로 생기는 1px 안쪽 차이는 화면 안으로 봅니다.

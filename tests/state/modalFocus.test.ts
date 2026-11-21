@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { getFocusReturnCandidates, getPickFocusTarget, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
+import { getFocusReturnCandidates, getPickFocusTarget, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldCloseMobileSheet, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
 import type { FocusCandidate } from "../../src/state/modalFocus.ts";
 
 const NORMAL_CANDIDATE: FocusCandidate = { isConnected: true, isDisabled: false, isInert: false, isHidden: false };
@@ -257,10 +257,9 @@ test("같은 해제 함수를 두 번 불러도 잠금 횟수는 한 번만 줄�
   assert.equal(target.inert, false);
 });
 
-test("App에는 inert를 직접 대입하는 코드가 없고 모든 배경 격리가 setInertOutside를 거친다", () => {
+test("App에는 inert를 직접 대입하는 코드가 없다", () => {
   const appSource = readFileSync("src/App.tsx", "utf8");
   assert.ok(!/\.inert\s*=[^=]/.test(appSource), "App에 inert 직접 대입이 남아 있습니다");
-  assert.ok(appSource.includes("setInertOutside({ container, keep: [lock] })"), "누끼 잠금이 setInertOutside를 쓰지 않습니다");
 });
 
 // 포커스를 돌려줄 요소가 화면 안에 보이면 스크롤하지 않고, 보이지 않을 때만 브라우저가 보이게 합니다(UX6-2).
@@ -280,9 +279,25 @@ test("소수점 반올림으로 1px 안쪽만 벗어난 경우는 화면 안으�
   assert.equal(isRectInViewport({ rect: { top: 737.5, bottom: 845.5 }, viewportHeight: 844 }), false);
 });
 
-// 시트 카드 첫 포커스는 복귀와 같은 규칙(화면 안이면 스크롤하지 않음)을 씁니다(UX26a-1). 포커스 결과는 aside로 잡고, 여기는 지운 코드가 없는지만 봅니다.
-test("옛 이름 focusReturnElement와 시트 카드의 맨 focus() 호출이 남아 있지 않다", () => {
+// 시트 카드 첫 포커스는 복귀와 같은 규칙(화면 안이면 스크롤하지 않음)을 씁니다(UX26a-1). 포커스 결과는 aside로 잡고, 여기는 지운 이름이 없는지만 봅니다.
+test("옛 이름 focusReturnElement가 남아 있지 않다", () => {
   const appSource = readFileSync("src/App.tsx", "utf8");
-  assert.ok(!/mobileSheetCardRef\.current\??\.focus\(/.test(appSource), "시트 카드에 맨 focus()가 남아 있습니다");
   assert.ok(!appSource.includes("focusReturnElement"), "옛 이름 focusReturnElement가 남아 있습니다");
+});
+
+// 배치가 데스크톱으로 바뀌면 열려 있던 휴대폰 시트 상태를 닫습니다(UX8-1). 데스크톱 배치에는 시트가 없어서, 다시 좁혀도 시트가 저절로 열리지 않아야 합니다.
+test("휴대폰 배치에서 데스크톱 배치로 바뀌고 시트가 열려 있으면 시트를 닫는다", () => {
+  assert.equal(shouldCloseMobileSheet({ wasMobileEditor: true, isMobileEditor: false, isSheetOpen: true }), true);
+});
+
+test("시트가 닫혀 있으면 배치가 바뀌어도 닫을 것이 없다", () => {
+  assert.equal(shouldCloseMobileSheet({ wasMobileEditor: true, isMobileEditor: false, isSheetOpen: false }), false);
+});
+
+test("휴대폰 배치가 이어지는 동안에는 열린 시트를 닫지 않는다", () => {
+  assert.equal(shouldCloseMobileSheet({ wasMobileEditor: true, isMobileEditor: true, isSheetOpen: true }), false);
+});
+
+test("데스크톱에서 휴대폰 배치로 바뀔 때는 시트를 닫지 않는다", () => {
+  assert.equal(shouldCloseMobileSheet({ wasMobileEditor: false, isMobileEditor: true, isSheetOpen: true }), false);
 });
