@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
@@ -10,6 +10,7 @@ import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
 import { KEYBOARD_MOVE_FAST_STEP, KEYBOARD_SCALE_FACTOR, getAngleInputDegrees, getAngleInputValue } from "../canvas/keyboardShortcuts";
 import type { AngleDraft } from "../canvas/keyboardShortcuts";
 import { getNextTextTransformState, getRenderedTextWidth } from "../canvas/textTransform";
+import { getTextDeleteFocusTarget, getWrappedFocusIndex, setInertOutside } from "../state/modalFocus";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -194,6 +195,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   const [fontColor, setFontColor] = useState("#000000");
   const [textAlign, setTextAlign] = useState<TextAlign>("center");
   const textInputRef = useRef<HTMLTextAreaElement>(null);
+  const undoTextDeleteButtonRef = useRef<HTMLButtonElement>(null); // 글씨 지우기 안내의 '되돌리기'(키보드로 지운 뒤 포커스를 받음)
 
   // 동적 폰트 로딩
   const { fonts, isLoading: fontsLoading } = useFonts();
@@ -251,6 +253,38 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isFontPickerOpen]);
+
+  const fontPickerOpenerRef = useRef<HTMLButtonElement>(null);
+  const fontPickerBackdropRef = useRef<HTMLDivElement>(null);
+  const fontPickerCardRef = useRef<HTMLDivElement>(null);
+
+  // 글씨체 창이 열리면 앱 전체(#root, 시트 포함)를 inert로 하고 창 카드에 포커스를 줍니다.
+  // 고르거나 닫으면(닫기, 배경, Esc) 자기가 건 inert만 풀고 연 버튼으로 포커스를 돌려줍니다(설계 10장, UP-12).
+  useEffect(() => {
+    const backdrop = fontPickerBackdropRef.current;
+    if (!isFontPickerOpen || !backdrop) return;
+    const restoreInert = setInertOutside({ container: document.body, keep: [backdrop] });
+    fontPickerCardRef.current?.focus();
+    return () => {
+      restoreInert();
+      fontPickerOpenerRef.current?.focus();
+    };
+  }, [isFontPickerOpen]);
+
+  // 창 안에서 Tab·Shift+Tab이 돕니다('닫기'와 글씨체 목록 버튼).
+  const handleFontPickerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Tab') return;
+    const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not([disabled])'))
+      .filter((button) => button.getClientRects().length > 0);
+    const focusMove = getWrappedFocusIndex({
+      focusableCount: buttons.length,
+      activeIndex: buttons.findIndex((button) => button === document.activeElement),
+      isShiftKey: event.shiftKey,
+    });
+    if (focusMove.kind === 'native') return;
+    event.preventDefault();
+    if (focusMove.kind === 'move') buttons[focusMove.index].focus();
+  };
 
   // 선택된 텍스트의 속성을 표시
   const displayedTextSize = selectedText?.fontSize ?? textSize;
@@ -387,9 +421,15 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     }
   };
 
-  const handleTextDelete = () => {
+  const handleTextDelete = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!selectedText) return;
-    onTextDelete?.(selectedText.id); // 안내는 App이 문서를 보고 띄웁니다
+    // 지운 글씨는 선택에서 빠져 이 버튼이 잠기고 포커스가 body로 사라집니다. 키보드로 눌렀을 때만 포커스를 옮깁니다(UX5-7과 같은 규칙).
+    // 새로 그려지는 '되돌리기'에 포커스를 주려고 지우기를 바로 반영합니다.
+    const isKeyboardFocused = event.currentTarget.matches(':focus-visible');
+    flushSync(() => onTextDelete?.(selectedText.id)); // 안내는 App이 문서를 보고 띄웁니다
+    const focusTarget = getTextDeleteFocusTarget({ isKeyboardFocused, hasUndoButton: undoTextDeleteButtonRef.current !== null });
+    if (focusTarget === 'undo') undoTextDeleteButtonRef.current?.focus();
+    if (focusTarget === 'text-input') textInputRef.current?.focus();
   };
 
   const handleTextAlignChange = (newAlign: TextAlign) => {
@@ -652,6 +692,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         <span style={{ fontSize: '14px' }}>글씨를 지웠어요</span>
                         {onUndoTextDelete && (
                           <button
+                            ref={undoTextDeleteButtonRef}
                             type="button"
                             className="linear-button linear-button--secondary"
                             onClick={(event) => {
@@ -681,6 +722,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                   <p style={{ fontSize: "var(--linear-text-sm)", marginBottom: "var(--linear-space-1)" }}>글씨체</p>
                   <div className="linear-flex" style={{ alignItems: 'center' }}>
                     <button
+                      ref={fontPickerOpenerRef}
                       type="button"
                       className="linear-button linear-button--secondary"
                       onClick={() => !fontsLoading && setFontPickerOpen(true)}
@@ -1082,8 +1124,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
           {/* 폰트 선택 모달 */}
           {isFontPickerOpen && typeof document !== 'undefined' && createPortal(
             <div
+              ref={fontPickerBackdropRef}
               role="dialog"
               aria-modal="true"
+              aria-labelledby="font-picker-title"
               className="linear-fade-in"
               style={{
                 position: 'fixed',
@@ -1097,7 +1141,10 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
               onClick={() => setFontPickerOpen(false)}
             >
               <div
+                ref={fontPickerCardRef}
                 className="linear-card"
+                tabIndex={-1}
+                onKeyDown={handleFontPickerKeyDown}
                 style={{
                   width: 'min(800px, 90vw)',
                   height: '80vh',
@@ -1111,7 +1158,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="linear-flex" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h3>글씨체</h3>
+                  <h3 id="font-picker-title">글씨체</h3>
                   <button
                     type="button"
                     className="linear-button linear-button--secondary"

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
+import { getFocusReturnCandidates, getTextDeleteFocusTarget, getWrappedFocusIndex, pickFocusReturnIndex, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
 import type { FocusCandidate } from "../../src/state/modalFocus.ts";
 
 const NORMAL_CANDIDATE: FocusCandidate = { isConnected: true, isDisabled: false, isInert: false, isHidden: false };
@@ -149,4 +149,12 @@ test("활성 요소가 문서에 남아 있는 다른 요소이면 포커스를 
 
 test("복귀 요청이 없으면 활성 요소가 body여도 돌려주지 않는다", () => {
   assert.equal(shouldRefocusAfterLayoutChange({ isPending: false, activeElement: { isBody: true, isConnected: true } }), false);
+});
+
+// 글씨 지우기: 키보드로 눌렀을 때만 포커스를 옮깁니다. 지운 글씨가 선택에서 빠져 눌렀던 버튼이 잠기기 때문입니다.
+test("글씨 지우기를 키보드로 누르면 되돌리기로, 그 버튼이 없으면 글씨 입력 칸으로 가고 마우스·터치로 누르면 옮기지 않는다", () => {
+  assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: true, hasUndoButton: true }), "undo");
+  assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: true, hasUndoButton: false }), "text-input");
+  assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: false, hasUndoButton: true }), "none");
+  assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: false, hasUndoButton: false }), "none");
 });

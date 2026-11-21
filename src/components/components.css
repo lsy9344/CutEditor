@@ -595,6 +595,17 @@ p {
       z-index: 2;
       background: var(--linear-neutral-600);
     }
+
+    .app-mobile-toolbar {
+      position: sticky;
+      bottom: 0;
+      z-index: 4;
+    }
+
+    html {
+      scroll-padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
+      scroll-padding-top: calc(var(--mobile-canvas-height, 0px) + 64px);
+    }
   }
 }
 

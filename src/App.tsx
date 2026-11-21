@@ -82,7 +82,7 @@ import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin } from './state/modalFocus'
-import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex, shouldRefocusAfterLayoutChange } from './state/modalFocus'
+import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from './state/modalFocus'
 import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
@@ -230,14 +230,8 @@ const NOTICE_TONE_CLASS: Record<NoticeTone, string> = {
   error: 'linear-status--error',
 };
 
-// container의 직계 자식 가운데 keep에 없고 아직 inert가 아닌 것에 inert를 겁니다. 돌려주는 함수는 자기가 건 것만 풉니다.
-const setInertOutside = ({ container, keep }: { container: HTMLElement; keep: (Element | null)[] }): (() => void) => {
-  const lockedElements = Array.from(container.children).filter(
-    (element): element is HTMLElement => element instanceof HTMLElement && !keep.includes(element) && !element.inert,
-  );
-  lockedElements.forEach((element) => { element.inert = true; });
-  return () => { lockedElements.forEach((element) => { element.inert = false; }); };
-};
+// 시트 안에서 Tab으로 갈 수 있는 요소(DOM 순서 = Tab 순서. 양수 tabIndex는 쓰지 않음)
+const MOBILE_SHEET_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 const describeFocusCandidate = (element: HTMLElement | null) => {
   if (!element) return { isConnected: false, isDisabled: false, isInert: false, isHidden: true };
@@ -780,6 +774,9 @@ function App() {
   const mobileTutorialRef1 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef2 = useRef<HTMLButtonElement>(null);
   const mobileTutorialRef3 = useRef<HTMLButtonElement>(null);
+  const mobileSheetOpenerRef = useRef<HTMLElement | null>(null); // 휴대폰 시트를 연 툴바 버튼
+  const mobileSheetRef = useRef<HTMLDivElement>(null); // 시트 배경(app-container의 직계 자식)
+  const mobileSheetCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 시트 카드
   const tutorialLayerRef = useRef<HTMLDivElement>(null); // 튜토리얼 덮개(app-container의 직계 자식)
   const tutorialOpenerRef = useRef<HTMLElement | null>(null); // '사용법'을 누른 버튼
   const isTutorialOpen = tutorialStep !== null;
@@ -814,11 +811,21 @@ function App() {
   // '사용법'으로 연 튜토리얼이 닫히면 연 곳으로 돌아갑니다. 처음 로드 때 뜬 튜토리얼은 연 곳이 없어 돌려주지 않습니다.
   useEffect(() => {
     if (isTutorialOpen || !tutorialOpenerRef.current) return;
-    const candidates = [tutorialOpenerRef.current];
+    const candidates = [tutorialOpenerRef.current, mobileSheetOpenerRef.current];
     tutorialOpenerRef.current = null;
+    mobileSheetOpenerRef.current = null;
     const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
     if (returnIndex >= 0) candidates[returnIndex]?.focus();
   }, [isTutorialOpen]);
+
+  // 휴대폰 시트가 닫히면 연 툴바 버튼으로 돌아갑니다(배경, '닫기', 컷 수 고르기, 사진·스티커 넣기로 닫힐 때 모두).
+  // 시트 '사용법'으로 튜토리얼이 열린 경우에는 튜토리얼이 닫힐 때 위 effect가 돌려줍니다.
+  useEffect(() => {
+    if (mobilePanel !== null || isTutorialOpen) return;
+    const opener = mobileSheetOpenerRef.current;
+    mobileSheetOpenerRef.current = null;
+    if (opener && pickFocusReturnIndex([describeFocusCandidate(opener)]) === 0) opener.focus();
+  }, [mobilePanel, isTutorialOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -847,6 +854,17 @@ function App() {
   }, [hasCoarsePointer, viewportWidth]);
   // 저장하는 동안에는 화면 폭이 바뀌어도 고정한 배치를 씁니다. 그래야 캔버스가 다시 마운트되지 않습니다(UX4-1).
   const isMobileEditor = resolveMobileEditor({ lockedMobileLayout, isResponsiveMobile });
+
+  // 휴대폰 시트가 떠 있는 동안 뒤 화면에 inert를 걸고, 카드에 포커스를 줍니다(미리 고른 버튼 없음, 설계 10장).
+  // 시트는 isMobileEditor일 때만 그려지므로 같은 값으로 거릅니다. 시트가 안 그려지면 mobileSheetRef가 비어 아무것도 하지 않습니다.
+  useEffect(() => {
+    const container = appContainerRef.current;
+    const sheet = mobileSheetRef.current;
+    if (!isMobileEditor || mobilePanel === null || !container || !sheet) return;
+    const restoreInert = setInertOutside({ container, keep: [sheet, cutoutLockRef.current] });
+    mobileSheetCardRef.current?.focus();
+    return restoreInert;
+  }, [isMobileEditor, mobilePanel]);
 
   // 저장에서 온 복귀 뒤 배치(isMobileEditor)가 바뀌어 활성 요소가 body이거나 사라졌으면 지금 배치의 저장 버튼으로 돌려줍니다(UX5-5).
   // 복귀 요청은 손님이 키를 누르거나 눌러서 다른 곳으로 옮기면 버립니다.
@@ -1962,6 +1980,29 @@ function App() {
     if (focusMove.kind === 'move') buttons[focusMove.index].focus();
   };
 
+  // 휴대폰 시트 안에서 Tab이 돌고, Esc로 닫습니다(UP-12).
+  // 시트에서 연 글꼴 창은 body에 포털로 그려져 DOM으로는 시트 밖입니다. React 이벤트는 포털에서도 올라오므로 DOM 포함으로 거릅니다.
+  const handleMobileSheetKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.target as Node)) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setMobilePanel(null);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusables = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(MOBILE_SHEET_FOCUSABLE))
+      .filter((element) => element.getClientRects().length > 0);
+    const focusMove = getWrappedFocusIndex({
+      focusableCount: focusables.length,
+      activeIndex: focusables.findIndex((element) => element === document.activeElement),
+      isShiftKey: event.shiftKey,
+    });
+    if (focusMove.kind === 'native') return;
+    event.preventDefault();
+    if (focusMove.kind === 'move') focusables[focusMove.index].focus();
+  };
+
   const handleSaveRequest = () => {
     if (cutoutBusyId) return;
     if (exportInFlightRef.current) return;
@@ -2230,7 +2271,10 @@ function App() {
                 ref={mobileTutorialRef0}
                 type="button"
                 className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 0 ? ' tutorial-highlight' : ''}`}
-                onClick={() => setMobilePanel((prev) => prev === 'frames' ? null : 'frames')}
+                onClick={(event) => {
+                  mobileSheetOpenerRef.current = event.currentTarget;
+                  setMobilePanel((prev) => prev === 'frames' ? null : 'frames');
+                }}
               >
                 프레임
               </button>
@@ -2238,7 +2282,10 @@ function App() {
                 ref={mobileTutorialRef1}
                 type="button"
                 className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 1 ? ' tutorial-highlight' : ''}`}
-                onClick={() => setMobilePanel((prev) => prev === 'text' ? null : 'text')}
+                onClick={(event) => {
+                  mobileSheetOpenerRef.current = event.currentTarget;
+                  setMobilePanel((prev) => prev === 'text' ? null : 'text');
+                }}
               >
                 글씨
               </button>
@@ -2246,7 +2293,10 @@ function App() {
                 ref={mobileTutorialRef2}
                 type="button"
                 className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 2 ? ' tutorial-highlight' : ''}`}
-                onClick={() => setMobilePanel((prev) => prev === 'sticker' ? null : 'sticker')}
+                onClick={(event) => {
+                  mobileSheetOpenerRef.current = event.currentTarget;
+                  setMobilePanel((prev) => prev === 'sticker' ? null : 'sticker');
+                }}
               >
                 스티커
               </button>
@@ -2283,9 +2333,11 @@ function App() {
 
       {isMobileEditor && mobilePanel && (
         <div
+          ref={mobileSheetRef}
           className="app-mobile-sheet-backdrop linear-fade-in"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="mobile-sheet-title"
           style={{
             position: 'fixed',
             inset: 0,
@@ -2299,11 +2351,14 @@ function App() {
           onClick={() => setMobilePanel(null)}
         >
           <div
+            ref={mobileSheetCardRef}
             className="app-mobile-sheet linear-card"
+            tabIndex={-1}
+            onKeyDown={handleMobileSheetKeyDown}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="app-mobile-sheet__header">
-              <h3>{mobileSheetTitle}</h3>
+              <h3 id="mobile-sheet-title">{mobileSheetTitle}</h3>
               <div className="linear-flex" style={{ gap: '8px' }}>
                 <button
                   type="button"
@@ -2318,6 +2373,7 @@ function App() {
                   className="linear-button linear-button--secondary"
                   data-focus-return="sheet-close"
                   onClick={() => setMobilePanel(null)}
+                  style={{ minHeight: '44px', minWidth: '44px', fontSize: '14px' }}
                 >
                   닫기
                 </button>
