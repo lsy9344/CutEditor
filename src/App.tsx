@@ -82,7 +82,7 @@ import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin } from './state/modalFocus'
-import { getFocusReturnCandidates, getWrappedFocusIndex, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from './state/modalFocus'
+import { getFocusReturnCandidates, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from './state/modalFocus'
 import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
@@ -241,6 +241,12 @@ const describeFocusCandidate = (element: HTMLElement | null) => {
     isInert: element.closest('[inert]') !== null,
     isHidden: element.getClientRects().length === 0,
   };
+};
+
+// 닫힌 뒤 포커스를 돌려줍니다. 요소가 화면 안에 보이면 스크롤하지 않고, 보이지 않을 때만 브라우저가 보이게 합니다(UX6-2).
+const focusReturnElement = (element: HTMLElement) => {
+  const isVisible = isRectInViewport({ rect: element.getBoundingClientRect(), viewportHeight: document.documentElement.clientHeight });
+  element.focus({ preventScroll: isVisible });
 };
 
 function parseLaunchContextFromLocation(): BoothyLaunchContext | null {
@@ -623,9 +629,8 @@ function App() {
     const lock = cutoutLockRef.current;
     if (!cutoutBusyId || !container || !lock) return;
     const returnFocusTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null; // 누끼를 시작한 썸네일
-    const lockedElements = Array.from(container.children)
-      .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== lock);
-    lockedElements.forEach((element) => { element.inert = true; });
+    // 덮개를 뺀 나머지를 잠그되, 이미 inert인 것(열린 시트의 배경 등)은 건드리지 않아 풀 때도 자기가 건 것만 풉니다(UX6-1).
+    const restoreInert = setInertOutside({ container, keep: [lock] });
     lock.querySelector("button")?.focus();
     const blockLockedKey = (event: KeyboardEvent) => {
       const isCancelKey = lock.contains(event.target as Node) && (event.key === "Enter" || event.key === " ");
@@ -638,7 +643,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", blockLockedKey, true);
       window.removeEventListener("keyup", blockLockedKey, true);
-      lockedElements.forEach((element) => { element.inert = false; });
+      restoreInert();
       if (returnFocusTarget?.isConnected) returnFocusTarget.focus();
     };
   }, [cutoutBusyId]);
@@ -693,7 +698,8 @@ function App() {
       saves: Array.from(document.querySelectorAll<HTMLElement>('[data-focus-return="save"]')),
     });
     const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
-    if (returnIndex >= 0) candidates[returnIndex]?.focus();
+    const returnTarget = returnIndex >= 0 ? candidates[returnIndex] : null;
+    if (returnTarget) focusReturnElement(returnTarget);
   };
   useEffect(() => {
     if (isNoticeOpen || isExportInFlight || cutoutBusyId || !isFocusReturnPendingRef.current) return;
@@ -824,7 +830,7 @@ function App() {
     if (mobilePanel !== null || isTutorialOpen) return;
     const opener = mobileSheetOpenerRef.current;
     mobileSheetOpenerRef.current = null;
-    if (opener && pickFocusReturnIndex([describeFocusCandidate(opener)]) === 0) opener.focus();
+    if (opener && pickFocusReturnIndex([describeFocusCandidate(opener)]) === 0) focusReturnElement(opener);
   }, [mobilePanel, isTutorialOpen]);
 
   useEffect(() => {

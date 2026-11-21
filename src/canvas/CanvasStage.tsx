@@ -2653,6 +2653,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 }}
                 onBlur={() => photoEdit.onCompareHeldChange(false)}
                 aria-pressed={photoEdit.compareHeld}
+                aria-label="누르는 동안 원래 사진"
+                title="누르는 동안 원래 사진"
                 onContextMenu={(event) => event.preventDefault()}
                 style={{
                   flex: 1.4,
@@ -2665,7 +2667,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   userSelect: 'none'
                 }}
               >
-                누르는 동안 원래 사진
+                원래 사진
               </button>
             )}
           </div>

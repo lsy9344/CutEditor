@@ -55,6 +55,18 @@ export const shouldRefocusAfterLayoutChange = ({
   activeElement: { isBody: boolean; isConnected: boolean } | null;
 }): boolean => isPending && (activeElement === null || activeElement.isBody || !activeElement.isConnected);
 
+// 포커스를 돌려줄 요소가 화면 높이 안에 모두 들어와 있는지 봅니다(UX6-2). 보이면 스크롤하지 않고 포커스를 줍니다.
+// 보이는 버튼에 focus()를 하면 브라우저가 문서 아래 스크롤 여백(툴바 높이)만큼 문서를 밀기 때문입니다.
+// 소수점 반올림으로 생기는 1px 안쪽 차이는 화면 안으로 봅니다.
+const VIEWPORT_ROUNDING_TOLERANCE_PX = 1;
+export const isRectInViewport = ({
+  rect,
+  viewportHeight,
+}: {
+  rect: { top: number; bottom: number };
+  viewportHeight: number;
+}): boolean => rect.top >= -VIEWPORT_ROUNDING_TOLERANCE_PX && rect.bottom <= viewportHeight + VIEWPORT_ROUNDING_TOLERANCE_PX;
+
 export type TextDeleteFocusTarget = "undo" | "text-input" | "none";
 
 // '글씨 지우기'를 누른 뒤 포커스를 보낼 곳을 정합니다. 지운 글씨가 선택에서 빠지면 눌렀던 버튼이 잠겨 포커스가 body로 사라집니다.

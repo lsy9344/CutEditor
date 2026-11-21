@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
-import { getFocusReturnCandidates, getTextDeleteFocusTarget, getWrappedFocusIndex, pickFocusReturnIndex, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
+import { getFocusReturnCandidates, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
 import type { FocusCandidate } from "../../src/state/modalFocus.ts";
 
 const NORMAL_CANDIDATE: FocusCandidate = { isConnected: true, isDisabled: false, isInert: false, isHidden: false };
@@ -157,4 +158,77 @@ test("글씨 지우기를 키보드로 누르면 되돌리기로, 그 버튼이 
   assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: true, hasUndoButton: false }), "text-input");
   assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: false, hasUndoButton: true }), "none");
   assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: false, hasUndoButton: false }), "none");
+});
+
+// 배경 격리: 각 잠금은 자기가 새로 잠근 요소만 풉니다(UX6-1).
+const makeInertChild = (inert = false) => ({ inert });
+
+test("이미 inert였던 요소는 잠금을 풀어도 inert로 남고, 새로 잠근 요소만 풀린다", () => {
+  const alreadyInert = makeInertChild(true);
+  const target = makeInertChild();
+  const restore = setInertOutside({ container: { children: [alreadyInert, target] }, keep: [] });
+  assert.deepEqual([alreadyInert.inert, target.inert], [true, true]);
+  restore();
+  assert.deepEqual([alreadyInert.inert, target.inert], [true, false]);
+});
+
+test("keep에 든 요소와 null은 잠그지 않는다", () => {
+  const sheet = makeInertChild();
+  const other = makeInertChild();
+  setInertOutside({ container: { children: [sheet, other] }, keep: [sheet, null] });
+  assert.deepEqual([sheet.inert, other.inert], [false, true]);
+});
+
+test("시트가 건 배경 격리 위에 누끼 잠금을 걸었다 풀어도 시트 배경은 격리된 채 시트만 풀린다", () => {
+  const toolbar = makeInertChild();
+  const main = makeInertChild();
+  const sheet = makeInertChild();
+  const container = { children: [toolbar, main, sheet] };
+  const restoreSheetLock = setInertOutside({ container, keep: [sheet, null] });
+  assert.deepEqual([toolbar.inert, main.inert, sheet.inert], [true, true, false]);
+
+  const cutoutLock = makeInertChild();
+  const restoreCutoutLock = setInertOutside({ container: { children: [toolbar, main, sheet, cutoutLock] }, keep: [cutoutLock] });
+  assert.deepEqual([toolbar.inert, main.inert, sheet.inert], [true, true, true]);
+
+  restoreCutoutLock(); // 누끼 취소·실패
+  assert.deepEqual([toolbar.inert, main.inert, sheet.inert], [true, true, false]);
+
+  restoreSheetLock(); // 시트 닫기
+  assert.deepEqual([toolbar.inert, main.inert, sheet.inert], [false, false, false]);
+});
+
+test("시트를 먼저 닫아도 누끼 잠금이 푸는 것은 자기가 건 시트뿐이다", () => {
+  const toolbar = makeInertChild();
+  const sheet = makeInertChild();
+  const container = { children: [toolbar, sheet] };
+  const restoreSheetLock = setInertOutside({ container, keep: [sheet] });
+  const restoreCutoutLock = setInertOutside({ container, keep: [] });
+  restoreSheetLock();
+  assert.deepEqual([toolbar.inert, sheet.inert], [false, true]);
+  restoreCutoutLock();
+  assert.deepEqual([toolbar.inert, sheet.inert], [false, false]);
+});
+
+test("App에는 inert를 직접 대입하는 코드가 없고 모든 배경 격리가 setInertOutside를 거친다", () => {
+  const appSource = readFileSync("src/App.tsx", "utf8");
+  assert.ok(!/\.inert\s*=[^=]/.test(appSource), "App에 inert 직접 대입이 남아 있습니다");
+  assert.ok(appSource.includes("setInertOutside({ container, keep: [lock] })"), "누끼 잠금이 setInertOutside를 쓰지 않습니다");
+});
+
+// 포커스를 돌려줄 요소가 화면 안에 보이면 스크롤하지 않고, 보이지 않을 때만 브라우저가 보이게 합니다(UX6-2).
+test("화면 높이 안에 모두 들어오는 요소는 화면 안에 있다고 본다", () => {
+  assert.equal(isRectInViewport({ rect: { top: 738, bottom: 844 }, viewportHeight: 844 }), true);
+  assert.equal(isRectInViewport({ rect: { top: 0, bottom: 44 }, viewportHeight: 844 }), true);
+});
+
+test("위나 아래로 조금이라도 벗어나면 화면 안이 아니다", () => {
+  assert.equal(isRectInViewport({ rect: { top: -10, bottom: 34 }, viewportHeight: 844 }), false);
+  assert.equal(isRectInViewport({ rect: { top: 800, bottom: 850 }, viewportHeight: 844 }), false);
+  assert.equal(isRectInViewport({ rect: { top: 900, bottom: 944 }, viewportHeight: 844 }), false);
+});
+
+test("소수점 반올림으로 1px 안쪽만 벗어난 경우는 화면 안으로 본다", () => {
+  assert.equal(isRectInViewport({ rect: { top: 737.5, bottom: 844.4 }, viewportHeight: 844 }), true);
+  assert.equal(isRectInViewport({ rect: { top: 737.5, bottom: 845.5 }, viewportHeight: 844 }), false);
 });

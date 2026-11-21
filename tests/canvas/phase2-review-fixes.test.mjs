@@ -22,6 +22,19 @@ test("P2-1 전후 비교 버튼은 캔버스 제어판의 되돌리기·다시 �
   assert.match(source, /disabled=\{!hasEditedPhotos\}/);
 });
 
+test("P2-1b 휴대폰 되돌리기 줄이 60px 안에 들도록 비교 버튼 글자는 짧고, 이름은 전체 문구를 지킨다 (UX6-4)", () => {
+  const source = readCanvasStage();
+  const historyRowStart = source.indexOf("<div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>");
+  const compareLabelIndex = source.indexOf('aria-label="누르는 동안 원래 사진"', historyRowStart);
+  assert.notEqual(compareLabelIndex, -1, "비교 버튼의 이름(aria-label)이 전체 문구여야 합니다");
+
+  const compareButtonStart = source.lastIndexOf("<button", compareLabelIndex);
+  const compareButtonEnd = source.indexOf("</button>", compareLabelIndex);
+  const compareButton = source.slice(compareButtonStart, compareButtonEnd);
+  assert.match(compareButton, />\s*원래 사진\s*$/, "보이는 글자는 '원래 사진'이어야 합니다(좁은 줄에서 4줄로 접히지 않게)");
+  assert.doesNotMatch(compareButton, />\s*누르는 동안 원래 사진\s*$/);
+});
+
 test("P2-2 기본값으로 돌아간 사진의 캐시도 정리 대상에 넣는다", () => {
   const source = readCanvasStage();
 

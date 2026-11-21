@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 test("CanvasStage에 옛 편집 패널 문구와 11~12px 글자가 남아 있지 않다", () => {
   const sourcePath = "src/canvas/CanvasStage.tsx";
@@ -63,5 +63,16 @@ test("EditorPanel에 alert, confirm과 옛 글씨 패널 문구가 남아 있지
   }
   for (const removedPattern of removedPatterns) {
     assert.ok(!removedPattern.test(source), `${sourcePath}에 옛 패턴이 남아 있습니다: ${removedPattern}`);
+  }
+});
+
+test("src에 flushSync가 없다(글씨 지우기 포커스는 삭제가 반영된 뒤 효과에서 준다)", () => {
+  const sourceDirectory = "src";
+  const sourcePaths = (readdirSync(sourceDirectory, { recursive: true }) as string[])
+    .filter((path) => /\.(ts|tsx)$/.test(path))
+    .map((path) => `${sourceDirectory}/${path}`);
+  assert.ok(sourcePaths.length > 0);
+  for (const sourcePath of sourcePaths) {
+    assert.ok(!readFileSync(sourcePath, "utf8").includes("flushSync"), `${sourcePath}에 flushSync가 남아 있습니다`);
   }
 });

@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from "react";
-import { createPortal, flushSync } from "react-dom";
+import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
@@ -196,6 +196,16 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   const [textAlign, setTextAlign] = useState<TextAlign>("center");
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const undoTextDeleteButtonRef = useRef<HTMLButtonElement>(null); // 글씨 지우기 안내의 '되돌리기'(키보드로 지운 뒤 포커스를 받음)
+  const isTextDeleteFocusRequestedRef = useRef(false); // 키보드로 '글씨 지우기'를 눌렀다는 포커스 요청. 삭제가 반영된 뒤 한 번 쓰고 비웁니다.
+
+  // 삭제가 반영된 직후(그려진 뒤, 화면에 나타나기 전)에 요청을 한 번 씁니다. 되돌리기 버튼은 이 그리기에서 새로 생깁니다(UX6-3).
+  useLayoutEffect(() => {
+    if (!isTextDeleteFocusRequestedRef.current) return;
+    isTextDeleteFocusRequestedRef.current = false;
+    const focusTarget = getTextDeleteFocusTarget({ isKeyboardFocused: true, hasUndoButton: undoTextDeleteButtonRef.current !== null });
+    if (focusTarget === 'undo') undoTextDeleteButtonRef.current?.focus();
+    if (focusTarget === 'text-input') textInputRef.current?.focus();
+  });
 
   // 동적 폰트 로딩
   const { fonts, isLoading: fontsLoading } = useFonts();
@@ -422,14 +432,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   const handleTextDelete = (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (!selectedText) return;
+    if (!selectedText || !onTextDelete) return;
     // 지운 글씨는 선택에서 빠져 이 버튼이 잠기고 포커스가 body로 사라집니다. 키보드로 눌렀을 때만 포커스를 옮깁니다(UX5-7과 같은 규칙).
-    // 새로 그려지는 '되돌리기'에 포커스를 주려고 지우기를 바로 반영합니다.
-    const isKeyboardFocused = event.currentTarget.matches(':focus-visible');
-    flushSync(() => onTextDelete?.(selectedText.id)); // 안내는 App이 문서를 보고 띄웁니다
-    const focusTarget = getTextDeleteFocusTarget({ isKeyboardFocused, hasUndoButton: undoTextDeleteButtonRef.current !== null });
-    if (focusTarget === 'undo') undoTextDeleteButtonRef.current?.focus();
-    if (focusTarget === 'text-input') textInputRef.current?.focus();
+    // 마우스·터치는 요청을 남기지 않습니다(휴대폰 키보드가 올라오지 않게). 키보드면 요청을 남기고 위 효과가 삭제 반영 뒤에 포커스를 줍니다.
+    isTextDeleteFocusRequestedRef.current = event.currentTarget.matches(':focus-visible');
+    onTextDelete(selectedText.id); // 안내는 App이 문서를 보고 띄웁니다
   };
 
   const handleTextAlignChange = (newAlign: TextAlign) => {
