@@ -22,5 +22,3 @@ export const getSlotButtonLabel = (slotIndex: number, hasImage: boolean): string
 
 export const getStickerAltText = (categoryLabel: string, stickerIndex: number): string =>
   `${categoryLabel} 스티커 ${stickerIndex + 1}`;
-
-export const getToggleButtonLabel = (label: string, isOn: boolean): string => (isOn ? `✓ ${label}` : label);

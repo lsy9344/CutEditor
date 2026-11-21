@@ -6,8 +6,8 @@ interface FrameGalleryProps {
     selectedCategory: string | null;
     categories: string[];
     options: FrameOption[];
-    onSelectFrame: (frame: FrameType) => void;
-    onSelectCategory: (category: string) => void;
+    onSelectFrame: (frame: FrameType, isKeyboardFocused: boolean) => void;
+    onSelectCategory: (category: string, isKeyboardFocused: boolean) => void;
 }
 
 export const FrameGallery: React.FC<FrameGalleryProps> = ({
@@ -72,7 +72,7 @@ export const FrameGallery: React.FC<FrameGalleryProps> = ({
                             key={category}
                             type="button"
                             className="linear-button linear-button--secondary"
-                            onClick={() => onSelectCategory(category)}
+                            onClick={(event) => onSelectCategory(category, event.currentTarget.matches(':focus-visible'))}
                             style={{ minHeight: '48px', minWidth: '88px', fontSize: '16px' }}
                         >
                             {category}
@@ -101,17 +101,18 @@ export const FrameGallery: React.FC<FrameGalleryProps> = ({
             </h2>
 
             <div className="frame-gallery-grid">
-                {options.map((option) => (
+                {options.map((option, optionIndex) => (
                     <div
                         key={option.value}
                         className={`frame-gallery-card ${option.orientation === 'horizontal' ? 'span-2' : ''}`}
-                        onClick={() => onSelectFrame(option.value)}
+                        data-focus-return={optionIndex === 0 ? "first-frame-card" : undefined}
+                        onClick={(event) => onSelectFrame(option.value, event.currentTarget.matches(':focus-visible'))}
                         role="button"
                         tabIndex={0}
                         onKeyDown={(event) => {
                             if (!isActivationKey(event.key)) return;
                             event.preventDefault();
-                            onSelectFrame(option.value);
+                            onSelectFrame(option.value, event.currentTarget.matches(':focus-visible'));
                         }}
                     >
                         <div className={`frame-gallery-image-container ${loadedImages[option.value] ? 'loaded' : 'loading'}`}>

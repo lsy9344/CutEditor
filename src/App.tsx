@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback, useEffect } from 'react'
+import React, { useMemo, useRef, useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import Konva from 'konva'
 import { SidebarLeft } from './ui/SidebarLeft'
 import { CanvasStage } from './canvas/CanvasStage'
@@ -81,8 +81,8 @@ import { CUTOUT_COPY } from './photo/cutoutCopy'
 import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
-import type { FocusReturnOrigin } from './state/modalFocus'
-import { getFocusReturnCandidates, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from './state/modalFocus'
+import type { FocusReturnOrigin, PickFocusTarget } from './state/modalFocus'
+import { getFocusReturnCandidates, getPickFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from './state/modalFocus'
 import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
@@ -872,6 +872,21 @@ function App() {
     return restoreInert;
   }, [isMobileEditor, mobilePanel]);
 
+  // 키보드로 컷 수 버튼이나 프레임 카드를 누르면 누른 버튼이 다른 화면으로 바뀌며 사라집니다. 그때 다음 화면의 시작점(첫 프레임 카드·캔버스)으로 포커스를 줍니다(A7-04).
+  // 요청은 누른 쪽이 남기고, 화면이 바뀐 직후(그려진 뒤, 화면에 나타나기 전)에 한 번 쓰고 비웁니다. 마우스·터치는 요청을 남기지 않습니다.
+  const pickFocusRequestRef = useRef<PickFocusTarget>('none');
+  const requestPickFocus = (pressed: 'cut-count' | 'frame-card', isKeyboardFocused: boolean) => {
+    pickFocusRequestRef.current = getPickFocusTarget({ pressed, isKeyboardFocused });
+  };
+  useLayoutEffect(() => {
+    const pickFocusTarget = pickFocusRequestRef.current;
+    if (pickFocusTarget === 'none') return;
+    pickFocusRequestRef.current = 'none';
+    const selector = pickFocusTarget === 'canvas' ? '[data-focus-return="canvas"]' : '[data-focus-return="first-frame-card"]';
+    const target = document.querySelector<HTMLElement>(selector);
+    if (target) focusWithoutScrollIfVisible(target);
+  });
+
   // 저장에서 온 복귀 뒤 배치(isMobileEditor)가 바뀌어 활성 요소가 body이거나 사라졌으면 지금 배치의 저장 버튼으로 돌려줍니다(UX5-5).
   // 복귀 요청은 손님이 키를 누르거나 눌러서 다른 곳으로 옮기면 버립니다.
   useEffect(() => {
@@ -1003,7 +1018,7 @@ function App() {
     setCanvasMode('editor');
   };
 
-  const handleFrameSelect = (rawFrameType: string | null) => {
+  const handleFrameSelect = (rawFrameType: string | null, isKeyboardFocused = false) => {
     const decision = getFrameSelectionDecision({
       rawFrameType,
       selectedFrame: editorState.selectedFrame,
@@ -1016,6 +1031,7 @@ function App() {
 
     if (decision.kind === 'noop') return;
     if (decision.kind === 'activate-editor') {
+      requestPickFocus('frame-card', isKeyboardFocused);
       setCanvasMode('editor');
       return;
     }
@@ -1024,11 +1040,13 @@ function App() {
       return;
     }
 
+    requestPickFocus('frame-card', isKeyboardFocused);
     applyFrameChange(decision.frameType);
   }
 
-  const handleCategoryPick = (category: string) => {
+  const handleCategoryPick = (category: string, isKeyboardFocused = false) => {
     const outcome = getCategorySelectionOutcome({ selectedCategory, category });
+    requestPickFocus('cut-count', isKeyboardFocused);
     setSelectedCategory(outcome.nextCategory);
     setCanvasMode(outcome.nextCanvasMode);
   };

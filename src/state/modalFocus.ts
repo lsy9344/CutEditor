@@ -83,6 +83,22 @@ export const getTextDeleteFocusTarget = ({
   return hasUndoButton ? "undo" : "text-input";
 };
 
+export type PickFocusTarget = "first-frame-card" | "canvas" | "none";
+
+// 처음 화면에서 컷 수 버튼이나 프레임 카드를 누르면 누른 버튼이 다른 화면으로 바뀌며 사라져 포커스가 body가 됩니다(A7-04).
+// 키보드로 눌렀을 때만 다음 화면의 시작점으로 옮깁니다(UX5-7·UX6-3과 같은 규칙. 마우스·터치는 그대로 둠).
+// 컷 수 버튼 → 첫 프레임 카드, 프레임 카드 → 캔버스.
+export const getPickFocusTarget = ({
+  pressed,
+  isKeyboardFocused,
+}: {
+  pressed: "cut-count" | "frame-card";
+  isKeyboardFocused: boolean;
+}): PickFocusTarget => {
+  if (!isKeyboardFocused) return "none";
+  return pressed === "cut-count" ? "first-frame-card" : "canvas";
+};
+
 type InertTarget = { inert: boolean };
 const isInertTarget = (element: object): element is InertTarget => "inert" in element;
 

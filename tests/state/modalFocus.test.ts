@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { getFocusReturnCandidates, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
+import { getFocusReturnCandidates, getPickFocusTarget, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
 import type { FocusCandidate } from "../../src/state/modalFocus.ts";
 
 const NORMAL_CANDIDATE: FocusCandidate = { isConnected: true, isDisabled: false, isInert: false, isHidden: false };
@@ -158,6 +158,16 @@ test("글씨 지우기를 키보드로 누르면 되돌리기로, 그 버튼이 
   assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: true, hasUndoButton: false }), "text-input");
   assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: false, hasUndoButton: true }), "none");
   assert.equal(getTextDeleteFocusTarget({ isKeyboardFocused: false, hasUndoButton: false }), "none");
+});
+
+test("컷 수 버튼을 키보드로 누르면 첫 프레임 카드로, 프레임 카드를 키보드로 누르면 캔버스로 포커스를 보낸다", () => {
+  assert.equal(getPickFocusTarget({ pressed: "cut-count", isKeyboardFocused: true }), "first-frame-card");
+  assert.equal(getPickFocusTarget({ pressed: "frame-card", isKeyboardFocused: true }), "canvas");
+});
+
+test("마우스·터치로 누르면 컷 수 버튼도 프레임 카드도 포커스를 옮기지 않는다", () => {
+  assert.equal(getPickFocusTarget({ pressed: "cut-count", isKeyboardFocused: false }), "none");
+  assert.equal(getPickFocusTarget({ pressed: "frame-card", isKeyboardFocused: false }), "none");
 });
 
 // 배경 격리: 각 잠금은 자기가 새로 잠근 요소만 풉니다(UX6-1).

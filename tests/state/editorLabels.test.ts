@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getSlotButtonLabel, getSlotLabel, getStickerAltText, getSwatchName, getToggleButtonLabel } from "../../src/state/editorLabels.ts";
+import { getSlotButtonLabel, getSlotLabel, getStickerAltText, getSwatchName } from "../../src/state/editorLabels.ts";
 
 test("getSwatchName은 프레임 색 8가지에 손님이 아는 이름을 돌려준다", () => {
   const swatchNames: Array<[string, string]> = [
@@ -43,15 +43,4 @@ test("getSlotButtonLabel은 칸 번호를 1부터 세고 사진 유무로 동사
 test("getStickerAltText는 분류 이름과 1부터 센 번호를 붙인다", () => {
   assert.equal(getStickerAltText("하트", 0), "하트 스티커 1");
   assert.equal(getStickerAltText("하트", 11), "하트 스티커 12");
-});
-
-test("getToggleButtonLabel은 켠 상태의 이름 앞에만 체크 표시를 붙인다", () => {
-  assert.equal(getToggleButtonLabel("좌우 뒤집기", true), "✓ 좌우 뒤집기");
-  assert.equal(getToggleButtonLabel("위아래 뒤집기", true), "✓ 위아래 뒤집기");
-  assert.equal(getToggleButtonLabel("흰 테두리", true), "✓ 흰 테두리");
-});
-
-test("getToggleButtonLabel은 끈 상태의 이름을 그대로 돌려준다", () => {
-  assert.equal(getToggleButtonLabel("좌우 뒤집기", false), "좌우 뒤집기");
-  assert.equal(getToggleButtonLabel("흰 테두리", false), "흰 테두리");
 });
