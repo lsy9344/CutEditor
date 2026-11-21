@@ -232,3 +232,12 @@ test("소수점 반올림으로 1px 안쪽만 벗어난 경우는 화면 안으�
   assert.equal(isRectInViewport({ rect: { top: 737.5, bottom: 844.4 }, viewportHeight: 844 }), true);
   assert.equal(isRectInViewport({ rect: { top: 737.5, bottom: 845.5 }, viewportHeight: 844 }), false);
 });
+
+// 시트 카드에 첫 포커스를 줄 때도 닫힘 복귀와 같은 규칙을 씁니다(UX26a-1). 화면 안이면 스크롤하지 않고, 밖일 때만 브라우저가 보이게 합니다.
+test("시트 카드 첫 포커스는 복귀와 같은 한 함수를 거치고 맨 focus()가 남지 않는다", () => {
+  const appSource = readFileSync("src/App.tsx", "utf8");
+  assert.ok(/focusWithoutScrollIfVisible\(mobileSheetCardRef\.current\)/.test(appSource), "시트 카드 포커스가 공용 함수를 거치지 않습니다");
+  assert.ok(!/mobileSheetCardRef\.current\??\.focus\(/.test(appSource), "시트 카드에 맨 focus()가 남아 있습니다");
+  assert.ok(!appSource.includes("focusReturnElement"), "옛 이름 focusReturnElement가 남아 있습니다");
+  assert.equal(appSource.match(/const focusWithoutScrollIfVisible = /g)?.length, 1, "함수가 하나가 아닙니다");
+});

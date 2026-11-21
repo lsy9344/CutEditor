@@ -207,6 +207,11 @@ const VISUALLY_HIDDEN_STYLE: React.CSSProperties = {
   border: 0,
 };
 const SLOT_LIST_VISIBLE_STYLE: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '6px' };
+// 되돌리기 줄 버튼의 좌우 안쪽 여백. 휴대폰 패널 안쪽 너비는 화면 너비 - 140px이고, 줄이 필요한 최소 너비는 142px + 6 x 여백입니다.
+// 여백이 16px이면 378px보다 좁은 화면(320px 포함)에서 줄이 패널 안쪽보다 넓어 좌우로 삐져나옵니다(WCAG 1.4.10).
+// 화면이 1px 좁아질 때 여백을 1/6px씩 줄이면 줄이 패널 안쪽보다 항상 12px 좁습니다. 390px 이상은 16px 그대로이고 320px에서 약 4px입니다.
+// '되돌리기'는 minWidth: min-content로 한 단어 글자가 버튼 밖으로 나가지 않게 합니다.
+const HISTORY_BUTTON_PADDING = '0 clamp(4px, calc(16px - (390px - 100vw) / 6), 16px)';
 
 const toLegacyFrameFileName = (frameType: FrameType): string | null => {
   if (frameType === "1l") return "1_l";
@@ -2616,7 +2621,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               className="linear-button linear-button--secondary"
               onClick={historyControls.onUndo}
               disabled={!historyControls.canUndo}
-              style={{ flex: 1, minHeight: '44px', minWidth: '44px', fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canUndo ? 1 : 0.5 }}
+              style={{ flex: 1, minHeight: '44px', minWidth: 'min-content', padding: HISTORY_BUTTON_PADDING, fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canUndo ? 1 : 0.5 }}
               title="마지막 변경을 되돌립니다 (Ctrl+Z)"
             >
               되돌리기
@@ -2626,7 +2631,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               className="linear-button linear-button--secondary"
               onClick={historyControls.onRedo}
               disabled={!historyControls.canRedo}
-              style={{ flex: 1, minHeight: '44px', minWidth: '44px', fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canRedo ? 1 : 0.5 }}
+              style={{ flex: 1, minHeight: '44px', minWidth: '44px', padding: HISTORY_BUTTON_PADDING, fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)', opacity: historyControls.canRedo ? 1 : 0.5 }}
               title="되돌린 변경을 다시 합니다 (Ctrl+Shift+Z)"
             >
               다시 하기
@@ -2660,6 +2665,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                   flex: 1.4,
                   minHeight: '44px',
                   minWidth: '44px',
+                  padding: HISTORY_BUTTON_PADDING,
                   fontSize: '14px',
                   border: 'var(--border-width) solid var(--linear-neutral-500)',
                   opacity: hasEditedPhotos ? 1 : 0.5,
