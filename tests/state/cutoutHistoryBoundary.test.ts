@@ -219,3 +219,24 @@ test("누르고 있는 동안 끝난 누끼도 성공 경로 한 곳에서 캐�
   assert.ok(loadingIndex > confidenceIndex, "저장 막기는 캐시 등록 뒤 같은 배치여야 합니다.");
   assert.ok(mobilePanelIndex > loadingIndex, "모바일 시트 닫기는 같은 성공 경로의 마지막 배치에 있어야 합니다.");
 });
+
+test("모델 준비 표시는 추론이 필요한 작업에서만 켜고 취소가 끈다", () => {
+  const createBody = getCutoutCreateBody();
+  const createWait = createBody.indexOf("waitForSegmenter(");
+  assert.ok(createWait >= 0, "만들기에 waitForSegmenter가 없습니다.");
+  assert.ok(createWait < createBody.indexOf("loadImageElement("), "만들기는 원본 디코드 전에 모델을 기다려야 합니다.");
+
+  const regenerateBody = getCutoutRegenerateBody();
+  const peek = regenerateBody.indexOf("peekCutoutConfidence(");
+  const regenerateWait = regenerateBody.indexOf("waitForSegmenter(");
+  const paint = regenerateBody.indexOf("await waitForPaint();");
+  assert.ok(peek >= 0 && regenerateWait > peek, "다시 만들기는 캐시를 먼저 본 뒤 모델을 기다려야 합니다.");
+  assert.ok(paint > regenerateWait, "다시 만들기의 모델 대기는 waitForPaint 앞이어야 합니다.");
+
+  const source = readFileSync("src/App.tsx", "utf8");
+  const cancelStart = source.indexOf("const handleCutoutCancel = () => {");
+  assert.ok(cancelStart >= 0, "handleCutoutCancel을 찾지 못했습니다.");
+  const cancelBody = source.slice(cancelStart, source.indexOf("};", cancelStart));
+  assert.ok(cancelBody.includes("setCutoutPreparing(false);"), "취소가 준비 표시를 끄지 않습니다.");
+  assert.ok(source.includes("cutoutPreparing ? CUTOUT_COPY.preparing : CUTOUT_COPY.creating"));
+});

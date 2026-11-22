@@ -3,15 +3,18 @@ import assert from "node:assert/strict";
 
 import {
   applyStrokesToAlpha,
+  backgroundToPersonConfidence,
   buildCutoutAlpha,
   buildOutlineAlpha,
   composeCutoutRgba,
   cropChannel,
   findAlphaBounds,
   getOutlineRadius,
+  getSegmentInputSize,
   isCutoutTooSmall,
   multiplyAlphaByPhoto,
   refineAlpha,
+  resizeConfidenceBilinear,
 } from "../../src/photo/cutoutMask.ts";
 
 function filledAlpha(length: number, value: number): Uint8ClampedArray {
@@ -253,4 +256,39 @@ test("#18 buildCutoutAlpha는 사진의 투명한 곳만 사람으로 본 결과
   assert.ok(alpha);
   assert.equal(alpha[3 * 10 + 7], 255);
   assert.equal(alpha[3 * 10 + 2], 0);
+});
+
+test("#19 모델 입력 크기는 긴 변 512로 줄이고 작으면 그대로 둔다", () => {
+  assert.deepEqual(getSegmentInputSize(5184, 3456), { width: 512, height: 341 });
+  assert.deepEqual(getSegmentInputSize(300, 200), { width: 300, height: 200 });
+  assert.deepEqual(getSegmentInputSize(4000, 1), { width: 512, height: 1 });
+  assert.deepEqual(getSegmentInputSize(1, 4000), { width: 1, height: 512 });
+  assert.deepEqual(getSegmentInputSize(2048, 2048), { width: 512, height: 512 });
+});
+
+test("#20 배경 confidence를 사람 confidence로 뒤집고 0~1로 자른다", () => {
+  const background = Float32Array.of(0, 0.25, 1, -0.1, 1.2);
+  const person = backgroundToPersonConfidence(background);
+  assert.notEqual(person, background);
+  const expected = [1, 0.75, 0, 1, 0];
+  assert.equal(person.length, expected.length);
+  expected.forEach((value, index) => assert.ok(Math.abs(person[index] - value) <= 1e-6, `index ${index}: ${person[index]}`));
+  assert.ok(Math.abs(background[1] - 0.25) <= 1e-6);
+  assert.ok(Math.abs(background[3] + 0.1) <= 1e-6);
+  assert.ok(Math.abs(background[4] - 1.2) <= 1e-6);
+});
+
+test("#21 픽셀 중심 기준 bilinear로 작업 크기에 맞춘다", () => {
+  const close = (actual: Float32Array, expected: number[]) => {
+    assert.equal(actual.length, expected.length);
+    expected.forEach((value, index) => assert.ok(Math.abs(actual[index] - value) <= 1e-6, `index ${index}: ${actual[index]}`));
+  };
+
+  const same = Float32Array.of(0.1, 0.2, 0.3, 0.4);
+  const copied = resizeConfidenceBilinear(same, { width: 2, height: 2 }, { width: 2, height: 2 });
+  assert.notEqual(copied, same);
+  close(copied, [0.1, 0.2, 0.3, 0.4]);
+
+  close(resizeConfidenceBilinear(Float32Array.of(0, 1), { width: 2, height: 1 }, { width: 4, height: 1 }), [0, 0.25, 0.75, 1]);
+  close(resizeConfidenceBilinear(Float32Array.of(0, 1, 1, 0), { width: 2, height: 2 }, { width: 1, height: 1 }), [0.5]);
 });

@@ -1,0 +1,12 @@
+{
+  "headers": [
+    {
+      "source": "/models/selfie_multiclass_256x256.c6748b1253a99067.tflite",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/models/magic_touch.e24338a717c1b7ad.tflite",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

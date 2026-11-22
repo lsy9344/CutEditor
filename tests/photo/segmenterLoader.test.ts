@@ -105,3 +105,22 @@ test("준비 중에 버린 요청은 늦게 끝나도 새 캐시를 덮거나 �
   assert.equal(factory.getCreateCount(), 3);
   assert.equal(await p4, factory.models[2]);
 });
+
+test("loader isReady는 준비 뒤에만 참이고 버린 요청은 거짓이다", async () => {
+  const factory = createFakeFactory();
+  const loader = createSegmenterLoader(factory.create);
+  assert.equal(loader.isReady(), false);
+  const p1 = loader.get();
+  assert.equal(loader.isReady(), false);
+  factory.requests[0].resolve(factory.models[0]);
+  await p1;
+  assert.equal(loader.isReady(), true);
+
+  const abandonedFactory = createFakeFactory();
+  const abandonedLoader = createSegmenterLoader(abandonedFactory.create);
+  const abandoned = abandonedLoader.get().catch(() => undefined);
+  abandonedLoader.abandonPending();
+  abandonedFactory.requests[0].resolve(abandonedFactory.models[0]);
+  await abandoned;
+  assert.equal(abandonedLoader.isReady(), false);
+});

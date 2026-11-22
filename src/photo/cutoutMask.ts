@@ -1,5 +1,5 @@
 import { rasterizeStroke } from "./brushMask.ts";
-import type { CutoutRect } from "./cutoutTypes.ts";
+import type { CutoutRect, CutoutSize } from "./cutoutTypes.ts";
 import type { BrushStroke } from "./photoEdits.ts";
 
 const FOREGROUND_ALPHA = 128;
@@ -14,6 +14,68 @@ export function refineAlpha(confidence: Float32Array): Uint8ClampedArray {
     alpha[index] = Math.round(smooth * 255);
   }
   return alpha;
+}
+
+export const SEGMENT_INPUT_MAX_SIDE = 512;
+
+// 사람 자동 모델 입력 크기: 비율을 지키며 긴 변을 maxSide로 줄입니다. 작으면 그대로, 한 변은 최소 1(설계 4.2).
+export function getSegmentInputSize(width: number, height: number, maxSide = SEGMENT_INPUT_MAX_SIDE): CutoutSize {
+  const longSide = Math.max(width, height);
+  if (longSide <= maxSide) return { width, height };
+  const scale = maxSide / longSide;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+// multiclass 모델의 배경 채널(masks[0])을 사람 confidence(1 − 배경)로 뒤집습니다. 0~1로 자르고 새 배열을 돌려줍니다.
+export function backgroundToPersonConfidence(background: Float32Array): Float32Array {
+  const person = new Float32Array(background.length);
+  for (let index = 0; index < background.length; index += 1) {
+    const value = 1 - background[index];
+    person[index] = value < 0 ? 0 : value > 1 ? 1 : value;
+  }
+  return person;
+}
+
+// 원본 좌표 = (x + 0.5) × from / to − 0.5 (픽셀 중심 기준)를 0~(크기−1)로 자릅니다.
+function getBilinearAxis(fromLength: number, toLength: number): { low: Int32Array; high: Int32Array; weight: Float32Array } {
+  const low = new Int32Array(toLength);
+  const high = new Int32Array(toLength);
+  const weight = new Float32Array(toLength);
+  for (let index = 0; index < toLength; index += 1) {
+    let position = ((index + 0.5) * fromLength) / toLength - 0.5;
+    if (position < 0) position = 0;
+    if (position > fromLength - 1) position = fromLength - 1;
+    const lowIndex = Math.floor(position);
+    low[index] = lowIndex;
+    high[index] = Math.min(lowIndex + 1, fromLength - 1);
+    weight[index] = position - lowIndex;
+  }
+  return { low, high, weight };
+}
+
+// 모델 출력 confidence를 작업 크기로 늘리거나 줄입니다. 같은 크기면 복사본을 돌려줍니다(설계 4.2).
+export function resizeConfidenceBilinear(source: Float32Array, from: CutoutSize, to: CutoutSize): Float32Array {
+  if (from.width === to.width && from.height === to.height) return source.slice();
+  const columns = getBilinearAxis(from.width, to.width);
+  const rows = getBilinearAxis(from.height, to.height);
+  const resized = new Float32Array(to.width * to.height);
+  for (let y = 0; y < to.height; y += 1) {
+    const topRow = rows.low[y] * from.width;
+    const bottomRow = rows.high[y] * from.width;
+    const rowWeight = rows.weight[y];
+    for (let x = 0; x < to.width; x += 1) {
+      const left = columns.low[x];
+      const right = columns.high[x];
+      const columnWeight = columns.weight[x];
+      const top = source[topRow + left] + (source[topRow + right] - source[topRow + left]) * columnWeight;
+      const bottom = source[bottomRow + left] + (source[bottomRow + right] - source[bottomRow + left]) * columnWeight;
+      resized[y * to.width + x] = top + (bottom - top) * rowWeight;
+    }
+  }
+  return resized;
 }
 
 export function applyStrokesToAlpha(

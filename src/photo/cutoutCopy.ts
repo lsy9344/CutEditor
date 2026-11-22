@@ -5,6 +5,7 @@ export const CUTOUT_COPY = {
   sectionDescription: "사진을 누르면 사람만 오려서 붙여요",
   tip: "한 사람만 크게 나온 사진일수록 깔끔해요",
   noPhoto: "먼저 칸에 사진을 넣어 주세요",
+  preparing: "처음 한 번만 준비해요…",
   creating: "내 사진 스티커 만드는 중…",
   notFound: "사람을 찾지 못했어요. 사람이 크게 나온 사진으로 해 보세요.",
   loadFailed: "내 사진 스티커를 준비하지 못했어요. 잠시 후 다시 눌러 주세요.",

@@ -63,7 +63,7 @@ import {
 } from './utils/exportBehavior'
 import { exportStageToBlob } from './utils/stageExport'
 import type { StageDisplayTransform } from './utils/stageExport'
-import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone } from './photo/segmentation'
+import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone, waitForSegmenter } from './photo/segmentation'
 import {
   createCutoutWorkingCanvas,
   isCancelledAfterPendingInput,
@@ -75,6 +75,7 @@ import {
 import {
   getCutoutConfidence,
   getCutoutWorkingCanvas,
+  peekCutoutConfidence,
   pruneCutoutCache,
   rememberCutoutConfidence,
   setCutoutWorkingCanvas,
@@ -526,6 +527,7 @@ function App() {
   const trackedObjectUrlsRef = useRef(new Set<string>());
   const [cutoutBusyId, setCutoutBusyId] = useState<string | null>(null);
   const [cutoutError, setCutoutError] = useState<{ targetId: string; message: string } | null>(null);
+  const [cutoutPreparing, setCutoutPreparing] = useState(false);
   const [cutoutImagesState, setCutoutImagesState] = useState<CutoutImagesState>({ kind: "ready" }); // 내 사진 스티커의 현재 PNG가 캔버스에 올라갔는지
   const cutoutImagesStateRef = useRef(cutoutImagesState); // 저장 위치 창을 기다린 뒤에도 지금 값을 읽으려고 둡니다(UX2-1)
   cutoutImagesStateRef.current = cutoutImagesState;
@@ -1615,6 +1617,7 @@ function App() {
     abandonPendingSegmenters(); // 아직 준비 중인 모델 요청을 버림. 이미 준비된 모델은 그대로
     setCutoutBusyId(null);
     setCutoutError(null); // 취소 클릭이 오류 예약 뒤에 처리돼도 안내를 남기지 않음
+    setCutoutPreparing(false); // 준비 중 취소: 덮개가 닫히므로 글줄도 처음으로
   };
 
   const handleCutoutCreate = async (imageId: string) => {
@@ -1628,6 +1631,7 @@ function App() {
     setCutoutBusyId(imageId);
     setCutoutError(null);
     try {
+      if (!(await waitForSegmenter("everyone", setCutoutPreparing, isCancelled))) return;
       await waitForPaint();
       if (isCancelled()) return;
       const source = await loadImageElement(image.url);
@@ -1687,6 +1691,8 @@ function App() {
     setCutoutBusyId(stickerId);
     setCutoutError(null);
     try {
+      const cachedConfidence = peekCutoutConfidence(stickerId, nextSource.target); // 캐시가 있으면 모델을 기다리지 않음(Codex 필수 4)
+      if (!cachedConfidence && !(await waitForSegmenter(nextSource.target.kind, setCutoutPreparing, isCancelled))) return;
       await waitForPaint();
       if (isCancelled()) return;
       const confidence = await getCutoutConfidence(stickerId, nextSource.target, isCancelled); // 모델을 기다린 뒤 segment() 바로 앞에서도 확인
@@ -2517,7 +2523,7 @@ function App() {
           style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.32)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', zIndex: 10000 }}
         >
           <div className="linear-card" style={{ width: 'min(360px, 100%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', textAlign: 'center', boxShadow: 'var(--shadow-lg)' }}>
-            <p style={{ margin: 0 }}>{CUTOUT_COPY.creating}</p>
+            <p style={{ margin: 0 }}>{cutoutPreparing ? CUTOUT_COPY.preparing : CUTOUT_COPY.creating}</p>
             <button type="button" className="linear-button linear-button--secondary" onClick={handleCutoutCancel}>
               {CUTOUT_COPY.cancel}
             </button>
