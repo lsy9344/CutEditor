@@ -2922,7 +2922,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </button>
             )}
           </div>
-          {/* 첫 고르기: 못 찾았을 때 칸 사진을 눌러 고르게 하는 안내(설계 5.2) */}
+          {/* 첫 고르기: 못 찾았을 때 칸 사진을 눌러 고르게 하는 안내(설계 5.2).
+              긴 안내(준비 실패 등)가 제어판을 넓혀 누를 사진을 옮기지 않게, 제어판 너비 안에서 줄바꿈합니다. */}
           {cutoutEdit.pick && cutoutEdit.pick.stickerId === null && (
             <div style={{
               border: 'var(--border-width) solid var(--linear-neutral-500)',
@@ -2931,7 +2932,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               marginTop: '8px',
               display: 'flex',
               flexDirection: 'column',
-              gap: '10px'
+              gap: '10px',
+              width: 0,
+              minWidth: '100%',
+              boxSizing: 'border-box'
             }}>
               <h4 style={{ margin: '0', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{CUTOUT_COPY.sectionTitle}</h4>
               <p
@@ -3398,9 +3402,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     )}
                     {pick && (
                       <>
+                        {/* 긴 안내(못 찾음·준비 실패)가 제어판을 넓혀 누를 사진을 옮기지 않게 제어판 너비 안에서 줄바꿈합니다 */}
                         <p
                           role="status"
-                          style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}
+                          style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)', width: 0, minWidth: '100%', boxSizing: 'border-box' }}
                         >
                           {pick.message}
                         </p>
@@ -3448,7 +3453,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     {cutoutEdit.errorMessage && (
                       <p
                         className="linear-status--warning"
-                        style={{ margin: 0, fontSize: '14px' }}
+                        style={{ margin: 0, fontSize: '14px', width: 0, minWidth: '100%', boxSizing: 'border-box' }}
                       >
                         {cutoutEdit.errorMessage}
                       </p>
