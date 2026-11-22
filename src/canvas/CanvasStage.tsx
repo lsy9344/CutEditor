@@ -61,7 +61,9 @@ import {
   BRUSH_CURSOR_FILL_COLOR,
   BRUSH_CURSOR_STROKE_COLOR,
   ERASE_PREVIEW_COLOR,
+  getDefaultBrushSize,
   getLocalBrushRadius,
+  getVisiblePhotoSpanWidth,
   isBrushPointerStart,
   toNormalizedStroke,
 } from "../photo/photoTool";
@@ -1976,6 +1978,25 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     ? frameLayout.slots.find((slot) => slot.id === selectedImage.slotId) ?? null
     : null;
   const stageView = getEraseZoomView({ isErasing: eraseSlot !== null, stageWidth, stageHeight, zoom, slot: eraseSlot });
+  // 지우기 모드에 들어가면 보일 사진의 화면 폭(px) = 사진 가로 구간과 칸이 겹치는 폭 × 확대 배율. 회전은 무시합니다(설계 9.5, SP-9).
+  // 사진이 아직 없으면 NaN → 작게
+  const getErasePhotoScreenWidth = (image: UserImage): number => {
+    const slot = frameLayout.slots.find((item) => item.id === image.slotId);
+    const loadedEntry = loadedImages.get(image.id);
+    const loadedPhoto = loadedEntry && loadedEntry.url === image.url ? loadedEntry.image : null;
+    if (!slot || !loadedPhoto) return Number.NaN;
+    const enteredView = getEraseZoomView({ isErasing: true, stageWidth, stageHeight, zoom, slot });
+    const displaySize = getContainedImageSize(loadedPhoto.width, loadedPhoto.height, slot.width, slot.height);
+    const photoOffsetX = Number.isFinite(image.x) ? image.x : 0;
+    const photoScaleX = Number.isFinite(image.scaleX) ? image.scaleX : 1;
+    const visiblePhotoWidth = getVisiblePhotoSpanWidth({
+      photoLeft: slot.x + (slot.width - displaySize.width) / 2 + photoOffsetX,
+      photoWidth: displaySize.width * photoScaleX,
+      slotLeft: slot.x,
+      slotWidth: slot.width,
+    });
+    return visiblePhotoWidth * enteredView.scale;
+  };
   const stageWrapperStyle: React.CSSProperties = {
     border: 'var(--border-width) dashed var(--linear-neutral-500)',
     borderRadius: '0px',
@@ -2894,7 +2915,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: event.detail === 0 });
                       setShowCustomPalette(false);
                       setErasePanelWidth(controlPanelRef.current?.getBoundingClientRect().width ?? null);
-                      setPhotoEraseBrushSize("medium");
+                      setPhotoEraseBrushSize(getDefaultBrushSize(getErasePhotoScreenWidth(selectedImage)));
                       photoEdit.onToolModeChange("erase-photo");
                     }}
                     style={{ width: '100%', minHeight: '52px', gap: '8px', fontSize: '16px', border: 'var(--border-width) solid var(--linear-neutral-500)' }}
