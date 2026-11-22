@@ -58,6 +58,8 @@ import type { BrushSize, PhotoToolMode } from "../photo/photoTool";
 import {
   BRUSH_SCREEN_RADIUS,
   BRUSH_SIZE_OPTIONS,
+  BRUSH_CURSOR_FILL_COLOR,
+  BRUSH_CURSOR_STROKE_COLOR,
   ERASE_PREVIEW_COLOR,
   getLocalBrushRadius,
   isBrushPointerStart,
@@ -81,6 +83,7 @@ const MOVE_BUTTONS = [
 const STICKER_TILT_STEP = 15; // 스티커 기울이기 각도(설계 8.2)
 const DETAIL_BUTTON_STYLE = { minHeight: '32px', fontSize: '14px', padding: '0 8px' } as const;
 const PHOTO_DETAIL_BUTTON_STYLE = { ...DETAIL_BUTTON_STYLE, minHeight: '44px' } as const;
+const PHOTO_PANEL_BUTTON_STYLE = { minHeight: '44px', fontSize: '14px', border: 'var(--border-width) solid var(--linear-neutral-500)' } as const;
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -2720,9 +2723,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     ref={brushCursorRef}
                     visible={false}
                     radius={brushScreenRadius / zoom}
-                    stroke="#000"
+                    stroke={BRUSH_CURSOR_STROKE_COLOR}
                     strokeWidth={1.5 / zoom}
-                    fill="rgba(255,107,53,0.25)"
+                    fill={BRUSH_CURSOR_FILL_COLOR}
                     listening={false}
                   />
                 </Layer>
@@ -2888,13 +2891,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           className="linear-button linear-button--secondary"
                           aria-pressed={isPresetSelected}
                           onClick={() => photoEdit.onEditsChange(selectedImage.id, applyPresetToEdits(selectedImage.edits, preset.id))}
-                          style={{
-                            minHeight: '44px',
-                            minWidth: '44px',
-                            padding: '0 8px',
-                            fontSize: '14px',
-                            border: 'var(--border-width) solid var(--linear-neutral-500)'
-                          }}
+                          style={{ ...PHOTO_PANEL_BUTTON_STYLE, minWidth: '44px', padding: '0 8px' }}
                         >
                           {isPresetSelected ? <span aria-hidden="true">✓ </span> : null}{preset.label}
                         </button>
@@ -2911,11 +2908,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           photoEdit.onApplyAdjustToAll(selectedImage.id);
                           setAppliedToAllCount(userImages.length);
                         }}
-                        style={{
-                          minHeight: '44px',
-                          fontSize: '14px',
-                          border: 'var(--border-width) solid var(--linear-neutral-500)'
-                        }}
+                        style={PHOTO_PANEL_BUTTON_STYLE}
                       >
                         모든 사진에 적용
                       </button>
@@ -2937,11 +2930,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     className="linear-button linear-button--secondary"
                     onClick={() => setIsAdjustDetailOpen(!isAdjustDetailOpen)}
                     aria-expanded={isAdjustDetailOpen}
-                    style={{
-                      minHeight: '44px',
-                      fontSize: '14px',
-                      border: 'var(--border-width) solid var(--linear-neutral-500)'
-                    }}
+                    style={PHOTO_PANEL_BUTTON_STYLE}
                   >
                     {isAdjustDetailOpen ? '접기' : '자세히'}
                   </button>
@@ -2957,12 +2946,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           aria-label={`${field.label} 줄이기`}
                           disabled={adjustValue <= field.min}
                           onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, -1))}
-                          style={{
-                            minWidth: '44px',
-                            minHeight: '44px',
-                            fontSize: '14px',
-                            border: 'var(--border-width) solid var(--linear-neutral-500)'
-                          }}
+                          style={{ minWidth: '44px', ...PHOTO_PANEL_BUTTON_STYLE }}
                         >
                           −
                         </button>
@@ -2973,12 +2957,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           aria-label={`${field.label} 늘리기`}
                           disabled={adjustValue >= field.max}
                           onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, 1))}
-                          style={{
-                            minWidth: '44px',
-                            minHeight: '44px',
-                            fontSize: '14px',
-                            border: 'var(--border-width) solid var(--linear-neutral-500)'
-                          }}
+                          style={{ minWidth: '44px', ...PHOTO_PANEL_BUTTON_STYLE }}
                         >
                           +
                         </button>
@@ -3035,11 +3014,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     className="linear-button linear-button--secondary"
                     onClick={() => setIsPositionDetailOpen(!isPositionDetailOpen)}
                     aria-expanded={isPositionDetailOpen}
-                    style={{
-                      minHeight: '44px',
-                      fontSize: '14px',
-                      border: 'var(--border-width) solid var(--linear-neutral-500)'
-                    }}
+                    style={PHOTO_PANEL_BUTTON_STYLE}
                   >
                     {isPositionDetailOpen ? '접기' : '자세히'}
                   </button>

@@ -16,6 +16,8 @@ export const BRUSH_SIZE_OPTIONS: { size: BrushSize; label: string }[] = [
 ];
 
 export const ERASE_PREVIEW_COLOR = "rgba(255,107,53,0.5)";
+export const BRUSH_CURSOR_FILL_COLOR = "rgba(255,107,53,0.25)"; // 미리보기 획과 같은 색, 더 옅게
+export const BRUSH_CURSOR_STROKE_COLOR = "#000";
 
 export function getLocalBrushRadius(screenRadius: number, absoluteScaleX: number): number {
   return screenRadius / Math.abs(absoluteScaleX);

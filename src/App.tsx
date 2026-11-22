@@ -1433,7 +1433,7 @@ function App() {
   const selectInsertedSticker = useCallback((stickerId: string) => {
     setSelectedStickerId(stickerId);
     setSelectedTextId(null); // Text 선택 해제
-    setEditorState(prev => ({ ...prev, selection: stickerId }));
+    setEditorState(prev => ({ ...prev, selection: stickerId, selectedSlot: null }));
   }, []);
 
   // 포인터를 누르고 있는 동안 끝난 스티커와 누끼 잠금 중 끝난 스티커는 진행 중인 끌기를 끊지 않도록 보류한다.
@@ -1873,6 +1873,7 @@ function App() {
           prepareCanvas: async () => {
             setCompareHeld(false);
             setPhotoToolMode("none");
+            setEraseOwnerImageId(null);
             setExportMode(true);
             await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
             const stage = stageRef.current; // 기다린 뒤 한 번만 읽습니다. 이 캔버스를 확인하고 이 캔버스로 렌더합니다
