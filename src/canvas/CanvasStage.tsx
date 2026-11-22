@@ -774,7 +774,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const renderBrushControls = (guideText: string, brushPair?: React.ReactNode) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {brushPair}
-      <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-neutral-50)" }}>{guideText}</p>
+      {/* 붓 종류에 따라 안내 길이가 달라도 제어판 너비가 바뀌어 캔버스가 옮겨지지 않게, 제어판 너비 안에서 줄바꿈합니다 */}
+      <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-neutral-50)", width: 0, minWidth: "100%", boxSizing: "border-box" }}>{guideText}</p>
       <div role="group" aria-label="붓 크기" style={{ display: "flex", gap: "6px" }}>
         {BRUSH_SIZE_OPTIONS.map((option) => {
           const isBrushSelected = activeBrushSize === option.size;
@@ -3444,7 +3445,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {isCutoutCacheMissing && (
-                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.cacheMissing}</p>
+                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)', width: 0, minWidth: '100%', boxSizing: 'border-box' }}>{CUTOUT_COPY.cacheMissing}</p>
                     )}
                     <button
                       type="button"
@@ -3456,7 +3457,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       {CUTOUT_COPY.pickOne}
                     </button>
                     {cutoutSourcePhotoMissing && (
-                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.pickNeedsPhoto}</p>
+                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)', width: 0, minWidth: '100%', boxSizing: 'border-box' }}>{CUTOUT_COPY.pickNeedsPhoto}</p>
                     )}
                     {getCutoutPickButtons(cutout).includes("everyone") && (
                       <button
