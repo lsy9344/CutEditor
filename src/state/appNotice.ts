@@ -18,7 +18,8 @@ export type AppNotice =
   | { kind: "save-progress" }
   | { kind: "save-done"; location: SaveLocation; missingStickerCount: number }
   // isWaitingForPhotos: [다시 저장하기]를 눌렀을 때 사진이 아직 준비 중이었음(결정 F, 설계 4.5).
-  | { kind: "save-failed"; hasPickedFile: boolean; isWaitingForPhotos: boolean };
+  // saveTarget: '이 스티커만 저장'의 실패(설계 7.5). 없으면 메인 저장입니다.
+  | { kind: "save-failed"; hasPickedFile: boolean; isWaitingForPhotos: boolean; saveTarget?: "sticker" };
 export type InlineStatus =
   | { kind: "save-cancelled" }
   | { kind: "save-blocked"; message: string }
@@ -97,7 +98,22 @@ export const getNoticeView = (notice: AppNotice, droppedPhotoCount = 0): NoticeV
         closeActionId: "close",
       };
     }
-    case "save-failed":
+    case "save-failed": {
+      // 스티커 저장 실패(설계 7.5). 메인의 [다시 저장하기]는 캔버스 전체를 저장하므로 쓰지 않습니다.
+      if (notice.saveTarget === "sticker") {
+        return {
+          title: "스티커를 저장하지 못했어요",
+          lines: [
+            ...(notice.hasPickedFile ? ["고른 파일은 아직 비어 있어요."] : []),
+            `[${CUTOUT_COPY.saveSticker}]을 다시 눌러 주세요.`,
+            CALL_STAFF_LINE,
+          ],
+          tone: "error",
+          actions: [{ id: "close", label: "닫기", isPrimary: true }],
+          isBusy: false,
+          closeActionId: "close",
+        };
+      }
       return {
         title: "사진을 저장하지 못했어요",
         lines: [
@@ -114,6 +130,7 @@ export const getNoticeView = (notice: AppNotice, droppedPhotoCount = 0): NoticeV
         isBusy: false,
         closeActionId: "close",
       };
+    }
   }
 };
 

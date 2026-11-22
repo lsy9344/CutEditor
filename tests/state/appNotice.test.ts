@@ -262,3 +262,24 @@ test("사진을 기다리는 중 저장하지 못했어요 안내는 첫 줄만 
   assert.equal(waitingView.closeActionId, "close");
   assert.equal(waitingView.isBusy, false);
 });
+
+test("스티커 저장 실패 안내는 닫기 하나와 다시 누르기 줄을 보인다", () => {
+  const view = getNoticeView({ kind: "save-failed", hasPickedFile: false, isWaitingForPhotos: false, saveTarget: "sticker" });
+  assert.equal(view.title, "스티커를 저장하지 못했어요");
+  assert.deepEqual(view.lines, ["[이 스티커만 저장]을 다시 눌러 주세요.", "계속 안 되면 직원을 불러 주세요."]);
+  assert.equal(view.tone, "error");
+  assert.deepEqual(view.actions, [{ id: "close", label: "닫기", isPrimary: true }]);
+  assert.equal(view.closeActionId, "close");
+
+  const pickedView = getNoticeView({ kind: "save-failed", hasPickedFile: true, isWaitingForPhotos: false, saveTarget: "sticker" });
+  assert.deepEqual(pickedView.lines, [
+    "고른 파일은 아직 비어 있어요.",
+    "[이 스티커만 저장]을 다시 눌러 주세요.",
+    "계속 안 되면 직원을 불러 주세요.",
+  ]);
+  for (const noticeView of [view, pickedView]) {
+    for (const word of FORBIDDEN_WORDS) {
+      assert.equal([noticeView.title, ...noticeView.lines].some((text) => text.includes(word)), false, word);
+    }
+  }
+});

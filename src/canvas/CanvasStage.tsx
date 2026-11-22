@@ -116,6 +116,7 @@ export type CanvasCutoutEditProps = {
   errorMessage: string | null;
   onRegenerate: (stickerId: string, changes: CutoutChanges) => void;
   onPreloadPointModel: () => void;
+  onSave: ((stickerId: string, opener: HTMLElement) => void) | null;
 };
 
 export type CanvasStageProps = {
@@ -3385,6 +3386,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       >
                         {cutoutEdit.errorMessage}
                       </p>
+                    )}
+                    {cutoutEdit.onSave && (
+                      <button
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={(event) => cutoutEdit.onSave?.(selectedSticker.id, event.currentTarget)}
+                        style={PHOTO_PANEL_BUTTON_STYLE}
+                      >
+                        {CUTOUT_COPY.saveSticker}
+                      </button>
                     )}
                   </div>
                 );

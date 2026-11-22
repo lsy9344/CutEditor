@@ -126,12 +126,69 @@ export const countEmptySlots = ({ slotIds, photoSlotIds }: { slotIds: string[]; 
 
 const padTwo = (value: number): string => String(value).padStart(2, "0");
 
-// 현지 시각 `컷사진_YYYY-MM-DD_HHMMSS.png`. 초까지 넣어 기본 이름끼리 덮어쓰지 않게 합니다(설계 D8).
-export const makeSaveFilename = (date: Date): string => {
+// 현지 시각 `YYYY-MM-DD_HHMMSS`. 메인 저장과 스티커 저장이 함께 씁니다(설계 7.3).
+const makeSaveStamp = (date: Date): string => {
   const day = `${date.getFullYear()}-${padTwo(date.getMonth() + 1)}-${padTwo(date.getDate())}`;
   const time = `${padTwo(date.getHours())}${padTwo(date.getMinutes())}${padTwo(date.getSeconds())}`;
-  return `컷사진_${day}_${time}.png`;
+  return `${day}_${time}`;
 };
+
+// 현지 시각 `컷사진_YYYY-MM-DD_HHMMSS.png`. 초까지 넣어 기본 이름끼리 덮어쓰지 않게 합니다(설계 D8).
+export const makeSaveFilename = (date: Date): string => `컷사진_${makeSaveStamp(date)}.png`;
+
+// '이 스티커만 저장' 이름. 구분 말을 접두어 바로 뒤에 두어 잘려도 보이고 이름순으로 모입니다(설계 7.3).
+export const makeStickerSaveFilename = (date: Date): string => `컷사진_스티커_${makeSaveStamp(date)}.png`;
+
+// 비어 있지 않은 문자열인지. 시작 주소의 JSON은 타입 단언으로만 받아서(App `JSON.parse(…) as BoothyLaunchContext`) 숫자 같은 값이 올 수 있습니다.
+const isFilledString = (value: unknown): value is string => typeof value === "string" && value.trim() !== "";
+
+// Boothy 세션 저장인지(설계 7.6). App의 메인 저장 경로와 '이 스티커만 저장' 숨김이 함께 씁니다.
+// App이 렌더 때 부르므로, 필드 타입이 틀려도 던지지 않고 거짓을 돌려줍니다(Codex 2차 필수 8).
+export const isBoothySessionSave = ({
+  saveUrl,
+  sessionId,
+  launchId,
+}: {
+  saveUrl?: unknown;
+  sessionId?: unknown;
+  launchId?: unknown;
+}): boolean => isFilledString(saveUrl) && isFilledString(sessionId) && isFilledString(launchId);
+
+export type StickerPngResponse = { ok: boolean; status: number; blob: () => Promise<Blob> };
+
+// 이미 만든 스티커 PNG(blob URL)를 읽습니다(설계 7.2). 새로 그리지 않습니다. 못 읽으면 throw → 저장 흐름의 failed.
+export const fetchStickerPng = async (
+  src: string,
+  fetchPng: (url: string) => Promise<StickerPngResponse>,
+): Promise<Blob> => {
+  const response = await fetchPng(src);
+  if (!response.ok) throw new Error(`스티커 그림을 읽지 못했어요(${response.status})`);
+  return response.blob();
+};
+
+// 메인 저장과 스티커 저장이 함께 쓰는 파일 저장 의존성(설계 7.2). 캔버스와 무관한 다섯 가지입니다.
+export type FileSaveDeps<THandle> = Pick<SaveFlowDeps<THandle, unknown>, "pickFile" | "showProgress" | "openWritable" | "download" | "warn">;
+
+export type StickerFlipDraw = { scaleX: number; scaleY: number; translateX: number; translateY: number };
+
+// 저장 PNG에 화면의 뒤집기를 담는 그리기 변환입니다(설계 7.1 저장 범위, Codex 필수 4). 크기·각도·위치는 넣지 않습니다.
+// 캔버스 setTransform(scaleX, 0, 0, scaleY, translateX, translateY) 뒤 (0, 0)에 그대로 그리면 됩니다.
+export const getStickerFlipDraw = ({
+  width,
+  height,
+  flipX,
+  flipY,
+}: {
+  width: number;
+  height: number;
+  flipX: boolean;
+  flipY: boolean;
+}): StickerFlipDraw => ({
+  scaleX: flipX ? -1 : 1,
+  scaleY: flipY ? -1 : 1,
+  translateX: flipX ? width : 0,
+  translateY: flipY ? height : 0,
+});
 
 // DOMException이 없는 환경에서도 돌도록 이름만 봅니다.
 export const isPickerAbort = (error: unknown): boolean =>

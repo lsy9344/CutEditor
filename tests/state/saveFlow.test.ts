@@ -4,11 +4,15 @@ import assert from "node:assert/strict";
 import {
   countEmptySlots,
   countMissingStickers,
+  fetchStickerPng,
   getCanvasPreparation,
   getSaveRequestStep,
   getSaveRoute,
+  getStickerFlipDraw,
+  isBoothySessionSave,
   isPickerAbort,
   makeSaveFilename,
+  makeStickerSaveFilename,
   resolveMobileEditor,
   runSaveFlow,
 } from "../../src/state/saveFlow.ts";
@@ -578,4 +582,117 @@ test("배치를 고정한 동안에는 화면 폭이 바뀌어도 고정한 배�
 test("고정이 풀리면(null) 지금 화면 폭의 배치로 돌아간다", () => {
   assert.equal(resolveMobileEditor({ lockedMobileLayout: null, isResponsiveMobile: true }), true);
   assert.equal(resolveMobileEditor({ lockedMobileLayout: null, isResponsiveMobile: false }), false);
+});
+
+// '이 스티커만 저장'(설계 7장)
+test("스티커 파일 이름은 컷사진_스티커_날짜_시각이다", () => {
+  const date = new Date(2026, 10, 22, 15, 30, 12);
+  assert.equal(makeStickerSaveFilename(date), "컷사진_스티커_2026-11-22_153012.png");
+  assert.equal(makeSaveFilename(date), "컷사진_2026-11-22_153012.png");
+});
+
+test("Boothy 저장 조건은 저장 주소·세션·실행 id가 모두 있을 때만 참이다", () => {
+  assert.equal(isBoothySessionSave({ saveUrl: "http://127.0.0.1:5193/save", sessionId: "s1", launchId: "l1" }), true);
+});
+
+test("Boothy 저장 조건은 하나라도 없거나 공백이거나 문자열이 아니면 거짓이다", () => {
+  const filled = { saveUrl: "http://127.0.0.1:5193/save", sessionId: "s1", launchId: "l1" };
+  for (const field of ["saveUrl", "sessionId", "launchId"] as const) {
+    assert.equal(isBoothySessionSave({ ...filled, [field]: undefined }), false, `${field} 없음`);
+    assert.equal(isBoothySessionSave({ ...filled, [field]: "  " }), false, `${field} 공백`);
+  }
+  assert.equal(isBoothySessionSave({}), false);
+  assert.equal(isBoothySessionSave({ saveUrl: 5, sessionId: "s1", launchId: "l1" }), false);
+  assert.equal(isBoothySessionSave({ saveUrl: "http://127.0.0.1:5193/save", sessionId: 7, launchId: "l1" }), false);
+  assert.equal(isBoothySessionSave({ saveUrl: "http://127.0.0.1:5193/save", sessionId: "s1", launchId: null }), false);
+});
+
+test("스티커 PNG 읽기는 응답이 ok면 받은 Blob을 그대로 돌려준다", async () => {
+  const pngBlob = new Blob(["sticker"], { type: "image/png" });
+  const fetchedUrls: string[] = [];
+  const result = await fetchStickerPng("blob:sticker", async (url) => {
+    fetchedUrls.push(url);
+    return { ok: true, status: 200, blob: async () => pngBlob };
+  });
+  assert.equal(result, pngBlob);
+  assert.deepEqual(fetchedUrls, ["blob:sticker"]);
+});
+
+test("스티커 PNG 읽기는 응답이 ok가 아니면 거부한다", async () => {
+  let blobCalled = false;
+  await assert.rejects(fetchStickerPng("blob:sticker", async () => ({
+    ok: false,
+    status: 404,
+    blob: async () => { blobCalled = true; return new Blob([]); },
+  })));
+  assert.equal(blobCalled, false);
+});
+
+test("뒤집지 않은 스티커의 그리기 변환은 그대로 두기다", () => {
+  assert.deepEqual(getStickerFlipDraw({ width: 526, height: 1982, flipX: false, flipY: false }), { scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 });
+});
+
+test("뒤집은 축마다 -1배와 그 축 길이만큼 옮기기가 된다", () => {
+  assert.deepEqual(getStickerFlipDraw({ width: 526, height: 1982, flipX: true, flipY: false }), { scaleX: -1, scaleY: 1, translateX: 526, translateY: 0 });
+  assert.deepEqual(getStickerFlipDraw({ width: 526, height: 1982, flipX: false, flipY: true }), { scaleX: 1, scaleY: -1, translateX: 0, translateY: 1982 });
+  assert.deepEqual(getStickerFlipDraw({ width: 526, height: 1982, flipX: true, flipY: true }), { scaleX: -1, scaleY: -1, translateX: 526, translateY: 1982 });
+});
+
+const STICKER_DATE = new Date(2026, 10, 22, 15, 30, 12);
+const makeFakeStickerFetch = (response: { ok: boolean; status: number; blob: () => Promise<Blob> }) => {
+  const fetchedUrls: string[] = [];
+  const fakeFetch = async (url: string) => { fetchedUrls.push(url); return response; };
+  return { fetchedUrls, fakeFetch };
+};
+const toStickerDeps = (deps: SaveFlowDeps<FakeHandle, FakeStage>, stickerPngPromise: Promise<Blob>): SaveFlowDeps<FakeHandle, Promise<Blob>> => ({
+  ...deps,
+  prepareCanvas: async () => ({ kind: "ready", stage: stickerPngPromise }),
+  render: (pngPromise) => pngPromise,
+});
+
+test("스티커 저장 흐름은 누를 때 읽기를 시작하고 창을 먼저 연 뒤 그 PNG를 그대로 고른 파일에 쓴다", async () => {
+  const pngBlob = new Blob(["sticker"], { type: "image/png" });
+  const { fetchedUrls, fakeFetch } = makeFakeStickerFetch({ ok: true, status: 200, blob: async () => pngBlob });
+  const stickerPngPromise = fetchStickerPng("blob:sticker", fakeFetch);
+  let writtenBlob: Blob | null = null;
+  const { calls, deps } = makeDeps((recorded) => ({
+    openWritable: async (fileHandle) => {
+      recorded.push(`openWritable:${fileHandle.name}`);
+      return {
+        write: async (data) => { writtenBlob = data; recorded.push("write"); },
+        close: async () => { recorded.push("close"); },
+      };
+    },
+  }));
+  const filename = makeStickerSaveFilename(STICKER_DATE);
+  const result = await runSaveFlow({ route: "picker-first", filename, retry: null }, toStickerDeps(deps, stickerPngPromise));
+  assert.equal(calls[0], `pickFile:${filename}`);
+  assert.deepEqual(fetchedUrls, ["blob:sticker"]);
+  assert.equal(writtenBlob, pngBlob);
+  assert.deepEqual(result, { kind: "done", location: "picked" });
+});
+
+test("스티커 PNG를 못 읽으면 고른 경로만 핸들을 남기고 쓰지도 내려받지도 않는다", async () => {
+  const filename = makeStickerSaveFilename(STICKER_DATE);
+  const failingResponse = { ok: false, status: 404, blob: async () => new Blob([]) };
+
+  const pickerFetch = makeFakeStickerFetch(failingResponse);
+  const pickerPngPromise = fetchStickerPng("blob:sticker", pickerFetch.fakeFetch);
+  pickerPngPromise.catch(() => undefined);
+  const picker = makeDeps();
+  const pickerResult = await runSaveFlow({ route: "picker-first", filename, retry: null }, toStickerDeps(picker.deps, pickerPngPromise));
+  assert.equal(pickerResult.kind, "failed");
+  if (pickerResult.kind !== "failed") return;
+  assert.deepEqual(pickerResult.retry.fileHandle, { name: filename });
+  assert.equal(picker.calls.some((call) => call.startsWith("openWritable:") || call.startsWith("download:")), false);
+
+  const downloadFetch = makeFakeStickerFetch(failingResponse);
+  const downloadPngPromise = fetchStickerPng("blob:sticker", downloadFetch.fakeFetch);
+  downloadPngPromise.catch(() => undefined);
+  const download = makeDeps();
+  const downloadResult = await runSaveFlow({ route: "download", filename, retry: null }, toStickerDeps(download.deps, downloadPngPromise));
+  assert.equal(downloadResult.kind, "failed");
+  if (downloadResult.kind !== "failed") return;
+  assert.equal(downloadResult.retry.fileHandle, null);
+  assert.equal(download.calls.some((call) => call.startsWith("pickFile:") || call.startsWith("download:")), false);
 });

@@ -9,6 +9,7 @@ import {
   getOutlineRadius,
 } from "./cutoutMask.ts";
 import { renderAdjustedPhoto, renderPhotoBase } from "./photoRender.ts";
+import { getStickerFlipDraw } from "../state/saveFlow.ts";
 
 export const CUTOUT_WORKING_MAX_SIDE = 2048;
 
@@ -135,4 +136,28 @@ export async function renderCutoutSticker(
     crop,
     workingSize: { width: workingWidth, height: workingHeight },
   };
+}
+
+// '이 스티커만 저장' PNG(설계 7.1 저장 범위, Codex 필수 4). 누를 때 읽기 시작한 스티커 PNG에 뒤집기만 담습니다.
+// 뒤집지 않았으면 읽은 Blob을 그대로 돌려줍니다(파일 해시가 화면 스티커와 같음). 크기·각도·위치는 넣지 않습니다.
+export async function renderStickerSavePng(pngPromise: Promise<Blob>, flip: { flipX: boolean; flipY: boolean }): Promise<Blob> {
+  const pngBlob = await pngPromise;
+  if (!flip.flipX && !flip.flipY) return pngBlob;
+  const bitmap = await createImageBitmap(pngBlob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    throw new Error("스티커 그림을 뒤집지 못했어요");
+  }
+  const draw = getStickerFlipDraw({ width: bitmap.width, height: bitmap.height, flipX: flip.flipX, flipY: flip.flipY });
+  context.imageSmoothingEnabled = false;
+  context.setTransform(draw.scaleX, 0, 0, draw.scaleY, draw.translateX, draw.translateY);
+  context.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("스티커 그림을 만들지 못했어요"))), "image/png");
+  });
 }

@@ -311,3 +311,10 @@ test("지우기 모드 포커스: 마우스·터치로 누르면 포커스를 �
   assert.equal(getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: false }), "none");
   assert.equal(getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: false }), "none");
 });
+
+test("스티커 저장에서 시작한 복귀는 연 곳, 시트, 캔버스, 저장 버튼 순서다", () => {
+  assert.deepEqual(
+    getFocusReturnCandidates({ origin: "sticker-save", opener: "sticker-save-button", sheetCandidates: ["sheet-close"], canvas: "canvas", saves: ["save"] }),
+    ["sticker-save-button", "sheet-close", "canvas", "save"],
+  );
+});

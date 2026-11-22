@@ -69,6 +69,7 @@ import {
   isCancelledAfterPendingInput,
   loadImageElement,
   renderCutoutSticker,
+  renderStickerSavePng,
   waitForPaint,
 } from './photo/cutoutRender'
 import {
@@ -84,13 +85,15 @@ import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
 import { PHOTO_EDIT_FEATURES } from './photo/photoEditFeatures'
 import type { EditorMenu } from './ui/editorMenu'
 import { getMenuAfterSelect, getSelectedMenu } from './ui/editorMenu'
+import type { TutorialTarget } from './ui/tutorialSteps'
+import { getNextTutorialStep, getTutorialSteps } from './ui/tutorialSteps'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin, PickFocusTarget } from './state/modalFocus'
 import { getFocusReturnCandidates, getPickFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldCloseMobileSheet, shouldRefocusAfterLayoutChange } from './state/modalFocus'
-import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
+import { countEmptySlots, countMissingStickers, fetchStickerPng, getCanvasPreparation, getSaveRequestStep, getSaveRoute, isBoothySessionSave, makeSaveFilename, makeStickerSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
-import type { SaveRetry } from './state/saveFlow'
+import type { FileSaveDeps, SaveRetry } from './state/saveFlow'
 import { getSelectedImageFromState } from './canvas/keyboardShortcuts'
 
 type FileSystemWritableFileStream = {
@@ -222,6 +225,7 @@ type PendingBoothyImportState = {
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
+const TUTORIAL_STEPS = getTutorialSteps({ hasCutoutMenu: PHOTO_EDIT_FEATURES.cutout })
 
 declare global {
   interface Window {
@@ -540,10 +544,15 @@ function App() {
   const focusReturnOriginRef = useRef<FocusReturnOrigin>('frame-change'); // 안내가 저장에서 시작했는지(UX2-2)
   const isSaveLayoutFocusPendingRef = useRef(false); // 저장에서 온 복귀 뒤 배치가 바뀌면 지금 배치의 저장 버튼으로 다시 돌려줄지(UX5-5)
   // 이어지는 안내(빈 칸 → 진행 → 완료) 동안 처음 연 곳과 시작한 곳을 지킵니다. 이미 기억 중이면 바꾸지 않습니다.
-  const rememberNoticeOpener = (card: HTMLElement | null, origin: FocusReturnOrigin) => {
+  const rememberNoticeOpener = (card: HTMLElement | null, origin: FocusReturnOrigin, openerElement: HTMLElement | null = null) => {
     if (isFocusReturnPendingRef.current) return;
     isFocusReturnPendingRef.current = true;
     focusReturnOriginRef.current = origin;
+    // 누른 버튼을 받았으면 그 버튼을 기억합니다. 클릭이 포커스를 옮기지 않아도 연 곳이 맞습니다(Codex 2차 필수 6).
+    if (openerElement) {
+      noticeOpenerRef.current = openerElement;
+      return;
+    }
     const activeElement = document.activeElement;
     const isUsableOpener = activeElement instanceof HTMLElement
       && activeElement !== document.body
@@ -787,6 +796,7 @@ function App() {
   const [exportFilename, setExportFilename] = useState<string>("");
   const [exportManualSaveRequired, setExportManualSaveRequired] = useState<boolean>(false);
   const [exportMissingStickerCount, setExportMissingStickerCount] = useState(0); // 모바일 미리보기에 보여 줄 빠진 스티커 수
+  const [isStickerExportPreview, setIsStickerExportPreview] = useState(false); // 공유 화면에 스티커를 보이는지(긴 그림 높이 제한)
   const [viewportWidth, setViewportWidth] = useState<number>(() => (
     typeof window === 'undefined' ? 1280 : window.innerWidth
   ));
@@ -800,14 +810,16 @@ function App() {
   const [mobilePanel, setMobilePanel] = useState<EditorMenu | null>(null);
   const [desktopPanel, setDesktopPanel] = useState<EditorMenu | null>(null);
   const [tutorialStep, setTutorialStep] = useState<number | null>(0);
-  const tutorialRef0 = useRef<HTMLButtonElement>(null);
-  const tutorialRef1 = useRef<HTMLButtonElement>(null);
-  const tutorialRef2 = useRef<HTMLButtonElement>(null);
-  const tutorialRef3 = useRef<HTMLButtonElement>(null);
-  const mobileTutorialRef0 = useRef<HTMLButtonElement>(null);
-  const mobileTutorialRef1 = useRef<HTMLButtonElement>(null);
-  const mobileTutorialRef2 = useRef<HTMLButtonElement>(null);
-  const mobileTutorialRef3 = useRef<HTMLButtonElement>(null);
+  const railFrameButtonRef = useRef<HTMLButtonElement>(null);
+  const railTextButtonRef = useRef<HTMLButtonElement>(null);
+  const railStickerButtonRef = useRef<HTMLButtonElement>(null);
+  const railCutoutButtonRef = useRef<HTMLButtonElement>(null);
+  const railSaveButtonRef = useRef<HTMLButtonElement>(null);
+  const toolbarFrameButtonRef = useRef<HTMLButtonElement>(null);
+  const toolbarTextButtonRef = useRef<HTMLButtonElement>(null);
+  const toolbarStickerButtonRef = useRef<HTMLButtonElement>(null);
+  const toolbarCutoutButtonRef = useRef<HTMLButtonElement>(null);
+  const toolbarSaveButtonRef = useRef<HTMLButtonElement>(null);
   const mobileSheetOpenerRef = useRef<HTMLElement | null>(null); // 휴대폰 시트를 연 툴바 버튼
   const mobileSheetRef = useRef<HTMLDivElement>(null); // 시트 배경(app-container의 직계 자식)
   const mobileSheetCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 시트 카드
@@ -985,6 +997,7 @@ function App() {
   const exportOverlayRef = useRef<HTMLDivElement>(null); // 공유 화면 바깥(app-container의 직계 자식)
   const exportOverlayCardRef = useRef<HTMLDivElement>(null);
   const wasExportOverlayShownRef = useRef(false);
+  const exportOverlayReturnRef = useRef<{ origin: FocusReturnOrigin; opener: HTMLElement | null } | null>(null); // 공유 화면을 닫으면 돌아갈 곳(연 버튼)
 
   // 공유 화면이 떠 있는 동안 뒤 화면에 inert를 걸고 되돌리기·다시 하기 단축키를 막습니다(UP-12).
   // 미리보기 뒤에서 편집 데이터가 바뀌지 않게 합니다. 확인창이 닫히고 저장이 끝난 뒤에 겁니다(확인창 → 공유 화면 넘겨주기).
@@ -1006,7 +1019,7 @@ function App() {
     };
   }, [exportOverlayOpen, isExportInFlight, isNoticeOpen]);
 
-  // 공유 화면이 뜨면 카드에 포커스를 주고, 닫히면 '저장'으로 돌아갑니다(설계 10장).
+  // 공유 화면이 뜨면 카드에 포커스를 주고, 닫히면 덮개를 연 버튼으로 돌아갑니다(없으면 저장 또는 캔버스)(설계 10장).
   // 저장이 진행 중이거나 확인창이 아직 떠 있으면 기다립니다. 위 확인창 복귀 effect가 '저장'에 준 포커스를 카드가 이어받습니다.
   useEffect(() => {
     if (exportOverlayOpen) {
@@ -1017,10 +1030,18 @@ function App() {
     }
     if (!wasExportOverlayShownRef.current) return;
     wasExportOverlayShownRef.current = false;
-    focusReturnTarget({ origin: 'save', opener: null });
+    const overlayReturn = exportOverlayReturnRef.current ?? { origin: 'save' as const, opener: null };
+    exportOverlayReturnRef.current = null;
+    focusReturnTarget(overlayReturn);
   }, [exportOverlayOpen, isExportInFlight, isNoticeOpen]);
 
   const boothyLaunchContext = useMemo(() => parseLaunchContextFromLocation(), []);
+  // Boothy 세션 저장인지. 메인 저장 경로와 '이 스티커만 저장' 숨김이 함께 씁니다(설계 7.6).
+  const expectsBoothySessionSave = useMemo(() => isBoothySessionSave({
+    saveUrl: boothyLaunchContext?.completion?.saveUrl,
+    sessionId: boothyLaunchContext?.sessionId,
+    launchId: boothyLaunchContext?.launchId,
+  }), [boothyLaunchContext]);
   const isBoothyImportBridgeAvailable = useMemo(() => {
     return Boolean(
       boothyLaunchContext?.sessionId?.trim()
@@ -1900,12 +1921,6 @@ function App() {
     }
     let missingStickerCount = 0; // 화면에도 그려지지 않는 스티커(누끼·일반) 수. 렌더할 캔버스의 보고로 prepareCanvas에서 셉니다. 저장을 막지 않음
 
-    const expectsBoothySessionSave = Boolean(
-      boothyLaunchContext?.completion?.saveUrl?.trim()
-      && boothyLaunchContext?.sessionId?.trim()
-      && boothyLaunchContext?.launchId?.trim(),
-    );
-
     const isMobileLayoutAtSave = isResponsiveMobile; // 누른 순간의 배치. 저장이 끝날 때까지 이 배치를 지킵니다(UX4-1)
 
     // 사진 준비 확인을 통과한 저장만 Stage를 사용한다. Stage를 만지기 전에 동기 ref로
@@ -1927,13 +1942,7 @@ function App() {
       const result = await runSaveFlow(
         { route, filename: makeSaveFilename(new Date()), retry: retrySaveRef.current },
         {
-          pickFile: (suggestedName) => window.showSaveFilePicker!({
-            suggestedName,
-            excludeAcceptAllOption: true,
-            startIn: 'desktop',
-            types: [{ description: 'PNG 이미지', accept: { 'image/png': ['.png'] } }],
-          }),
-          showProgress: () => setNotice({ kind: 'save-progress' }),
+          ...makeFileSaveDeps(),
           // 확인은 기다린 뒤 읽은 캔버스 하나에만 합니다(UX3-1). 렌더도 그 캔버스로 합니다.
           prepareCanvas: async () => {
             setCompareHeld(false);
@@ -1953,30 +1962,11 @@ function App() {
           },
           render: (stage) => exportBlobFromStage({ frameType, stage }),
           saveToBoothy: (blob) => saveToBoothySession({ blob, frameType }),
-          openWritable: (fileHandle) => fileHandle.createWritable(),
-          download: (blob, name) => {
-            const downloadUrl = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = downloadUrl;
-            a.download = name;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
-          },
-          openShareSheet: (blob, name) => {
-            const url = URL.createObjectURL(blob);
-            setExportBlob(blob);
-            setExportObjectUrl(url);
-            setExportFilename(name);
-            setExportManualSaveRequired(shouldShowManualSaveHintImmediately({
-              userAgent: getCurrentUserAgent(),
-              isStandalone: isStandaloneDisplayMode(),
-            }));
-            setExportMissingStickerCount(missingStickerCount);
-            setExportOverlayOpen(true);
-          },
-          warn: (message, error) => console.warn(message, error),
+          openShareSheet: (blob, name) => showExportOverlay(blob, name, {
+            overlayMissingStickerCount: missingStickerCount,
+            isSticker: false,
+            overlayReturn: { origin: 'save', opener: null }, // 지금 닫힘 효과와 같음: 시트 → 지금 배치의 저장 버튼 → 캔버스
+          }),
         },
       );
 
@@ -2037,6 +2027,54 @@ function App() {
     anchor.click();
     document.body.removeChild(anchor);
     return true;
+  };
+
+  // 메인 저장과 '이 스티커만 저장'이 함께 쓰는 파일 저장 의존성(설계 7.2). 저장 창은 클릭 직후 첫 await입니다.
+  const makeFileSaveDeps = (): FileSaveDeps<FileSystemFileHandle> => ({
+    pickFile: (suggestedName) => window.showSaveFilePicker!({
+      suggestedName,
+      excludeAcceptAllOption: true,
+      startIn: 'desktop',
+      types: [{ description: 'PNG 이미지', accept: { 'image/png': ['.png'] } }],
+    }),
+    showProgress: () => setNotice({ kind: 'save-progress' }),
+    openWritable: (fileHandle) => fileHandle.createWritable(),
+    download: (blob, name) => {
+      const downloadUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 2000);
+    },
+    warn: (message, error) => console.warn(message, error),
+  });
+
+  // 휴대폰 저장 덮개를 엽니다. 메인 저장과 스티커 저장이 함께 씁니다(설계 7.4, 계획 4.1 #15).
+  // 덮개를 닫으면 돌아갈 곳은 부르는 쪽이 넘깁니다(Codex 필수 7, Codex 2차 필수 6).
+  const showExportOverlay = (
+    blob: Blob,
+    name: string,
+    { overlayMissingStickerCount, isSticker, overlayReturn }: {
+      overlayMissingStickerCount: number;
+      isSticker: boolean;
+      overlayReturn: { origin: FocusReturnOrigin; opener: HTMLElement | null };
+    },
+  ) => {
+    exportOverlayReturnRef.current = overlayReturn;
+    setIsStickerExportPreview(isSticker);
+    const url = URL.createObjectURL(blob);
+    setExportBlob(blob);
+    setExportObjectUrl(url);
+    setExportFilename(name);
+    setExportManualSaveRequired(shouldShowManualSaveHintImmediately({
+      userAgent: getCurrentUserAgent(),
+      isStandalone: isStandaloneDisplayMode(),
+    }));
+    setExportMissingStickerCount(overlayMissingStickerCount);
+    setExportOverlayOpen(true);
   };
 
   const handleMobileSaveToPhotos = async () => {
@@ -2110,6 +2148,69 @@ function App() {
     setExportFilename("");
     setExportManualSaveRequired(false);
     setExportMissingStickerCount(0);
+    setIsStickerExportPreview(false);
+  };
+
+  // '이 스티커만 저장'(설계 7장). 메인 저장 흐름을 그대로 쓰고 그리기만 '이미 만든 스티커 PNG 읽기'로 바꿉니다.
+  // 캔버스를 그리지 않으므로 배치 고정·내보내기 모양·다시 저장하기는 쓰지 않습니다(설계 7.2).
+  // opener는 누른 '이 스티커만 저장' 버튼(event.currentTarget)입니다. 안내와 공유 화면 복귀가 함께 씁니다(Codex 2차 필수 6).
+  const handleStickerSave = async (stickerId: string, opener: HTMLElement) => {
+    if (isCutoutLocked()) return;
+    const sticker = stickers.find((item) => item.id === stickerId);
+    if (!sticker?.cutout || exportInFlightRef.current) return;
+    rememberNoticeOpener(null, 'sticker-save', opener); // 안내를 닫으면 이 버튼으로, 없으면 캔버스로 돌려줍니다(Codex 필수 7)
+    // 누른 순간의 스티커 PNG와 뒤집기를 잡아 둡니다. 창이 떠 있는 동안 다시 만들기·지우기로 src가 바뀌어도 누른 것을 저장합니다(Codex 권장 1).
+    // 읽기는 기다리지 않으므로 저장 창(pickFile)이 그대로 첫 await입니다. 거부는 render에서 받고, 여기서는 처리 안 된 거부 경고만 막습니다.
+    const stickerPngPromise = fetchStickerPng(sticker.src, (url) => fetch(url));
+    stickerPngPromise.catch(() => undefined);
+    const stickerFlip = { flipX: sticker.flipX, flipY: sticker.flipY };
+    exportInFlightRef.current = true;
+    try {
+      setIsExportInFlight(true);
+      setInlineStatus(null);
+      const stickerRoute = getSaveRoute({
+        expectsBoothySessionSave: false, // Boothy에서는 버튼이 없습니다(설계 7.6)
+        isMobileLayout: isResponsiveMobile,
+        hasFilePicker: typeof window.showSaveFilePicker === 'function',
+      });
+      const stickerSaveResult = await runSaveFlow(
+        { route: stickerRoute, filename: makeStickerSaveFilename(new Date()), retry: null },
+        {
+          ...makeFileSaveDeps(),
+          prepareCanvas: async () => ({ kind: 'ready' as const, stage: stickerPngPromise }),
+          render: (pngPromise) => renderStickerSavePng(pngPromise, stickerFlip),
+          saveToBoothy: async () => false,
+          openShareSheet: (blob, name) => showExportOverlay(blob, name, {
+            overlayMissingStickerCount: 0,
+            isSticker: true,
+            overlayReturn: { origin: 'sticker-save', opener }, // 공유 화면을 닫으면 누른 버튼, 사라졌으면 캔버스
+          }),
+        },
+      );
+      if (stickerSaveResult.kind === 'cancelled') {
+        setNotice(null);
+        setInlineStatus({ kind: 'save-cancelled' });
+        return;
+      }
+      if (stickerSaveResult.kind === 'share-sheet') {
+        setNotice(null);
+        return;
+      }
+      if (stickerSaveResult.kind === 'done') {
+        setNotice({ kind: 'save-done', location: stickerSaveResult.location, missingStickerCount: 0 });
+        return;
+      }
+      // failed(스티커 PNG를 못 읽음, 뒤집기 그리기 실패). photos-not-ready·photos-failed는 준비가 늘 ready라 생기지 않습니다.
+      // 빈 파일 안내는 실제로 고른 파일(핸들)이 있을 때만입니다. 다운로드·공유 경로는 핸들이 null입니다(Codex 권장 1).
+      console.warn('스티커 저장 실패', stickerSaveResult.kind === 'failed' ? stickerSaveResult.error : stickerSaveResult.kind);
+      setNotice({ kind: 'save-failed', hasPickedFile: stickerSaveResult.retry.fileHandle !== null, isWaitingForPhotos: false, saveTarget: 'sticker' });
+    } catch (error) {
+      console.warn('스티커 저장 실패', error);
+      setNotice({ kind: 'save-failed', hasPickedFile: false, isWaitingForPhotos: false, saveTarget: 'sticker' });
+    } finally {
+      exportInFlightRef.current = false;
+      setIsExportInFlight(false);
+    }
   };
 
   const handleNoticeAction = (actionId: NoticeActionId) => {
@@ -2250,11 +2351,7 @@ function App() {
 
   const handleTutorialNext = () => {
     if (tutorialStep === null) return;
-    if (tutorialStep >= 3) {
-      setTutorialStep(null);
-    } else {
-      setTutorialStep(tutorialStep + 1);
-    }
+    setTutorialStep(getNextTutorialStep({ step: tutorialStep, stepCount: TUTORIAL_STEPS.length }));
   };
 
   const handleTutorialSkip = () => {
@@ -2343,6 +2440,7 @@ function App() {
         errorMessage: cutoutError && cutoutError.targetId === editorState.selection ? cutoutError.message : null,
         onRegenerate: (stickerId: string, changes: CutoutChanges) => { void handleCutoutRegenerate(stickerId, changes); },
         onPreloadPointModel: () => { void preloadPointSegmentation().catch(() => undefined); },
+        onSave: expectsBoothySessionSave ? null : (stickerId: string, opener: HTMLElement) => { void handleStickerSave(stickerId, opener); },
       }}
       stageRefExternal={stageRef}
       stageDisplayRefExternal={stageDisplayRef}
@@ -2387,6 +2485,16 @@ function App() {
       ? { minHeight: '44px', padding: '4px 2px' }
       : { padding: '0 4px' };
 
+  // 튜토리얼 강조는 단계 숫자가 아니라 대상으로 정합니다(설계 8장). 배치에 따라 레일 또는 툴바 버튼을 가리킵니다.
+  const tutorialTarget: TutorialTarget | null = tutorialStep === null ? null : TUTORIAL_STEPS[tutorialStep]?.target ?? null
+  const railTutorialRefs: Record<TutorialTarget, React.RefObject<HTMLButtonElement>> = {
+    frames: railFrameButtonRef, text: railTextButtonRef, sticker: railStickerButtonRef, cutout: railCutoutButtonRef, save: railSaveButtonRef,
+  }
+  const toolbarTutorialRefs: Record<TutorialTarget, React.RefObject<HTMLButtonElement>> = {
+    frames: toolbarFrameButtonRef, text: toolbarTextButtonRef, sticker: toolbarStickerButtonRef, cutout: toolbarCutoutButtonRef, save: toolbarSaveButtonRef,
+  }
+  const tutorialButtonRefs = TUTORIAL_STEPS.map((tutorialItem) => (isMobileEditor ? toolbarTutorialRefs : railTutorialRefs)[tutorialItem.target])
+
   const mobileSheetTitle = mobilePanel === 'frames'
     ? '프레임 선택'
     : mobilePanel === 'text'
@@ -2421,13 +2529,11 @@ function App() {
         {tutorialStep !== null && (
           <TutorialOverlay
             step={tutorialStep}
-            buttonRefs={isMobileEditor
-              ? [mobileTutorialRef0, mobileTutorialRef1, mobileTutorialRef2, mobileTutorialRef3]
-              : [tutorialRef0, tutorialRef1, tutorialRef2, tutorialRef3]
-            }
+            steps={TUTORIAL_STEPS}
+            buttonRefs={tutorialButtonRefs}
             onNext={handleTutorialNext}
             onSkip={handleTutorialSkip}
-            mobile={isMobileEditor}
+            placement={!isMobileEditor ? 'right' : layoutMedia.isShortLandscape ? 'left' : 'above'}
           />
         )}
       </div>
@@ -2443,11 +2549,12 @@ function App() {
             onOpenTutorial={handleTutorialOpen}
             isSaveDisabled={!editorState.selectedFrame || isExportInFlight}
             saveDisabledReason={editorState.selectedFrame ? undefined : '먼저 프레임을 골라 주세요'}
-            tutorialStep={tutorialStep}
-            frameButtonRef={tutorialRef0}
-            textButtonRef={tutorialRef1}
-            stickerButtonRef={tutorialRef2}
-            saveButtonRef={tutorialRef3}
+            tutorialTarget={tutorialTarget}
+            frameButtonRef={railFrameButtonRef}
+            textButtonRef={railTextButtonRef}
+            stickerButtonRef={railStickerButtonRef}
+            cutoutButtonRef={railCutoutButtonRef}
+            saveButtonRef={railSaveButtonRef}
           />
         )}
 
@@ -2494,9 +2601,9 @@ function App() {
               style={mobileToolbarStyle}
             >
               <button
-                ref={mobileTutorialRef0}
+                ref={toolbarFrameButtonRef}
                 type="button"
-                className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 0 ? ' tutorial-highlight' : ''}`}
+                className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialTarget === 'frames' ? ' tutorial-highlight' : ''}`}
                 style={mobileMenuButtonStyle}
                 onClick={(event) => {
                   mobileSheetOpenerRef.current = event.currentTarget;
@@ -2506,9 +2613,9 @@ function App() {
                 프레임
               </button>
               <button
-                ref={mobileTutorialRef1}
+                ref={toolbarTextButtonRef}
                 type="button"
-                className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 1 ? ' tutorial-highlight' : ''}`}
+                className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialTarget === 'text' ? ' tutorial-highlight' : ''}`}
                 style={mobileMenuButtonStyle}
                 onClick={(event) => {
                   mobileSheetOpenerRef.current = event.currentTarget;
@@ -2518,9 +2625,9 @@ function App() {
                 글씨
               </button>
               <button
-                ref={mobileTutorialRef2}
+                ref={toolbarStickerButtonRef}
                 type="button"
-                className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 2 ? ' tutorial-highlight' : ''}`}
+                className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialTarget === 'sticker' ? ' tutorial-highlight' : ''}`}
                 style={mobileMenuButtonStyle}
                 onClick={(event) => {
                   mobileSheetOpenerRef.current = event.currentTarget;
@@ -2531,8 +2638,9 @@ function App() {
               </button>
               {hasCutoutMenu && (
                 <button
+                  ref={toolbarCutoutButtonRef}
                   type="button"
-                  className={`linear-button ${mobilePanel === 'cutout' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  className={`linear-button ${mobilePanel === 'cutout' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialTarget === 'cutout' ? ' tutorial-highlight' : ''}`}
                   style={mobileMenuButtonStyle}
                   aria-label={CUTOUT_COPY.sectionTitle}
                   onClick={(event) => {
@@ -2544,9 +2652,9 @@ function App() {
                 </button>
               )}
               <button
-                ref={mobileTutorialRef3}
+                ref={toolbarSaveButtonRef}
                 type="button"
-                className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
+                className={`linear-button linear-button--primary${tutorialTarget === 'save' ? ' tutorial-highlight' : ''}`}
                 onClick={handleSaveRequest}
                 disabled={!editorState.selectedFrame || isExportInFlight}
                 title={editorState.selectedFrame ? undefined : '먼저 프레임을 골라 주세요'}
@@ -2799,7 +2907,7 @@ function App() {
                 src={exportObjectUrl}
                 alt="저장할 사진 미리보기"
                 draggable={false}
-                style={{ width: '100%', height: 'auto', borderRadius: 8, marginBottom: 12 }}
+                style={{ width: '100%', height: 'auto', maxHeight: isStickerExportPreview ? '40dvh' : undefined, objectFit: isStickerExportPreview ? 'contain' : undefined, borderRadius: 8, marginBottom: 12 }}
               />
             )}
             <div className="linear-flex" style={{ justifyContent: 'flex-end' }}>

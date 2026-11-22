@@ -1,51 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getWrappedFocusIndex } from '../state/modalFocus';
+import { getTutorialTooltipLayout, TUTORIAL_TOOLTIP_WIDTH } from './tutorialSteps';
+import type { TutorialPlacement, TutorialStep, TutorialTooltipLayout } from './tutorialSteps';
 
-type Step = {
-  title: string;
-  description: string;
-};
-
-const STEPS: Step[] = [
-  {
-    title: '① 프레임 고르기',
-    description: '사진 몇 장으로 만들지 골라요.\n빈 칸을 누르면 사진을 넣을 수 있어요.',
-  },
-  {
-    title: '② 글씨 넣기',
-    description: '사진 위에 글씨를 쓸 수 있어요.',
-  },
-  {
-    title: '③ 스티커 붙이기',
-    description: '스티커를 누르면 사진에 붙어요.',
-  },
-  {
-    title: '④ 저장',
-    description: '다 꾸몄으면 [저장]을 눌러요.',
-  },
-];
-
-const TOOLTIP_WIDTH = 224;
 const MARGIN = 16;
-const ARROW_CLAMP = 20; // 화살표가 툴팁 모서리에서 최소 이 만큼 안쪽
-
-type Layout = {
-  top: number;
-  left: number;
-  arrowOffset: number; // 데스크톱: top px / 모바일: left px
-};
+// 말풍선 테두리 폭. 화살표는 테두리 안쪽(padding box)에서부터 놓이므로 바깥 모서리 기준 arrowOffset에서 뺍니다.
+const TOOLTIP_BORDER = 3;
 
 type Props = {
   step: number;
   buttonRefs: React.RefObject<HTMLButtonElement | null>[];
   onNext: () => void;
   onSkip: () => void;
-  mobile?: boolean;
+  placement: TutorialPlacement;
+  steps: TutorialStep[];
 };
 
-export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, mobile = false }) => {
-  const [layout, setLayout] = useState<Layout>({ top: MARGIN, left: 85, arrowOffset: 80 });
+export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, placement, steps }) => {
+  const [layout, setLayout] = useState<TutorialTooltipLayout>({ top: MARGIN, left: 85, arrowOffset: 80 });
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const arrowPosition = layout.arrowOffset - TOOLTIP_BORDER;
   const prefersReducedMotion = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -72,39 +46,16 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
     const el = buttonRefs[step]?.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const tooltipH = tooltipRef.current?.offsetHeight ?? 200;
+    setLayout(getTutorialTooltipLayout({
+      placement,
+      rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+      tooltipHeight: tooltipRef.current?.offsetHeight ?? 200,
+      viewport: { width: window.innerWidth, height: window.innerHeight },
+    }));
+  }, [step, buttonRefs, placement]);
 
-    if (mobile) {
-      // 버튼 위쪽에 툴팁 배치
-      const rawTop = rect.top - tooltipH - 16;
-      const top = Math.max(MARGIN, rawTop);
-
-      // 버튼 중앙 기준 수평 정렬
-      const rawLeft = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
-      const maxLeft = window.innerWidth - TOOLTIP_WIDTH - MARGIN;
-      const left = Math.max(MARGIN, Math.min(rawLeft, maxLeft));
-
-      // 화살표: 버튼 중심 X → 툴팁 내 상대 좌표
-      const buttonCenterX = rect.left + rect.width / 2;
-      const arrowOffset = Math.max(ARROW_CLAMP, Math.min(buttonCenterX - left, TOOLTIP_WIDTH - ARROW_CLAMP));
-
-      setLayout({ top, left, arrowOffset });
-    } else {
-      // 버튼 오른쪽에 툴팁 배치
-      const centered = rect.top + rect.height / 2 - tooltipH / 2;
-      const maxTop = window.innerHeight - tooltipH - MARGIN;
-      const top = Math.max(MARGIN, Math.min(centered, maxTop));
-
-      // 화살표: 버튼 중심 Y → 툴팁 내 상대 좌표
-      const buttonCenterY = rect.top + rect.height / 2;
-      const arrowOffset = Math.max(ARROW_CLAMP, Math.min(buttonCenterY - top, tooltipH - ARROW_CLAMP));
-
-      setLayout({ top, left: 85, arrowOffset });
-    }
-  }, [step, buttonRefs, mobile]);
-
-  const currentStep = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const currentStep = steps[step];
+  const isLast = step === steps.length - 1;
 
   return (
     <>
@@ -131,22 +82,22 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           left: `${layout.left}px`,
           top: `${layout.top}px`,
           zIndex: 1000,
-          width: `${TOOLTIP_WIDTH}px`,
+          width: `${TUTORIAL_TOOLTIP_WIDTH}px`,
           background: 'var(--linear-neutral-600)',
-          border: '3px solid #000',
+          border: `${TOOLTIP_BORDER}px solid #000`,
           boxShadow: '4px 4px 0px 0px #000',
           padding: '16px',
           fontFamily: 'var(--linear-font-family)',
           transition: prefersReducedMotion ? 'none' : 'top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
       >
-        {/* 화살표 — 데스크톱: 왼쪽, 모바일: 아래쪽 */}
-        {mobile ? (
+        {/* 화살표 — 데스크톱: 왼쪽, 휴대폰 세로: 아래쪽, 낮은 가로: 오른쪽 */}
+        {placement === 'above' ? (
           <>
             <div style={{
               position: 'absolute',
               bottom: '-11px',
-              left: `${layout.arrowOffset}px`,
+              left: `${arrowPosition}px`,
               transform: 'translateX(-50%)',
               width: 0, height: 0,
               borderLeft: '10px solid transparent',
@@ -156,7 +107,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
             <div style={{
               position: 'absolute',
               bottom: '-7px',
-              left: `${layout.arrowOffset}px`,
+              left: `${arrowPosition}px`,
               transform: 'translateX(-50%)',
               width: 0, height: 0,
               borderLeft: '8px solid transparent',
@@ -164,12 +115,12 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
               borderTop: '8px solid #fff',
             }} />
           </>
-        ) : (
+        ) : placement === 'right' ? (
           <>
             <div style={{
               position: 'absolute',
               left: '-11px',
-              top: `${layout.arrowOffset}px`,
+              top: `${arrowPosition}px`,
               transform: 'translateY(-50%)',
               width: 0, height: 0,
               borderTop: '10px solid transparent',
@@ -179,7 +130,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
             <div style={{
               position: 'absolute',
               left: '-7px',
-              top: `${layout.arrowOffset}px`,
+              top: `${arrowPosition}px`,
               transform: 'translateY(-50%)',
               width: 0, height: 0,
               borderTop: '8px solid transparent',
@@ -187,11 +138,34 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
               borderRight: '8px solid #fff',
             }} />
           </>
+        ) : (
+          <>
+            <div style={{
+              position: 'absolute',
+              right: '-11px',
+              top: `${arrowPosition}px`,
+              transform: 'translateY(-50%)',
+              width: 0, height: 0,
+              borderTop: '10px solid transparent',
+              borderBottom: '10px solid transparent',
+              borderLeft: '10px solid #000',
+            }} />
+            <div style={{
+              position: 'absolute',
+              right: '-7px',
+              top: `${arrowPosition}px`,
+              transform: 'translateY(-50%)',
+              width: 0, height: 0,
+              borderTop: '8px solid transparent',
+              borderBottom: '8px solid transparent',
+              borderLeft: '8px solid #fff',
+            }} />
+          </>
         )}
 
         {/* 단계 표시 */}
         <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--linear-secondary-400)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '6px' }}>
-          {step + 1} / {STEPS.length}
+          {step + 1} / {steps.length}
         </div>
 
         {/* 제목 */}

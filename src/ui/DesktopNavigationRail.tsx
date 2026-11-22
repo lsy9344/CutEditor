@@ -2,6 +2,7 @@ import React from 'react'
 import { PHOTO_EDIT_FEATURES } from '../photo/photoEditFeatures'
 import { CUTOUT_COPY } from '../photo/cutoutCopy'
 import type { EditorMenu } from './editorMenu'
+import type { TutorialTarget } from './tutorialSteps'
 
 export type DesktopPanel = EditorMenu | null;
 
@@ -12,10 +13,11 @@ export type DesktopNavigationRailProps = {
   onOpenTutorial: () => void;
   isSaveDisabled: boolean;
   saveDisabledReason?: string;
-  tutorialStep: number | null;
+  tutorialTarget: TutorialTarget | null;
   frameButtonRef: React.Ref<HTMLButtonElement>;
   textButtonRef: React.Ref<HTMLButtonElement>;
   stickerButtonRef: React.Ref<HTMLButtonElement>;
+  cutoutButtonRef: React.Ref<HTMLButtonElement>;
   saveButtonRef: React.Ref<HTMLButtonElement>;
 };
 
@@ -44,10 +46,11 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
   onOpenTutorial,
   isSaveDisabled,
   saveDisabledReason,
-  tutorialStep,
+  tutorialTarget,
   frameButtonRef,
   textButtonRef,
   stickerButtonRef,
+  cutoutButtonRef,
   saveButtonRef,
 }) => {
   return (
@@ -69,7 +72,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         onClick={() => onTogglePanel('frames')}
         style={railButtonStyle(activePanel === 'frames')}
         aria-expanded={activePanel === 'frames'}
-        className={tutorialStep === 0 ? 'tutorial-highlight' : undefined}
+        className={tutorialTarget === 'frames' ? 'tutorial-highlight' : undefined}
       >
         <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7" />
@@ -86,7 +89,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         onClick={() => onTogglePanel('text')}
         style={railButtonStyle(activePanel === 'text')}
         aria-expanded={activePanel === 'text'}
-        className={tutorialStep === 1 ? 'tutorial-highlight' : undefined}
+        className={tutorialTarget === 'text' ? 'tutorial-highlight' : undefined}
       >
         <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="4 7 4 4 20 4 20 7" />
@@ -102,7 +105,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         onClick={() => onTogglePanel('sticker')}
         style={railButtonStyle(activePanel === 'sticker')}
         aria-expanded={activePanel === 'sticker'}
-        className={tutorialStep === 2 ? 'tutorial-highlight' : undefined}
+        className={tutorialTarget === 'sticker' ? 'tutorial-highlight' : undefined}
       >
         <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="10" />
@@ -115,8 +118,10 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
 
       {PHOTO_EDIT_FEATURES.cutout && (
         <button
+          ref={cutoutButtonRef}
           type="button"
           onClick={() => onTogglePanel('cutout')}
+          className={tutorialTarget === 'cutout' ? 'tutorial-highlight' : undefined}
           style={railButtonStyle(activePanel === 'cutout')}
           aria-expanded={activePanel === 'cutout'}
         >
@@ -147,7 +152,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
       <button
         ref={saveButtonRef}
         type="button"
-        className={`linear-button linear-button--primary${tutorialStep === 3 ? ' tutorial-highlight' : ''}`}
+        className={`linear-button linear-button--primary${tutorialTarget === 'save' ? ' tutorial-highlight' : ''}`}
         onClick={onExport}
         disabled={isSaveDisabled}
         title={saveDisabledReason}
