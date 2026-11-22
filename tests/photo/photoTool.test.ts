@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   BRUSH_SCREEN_RADIUS,
@@ -8,6 +9,7 @@ import {
   getLocalBrushRadius,
   getVisiblePhotoSpanWidth,
   isBrushPointerStart,
+  LAYOUT_MEDIA_QUERIES,
   shouldEndPhotoEraseOnLayoutChange,
   shouldKeepPhotoEraseMode,
   toNormalizedStroke,
@@ -85,18 +87,39 @@ test("실제 선택 사진이 소유 사진과 다르거나 없으면 지우기 
   );
 });
 
+// 390×844 세로 휴대폰과 844×390 가로 휴대폰의 배치 미디어 조건 값입니다(D-13).
+const PORTRAIT_PHONE_MEDIA = { isMobilePortrait: true, isNarrow: true, isShortLandscape: false };
+const LANDSCAPE_PHONE_MEDIA = { isMobilePortrait: false, isNarrow: false, isShortLandscape: true };
+const DESKTOP_MEDIA = { isMobilePortrait: false, isNarrow: false, isShortLandscape: false };
+
 test("휴대폰·데스크톱 배치가 어느 쪽으로든 바뀌면 사진 지우기 모드를 끝낸다", () => {
-  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, isPhotoEraseMode: true }), true);
-  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: false, isMobileEditor: true, isPhotoEraseMode: true }), true);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, wasLayoutMedia: PORTRAIT_PHONE_MEDIA, layoutMedia: DESKTOP_MEDIA, isPhotoEraseMode: true }), true);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: false, isMobileEditor: true, wasLayoutMedia: DESKTOP_MEDIA, layoutMedia: PORTRAIT_PHONE_MEDIA, isPhotoEraseMode: true }), true);
 });
 
-test("배치가 그대로면 사진 지우기 모드를 지킨다", () => {
-  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, isPhotoEraseMode: true }), false);
-  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: false, isMobileEditor: false, isPhotoEraseMode: true }), false);
+test("휴대폰 배치 그대로 제어판·캔버스 배치 미디어 조건이 바뀌면 사진 지우기 모드를 끝낸다", () => {
+  // 세로↔가로 회전(ST2-1)
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, wasLayoutMedia: PORTRAIT_PHONE_MEDIA, layoutMedia: LANDSCAPE_PHONE_MEDIA, isPhotoEraseMode: true }), true);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, wasLayoutMedia: LANDSCAPE_PHONE_MEDIA, layoutMedia: PORTRAIT_PHONE_MEDIA, isPhotoEraseMode: true }), true);
+  // 굵은 포인터 태블릿에서 768px 경계만 넘을 때
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, wasLayoutMedia: DESKTOP_MEDIA, layoutMedia: { ...DESKTOP_MEDIA, isNarrow: true }, isPhotoEraseMode: true }), true);
+});
+
+test("배치와 배치 미디어 조건이 그대로면 사진 지우기 모드를 지킨다", () => {
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, wasLayoutMedia: PORTRAIT_PHONE_MEDIA, layoutMedia: { ...PORTRAIT_PHONE_MEDIA }, isPhotoEraseMode: true }), false);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: false, isMobileEditor: false, wasLayoutMedia: DESKTOP_MEDIA, layoutMedia: { ...DESKTOP_MEDIA }, isPhotoEraseMode: true }), false);
 });
 
 test("사진 지우기 모드가 아니면 배치가 바뀌어도 끝낼 것이 없다", () => {
-  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, isPhotoEraseMode: false }), false);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, wasLayoutMedia: PORTRAIT_PHONE_MEDIA, layoutMedia: DESKTOP_MEDIA, isPhotoEraseMode: false }), false);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, wasLayoutMedia: PORTRAIT_PHONE_MEDIA, layoutMedia: LANDSCAPE_PHONE_MEDIA, isPhotoEraseMode: false }), false);
+});
+
+test("배치 미디어 조건은 components.css의 제어판·캔버스 배치 미디어 조건과 같다", () => {
+  const componentsCss = readFileSync(new URL("../../src/components/components.css", import.meta.url), "utf8");
+  for (const query of Object.values(LAYOUT_MEDIA_QUERIES)) {
+    assert.ok(componentsCss.includes(`@media ${query} {`), `components.css에 ${query}가 없습니다`);
+  }
 });
 
 test("확대된 사진 화면 폭이 320px 이상이면 붓 기본 크기는 보통이다", () => {

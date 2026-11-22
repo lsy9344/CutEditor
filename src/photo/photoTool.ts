@@ -60,18 +60,36 @@ export function shouldKeepPhotoEraseMode({
   return userImages.some((image) => image.id === eraseOwnerImageId);
 }
 
-// 휴대폰·데스크톱 배치가 바뀌면 캔버스가 다시 마운트되어 붓이 기본값으로 돌아가므로,
-// 사진 지우기 모드도 함께 끝낼지 정합니다(D-6, ST1-1). 판단 방식은 shouldCloseMobileSheet와 같습니다.
+// components.css에서 제어판·캔버스 배치와 제어판 보통 폭을 바꾸는 미디어 조건입니다(보정표 D-13).
+// 세로 휴대폰의 붙박이 캔버스, 768px 이하의 세로 쌓기·제어판 전체 폭, 낮은 가로 화면의 가로 배치입니다.
+export const LAYOUT_MEDIA_QUERIES = {
+  isMobilePortrait: "(max-width: 768px) and (orientation: portrait)",
+  isNarrow: "(max-width: 768px)",
+  isShortLandscape: "(orientation: landscape) and (max-height: 500px)",
+} as const;
+
+export type LayoutMediaMatches = Record<keyof typeof LAYOUT_MEDIA_QUERIES, boolean>;
+
+const LAYOUT_MEDIA_KEYS = Object.keys(LAYOUT_MEDIA_QUERIES) as Array<keyof typeof LAYOUT_MEDIA_QUERIES>;
+
+// 휴대폰·데스크톱 배치나 위 배치 미디어 조건이 바뀌면 보통 상태의 제어판 폭이 달라지므로
+// 사진 지우기 모드를 끝낼지 정합니다(D-6, ST1-1, D-13). 판단 방식은 shouldCloseMobileSheet와 같습니다.
 export function shouldEndPhotoEraseOnLayoutChange({
   wasMobileEditor,
   isMobileEditor,
+  wasLayoutMedia,
+  layoutMedia,
   isPhotoEraseMode,
 }: {
   wasMobileEditor: boolean;
   isMobileEditor: boolean;
+  wasLayoutMedia: LayoutMediaMatches;
+  layoutMedia: LayoutMediaMatches;
   isPhotoEraseMode: boolean;
 }): boolean {
-  return isPhotoEraseMode && wasMobileEditor !== isMobileEditor;
+  if (!isPhotoEraseMode) return false;
+  if (wasMobileEditor !== isMobileEditor) return true;
+  return LAYOUT_MEDIA_KEYS.some((key) => wasLayoutMedia[key] !== layoutMedia[key]);
 }
 
 export const DEFAULT_MEDIUM_BRUSH_MIN_PHOTO_WIDTH = 320;

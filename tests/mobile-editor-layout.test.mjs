@@ -46,8 +46,8 @@ test("모바일 편집기 레이아웃은 화면 너비와 무관하게 app-main
 test("캔버스 Stage는 화면용 크기를 zoom에 맞춰 확장한다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
-  assert.match(source, /const stageWidth = Math\.ceil\(frameLayout\.canvasWidth \* zoom\);/);
-  assert.match(source, /const stageHeight = Math\.ceil\(frameLayout\.canvasHeight \* zoom\);/);
+  assert.match(source, /const stageWidth = frameLayout \? Math\.ceil\(frameLayout\.canvasWidth \* zoom\) : 0;/);
+  assert.match(source, /const stageHeight = frameLayout \? Math\.ceil\(frameLayout\.canvasHeight \* zoom\) : 0;/);
   assert.match(source, /width=\{stageWidth\}/);
   assert.match(source, /height=\{stageHeight\}/);
   assert.match(source, /scaleX=\{stageView\.scale\}/);

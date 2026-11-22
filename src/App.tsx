@@ -52,8 +52,8 @@ import {
 import { getCategorySelectionOutcome, getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import type { BrushStroke, PhotoEdits } from './photo/photoEdits'
 import { appendEraseStroke, copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
-import type { BrushSize, PhotoToolMode } from './photo/photoTool'
-import { shouldEndPhotoEraseOnLayoutChange, shouldKeepPhotoEraseMode } from './photo/photoTool'
+import type { BrushSize, LayoutMediaMatches, PhotoToolMode } from './photo/photoTool'
+import { LAYOUT_MEDIA_QUERIES, shouldEndPhotoEraseOnLayoutChange, shouldKeepPhotoEraseMode } from './photo/photoTool'
 import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
   getMobileExportLimits,
@@ -61,7 +61,7 @@ import {
   isShareAbortError,
   shouldShowManualSaveHintImmediately,
 } from './utils/exportBehavior'
-import { exportStageToBlob } from './utils/stageExport'
+import { exportStageToBlob, type StageDisplayTransform } from './utils/stageExport'
 import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone } from './photo/segmentation'
 import {
   createCutoutWorkingCanvas,
@@ -234,6 +234,17 @@ const NOTICE_TONE_CLASS: Record<NoticeTone, string> = {
 
 // 시트 안에서 Tab으로 갈 수 있는 요소(DOM 순서 = Tab 순서. 양수 tabIndex는 쓰지 않음)
 const MOBILE_SHEET_FOCUSABLE = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
+
+// 제어판·캔버스 배치 미디어 조건을 지금 값으로 읽습니다(보정표 D-13).
+const readLayoutMediaMatches = (): LayoutMediaMatches => {
+  const isMatched = (query: string) => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    && window.matchMedia(query).matches;
+  return {
+    isMobilePortrait: isMatched(LAYOUT_MEDIA_QUERIES.isMobilePortrait),
+    isNarrow: isMatched(LAYOUT_MEDIA_QUERIES.isNarrow),
+    isShortLandscape: isMatched(LAYOUT_MEDIA_QUERIES.isShortLandscape),
+  };
+};
 
 const describeFocusCandidate = (element: HTMLElement | null) => {
   if (!element) return { isConnected: false, isDisabled: false, isInert: false, isHidden: true };
@@ -760,6 +771,8 @@ function App() {
 
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
+  // 캔버스가 마지막으로 커밋한 Stage 표시 변환. 저장이 끝나면 이 값으로 되돌립니다(보정표 D-13).
+  const stageDisplayRef = useRef<StageDisplayTransform | null>(null);
   // 저장이 끝나기 전에 같은 Stage로 두 번째 저장이 들어와 임시 크기·배율을 복원값으로
   // 기억하지 않도록 동기 ref로 중복 진입을 막는다.
   const exportInFlightRef = useRef(false);
@@ -778,6 +791,8 @@ function App() {
       ? window.matchMedia('(pointer: coarse)').matches
       : false
   ));
+  // 제어판·캔버스 배치 미디어 조건은 change 이벤트로 따라가 회전 직후 첫 렌더부터 맞는 값을 씁니다(보정표 D-13).
+  const [layoutMedia, setLayoutMedia] = useState<LayoutMediaMatches>(readLayoutMediaMatches);
   const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
   const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
   const [tutorialStep, setTutorialStep] = useState<number | null>(0);
@@ -864,6 +879,17 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const layoutMediaLists = Object.values(LAYOUT_MEDIA_QUERIES).map((query) => window.matchMedia(query));
+    const updateLayoutMedia = () => setLayoutMedia(readLayoutMediaMatches());
+    updateLayoutMedia();
+    layoutMediaLists.forEach((mediaList) => mediaList.addEventListener?.('change', updateLayoutMedia));
+    return () => {
+      layoutMediaLists.forEach((mediaList) => mediaList.removeEventListener?.('change', updateLayoutMedia));
+    };
+  }, []);
+
   const isResponsiveMobile = useMemo(() => {
     return viewportWidth <= 768 || (hasCoarsePointer && viewportWidth <= 1024);
   }, [hasCoarsePointer, viewportWidth]);
@@ -887,14 +913,21 @@ function App() {
   }, [isMobileEditor, mobilePanel]);
 
   // 배치가 휴대폰↔데스크톱으로 바뀌면 캔버스가 다시 마운트되어 붓이 기본값으로 돌아갑니다. 사진 지우기 모드도 함께 끝냅니다(D-6, ST1-1).
+  // 휴대폰 회전처럼 제어판·캔버스 배치 미디어 조건만 바뀌어도 보통 상태의 제어판 폭이 달라지므로 끝냅니다(D-13).
   // 선택과 이미 그린 획은 그대로 둡니다. 모드 상자가 한 번도 그려지지 않도록 layout 효과로 둡니다.
-  const previousIsMobileEditorForEraseRef = useRef(isMobileEditor);
+  const previousLayoutForEraseRef = useRef({ isMobileEditor, layoutMedia });
   useLayoutEffect(() => {
-    const wasMobileEditor = previousIsMobileEditorForEraseRef.current;
-    previousIsMobileEditorForEraseRef.current = isMobileEditor;
-    if (!shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor, isMobileEditor, isPhotoEraseMode: photoToolMode === "erase-photo" })) return;
+    const previousLayout = previousLayoutForEraseRef.current;
+    previousLayoutForEraseRef.current = { isMobileEditor, layoutMedia };
+    if (!shouldEndPhotoEraseOnLayoutChange({
+      wasMobileEditor: previousLayout.isMobileEditor,
+      isMobileEditor,
+      wasLayoutMedia: previousLayout.layoutMedia,
+      layoutMedia,
+      isPhotoEraseMode: photoToolMode === "erase-photo",
+    })) return;
     endPhotoEraseMode();
-  }, [isMobileEditor, photoToolMode, endPhotoEraseMode]);
+  }, [isMobileEditor, layoutMedia, photoToolMode, endPhotoEraseMode]);
 
   // 휴대폰 시트가 떠 있는 동안 뒤 화면에 inert를 걸고, 카드에 포커스를 줍니다(미리 고른 버튼 없음, 설계 10장).
   // 시트는 isMobileEditor일 때만 그려지므로 같은 값으로 거릅니다. 시트가 안 그려지면 mobileSheetRef가 비어 아무것도 하지 않습니다.
@@ -1727,6 +1760,7 @@ function App() {
     return exportStageToBlob({
       frameType,
       stage,
+      getDisplayTransform: () => stageDisplayRef.current,
       initialMaxWidthPx: mobileExportLimits?.initialMaxWidthPx,
       fallbackMaxWidthPx: mobileExportLimits?.fallbackMaxWidthPx ?? 3072,
     });
@@ -2291,6 +2325,8 @@ function App() {
         onPreloadPointModel: () => { void preloadPointSegmentation().catch(() => undefined); },
       }}
       stageRefExternal={stageRef}
+      stageDisplayRefExternal={stageDisplayRef}
+      isMobilePortraitLayout={layoutMedia.isMobilePortrait}
       texts={texts}
       stickers={stickers}
       onPhotoImagesStateChange={handlePhotoImagesStateChange}

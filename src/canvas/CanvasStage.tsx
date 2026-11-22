@@ -74,6 +74,7 @@ import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState
 import { getDecorImagesState, isFrameColorApplied } from "../state/decorImagesState";
 import type { DecorImagesState, FrameColorResult, FrameLoad } from "../state/decorImagesState";
 import { getSlotButtonLabel, getSlotLabel, getSwatchName } from "../state/editorLabels";
+import type { StageDisplayTransform } from "../utils/stageExport";
 
 // 끌기 대안(설계 8.2): 한 번 누를 때 20px씩 옮깁니다(방향키 Shift와 같은 값).
 const MOVE_BUTTONS = [
@@ -135,6 +136,8 @@ export type CanvasStageProps = {
   isEditLocked: boolean;
   exportMode?: boolean; // 내보내기 시 UI 오버레이 숨김
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
+  stageDisplayRefExternal?: React.MutableRefObject<StageDisplayTransform | null>; // 마지막으로 커밋한 Stage 표시 변환(저장 뒤 복원용, 보정표 D-13)
+  isMobilePortraitLayout?: boolean; // components.css의 휴대폰 세로 배치 미디어 조건 값(App이 change 이벤트로 따라감)
   texts?: Array<{
     id: string;
     text: string;
@@ -222,8 +225,6 @@ const SLOT_LIST_VISIBLE_STYLE: React.CSSProperties = { display: 'flex', flexDire
 // 화면이 1px 좁아질 때 여백을 1/6px씩 줄이면 줄이 패널 안쪽보다 항상 12px 좁습니다. 390px 이상은 16px 그대로이고 320px에서 약 4px입니다.
 // '되돌리기'는 minWidth: min-content로 한 단어 글자가 버튼 밖으로 나가지 않게 합니다.
 const HISTORY_BUTTON_PADDING = '0 clamp(4px, calc(16px - (390px - 100vw) / 6), 16px)';
-// components.css에서 캔버스와 제어줄을 문서 위쪽에 붙이는 휴대폰 세로 배치 조건과 같습니다.
-const MOBILE_PORTRAIT_MEDIA = '(max-width: 768px) and (orientation: portrait)';
 
 const toLegacyFrameFileName = (frameType: FrameType): string | null => {
   if (frameType === "1l") return "1_l";
@@ -280,6 +281,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   isEditLocked,
   exportMode = false,
   stageRefExternal,
+  stageDisplayRefExternal,
+  isMobilePortraitLayout = false,
   texts = [],
   stickers = [],
   onSelect,
@@ -543,10 +546,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
   const photoEditSections = getPhotoEditSections(PHOTO_EDIT_FEATURES);
   const isPhotoEraseMode = Boolean(selectedImage) && photoEditSections.showErase && photoEdit.toolMode === "erase-photo";
-  // 휴대폰 세로에서는 제어판을 스크롤 기준점에서 뺍니다. 그러지 않으면 '자세히'를 펼칠 때 문서가 밀려
-  // 누른 버튼이 붙박이 캔버스 뒤로 들어갑니다(ST1-2). 화면이 돌거나 바뀌면 캔버스 크기가 바뀌어 다시 그려지므로 그때 다시 읽습니다.
-  const isMobilePortraitLayout = typeof window !== "undefined" && typeof window.matchMedia === "function"
-    && window.matchMedia(MOBILE_PORTRAIT_MEDIA).matches;
   const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isCutoutCacheMissing = selectedSticker?.cutout ? !hasCutoutWorkingCanvas(selectedSticker.id) : false;
@@ -1940,6 +1939,22 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (focusedElement instanceof HTMLElement) focusedElement.scrollIntoView({ block: 'nearest' });
   }, [isSlotListFocused]);
 
+  // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
+  const stageWidth = frameLayout ? Math.ceil(frameLayout.canvasWidth * zoom) : 0;
+  const stageHeight = frameLayout ? Math.ceil(frameLayout.canvasHeight * zoom) : 0;
+  const eraseSlot = frameLayout && isPhotoEraseMode && selectedImage && !exportMode
+    ? frameLayout.slots.find((slot) => slot.id === selectedImage.slotId) ?? null
+    : null;
+  const stageView = getEraseZoomView({ isErasing: eraseSlot !== null, stageWidth, stageHeight, zoom, slot: eraseSlot });
+
+  // 저장이 끝나면 App이 이 값을 한 묶음으로 Stage에 되돌립니다. Stage에 props가 적용된 같은 커밋에서 적습니다(보정표 D-13).
+  useLayoutEffect(() => {
+    if (!stageDisplayRefExternal) return;
+    stageDisplayRefExternal.current = frameLayout
+      ? { size: { width: stageWidth, height: stageHeight }, scale: { x: stageView.scale, y: stageView.scale }, position: { x: stageView.x, y: stageView.y } }
+      : null;
+  }, [stageDisplayRefExternal, frameLayout, stageWidth, stageHeight, stageView.scale, stageView.x, stageView.y]);
+
   // 프레임이 선택되지 않았을 때 메시지 표시
   if (!selectedFrame || !frameLayout) {
     return (
@@ -1973,13 +1988,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     );
   }
 
-  // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
-  const stageWidth = Math.ceil(frameLayout.canvasWidth * zoom);
-  const stageHeight = Math.ceil(frameLayout.canvasHeight * zoom);
-  const eraseSlot = isPhotoEraseMode && selectedImage && !exportMode
-    ? frameLayout.slots.find((slot) => slot.id === selectedImage.slotId) ?? null
-    : null;
-  const stageView = getEraseZoomView({ isErasing: eraseSlot !== null, stageWidth, stageHeight, zoom, slot: eraseSlot });
   // 지우기 모드에 들어가면 보일 사진의 화면 폭(px) = 사진 가로 구간과 칸이 겹치는 폭 × 확대 배율. 회전은 무시합니다(설계 9.5, SP-9).
   // 사진이 아직 없으면 NaN → 작게
   const getErasePhotoScreenWidth = (image: UserImage): number => {
@@ -2800,6 +2808,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           className="canvas-control-panel"
           onKeyDown={handleControlPanelKeyDown}
           style={{
+            // 휴대폰 세로에서는 제어판을 스크롤 기준점에서 뺍니다. 그러지 않으면 '자세히'를 펼칠 때 문서가 밀려
+            // 누른 버튼이 붙박이 캔버스 뒤로 들어갑니다(ST1-2).
             overflowAnchor: isMobilePortraitLayout ? 'none' : undefined,
             minWidth: isPhotoEraseMode && erasePanelWidth !== null ? `${Math.min(erasePanelWidth, erasePanelAvailableWidth ?? erasePanelWidth)}px` : undefined,
           }}
