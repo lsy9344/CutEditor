@@ -36,7 +36,7 @@ import {
   createStickerTintFilter,
   getStickerTintMode,
 } from "./stickerTint";
-import { getAutoFitZoomChange, getZoomToFit } from "./zoomSizing";
+import { getAutoFitZoomChange, getEraseZoomView, getZoomToFit } from "./zoomSizing";
 import { getReadableMarkColor } from "../utils/colorContrast";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 import type { BrushStroke, PhotoEdits } from "../photo/photoEdits";
@@ -717,6 +717,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     cancelBrushStroke();
   }, [photoEdit.toolMode, selection]);
 
+  // 획을 긋는 도중 Stage 크기·배율·위치가 바뀌면(창 크기 변경 등) 그 획은 저장하지 않습니다(보정표 D-7). 저장된 획과 되돌리기 기록은 그대로입니다.
+  // Stage 크기·배율·위치(stageWidth, stageHeight, stageView)는 zoom, 프레임 배치, 확대할 칸(모드, 고른 사진의 칸, 저장 중)에서만 계산됩니다.
+  const selectedImageSlotId = selectedImage?.slotId ?? null;
+  useEffect(() => {
+    cancelBrushStroke();
+  }, [zoom, frameLayout, isPhotoEraseMode, selectedImageSlotId, exportMode]);
+
   const renderBrushControls = (guideText: string) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-neutral-50)" }}>{guideText}</p>
@@ -799,6 +806,27 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (photoEdit.toolMode !== "erase-photo") return;
     return () => setStageCursor("default");
   }, [photoEdit.toolMode, setStageCursor]);
+
+  // 지우기 모드에서는 Stage 경계 안(오버레이, 칸 여백, 다른 칸)의 휠과 두 손가락 핀치가 사진 크기를 바꾸지 않게 합니다(SP-2).
+  // Konva 이벤트는 대상 → 부모 순이라 Stage onWheel로는 사진 처리보다 늦습니다. 감싸개에서 capture 단계로 먼저 막습니다.
+  useEffect(() => {
+    const stageWrapper = stageWrapperRef.current;
+    if (!stageWrapper || !isPhotoEraseMode) return;
+    const blockStageGesture = (event: Event) => {
+      if (event.type !== "wheel" && (event as TouchEvent).touches.length < 2) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const listenerOptions = { capture: true, passive: false };
+    stageWrapper.addEventListener("wheel", blockStageGesture, listenerOptions);
+    stageWrapper.addEventListener("touchstart", blockStageGesture, listenerOptions);
+    stageWrapper.addEventListener("touchmove", blockStageGesture, listenerOptions);
+    return () => {
+      stageWrapper.removeEventListener("wheel", blockStageGesture, { capture: true });
+      stageWrapper.removeEventListener("touchstart", blockStageGesture, { capture: true });
+      stageWrapper.removeEventListener("touchmove", blockStageGesture, { capture: true });
+    };
+  }, [isPhotoEraseMode]);
 
   // 모드에서 거는 제어판 최소 폭이 지금 쓸 수 있는 폭을 넘지 않게, 창 크기가 바뀔 때마다 다시 잽니다(보정표 D-6).
   useEffect(() => {
@@ -1944,6 +1972,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
   const stageWidth = Math.ceil(frameLayout.canvasWidth * zoom);
   const stageHeight = Math.ceil(frameLayout.canvasHeight * zoom);
+  const eraseSlot = isPhotoEraseMode && selectedImage && !exportMode
+    ? frameLayout.slots.find((slot) => slot.id === selectedImage.slotId) ?? null
+    : null;
+  const stageView = getEraseZoomView({ isErasing: eraseSlot !== null, stageWidth, stageHeight, zoom, slot: eraseSlot });
   const stageWrapperStyle: React.CSSProperties = {
     border: 'var(--border-width) dashed var(--linear-neutral-500)',
     borderRadius: '0px',
@@ -2115,8 +2147,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               }}
               width={stageWidth}
               height={stageHeight}
-              scaleX={zoom}
-              scaleY={zoom}
+              scaleX={stageView.scale}
+              scaleY={stageView.scale}
+              x={stageView.x}
+              y={stageView.y}
               onMouseDown={handleStagePointerDown}
               onTouchStart={handleStagePointerDown}
               onPointerMove={moveBrushStroke}
@@ -2721,16 +2755,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     ref={brushLineRef}
                     points={[]}
                     stroke={ERASE_PREVIEW_COLOR}
-                    strokeWidth={(2 * brushScreenRadius) / zoom}
+                    strokeWidth={(2 * brushScreenRadius) / stageView.scale}
                     lineCap="round"
                     lineJoin="round"
                   />
                   <Circle
                     ref={brushCursorRef}
                     visible={false}
-                    radius={brushScreenRadius / zoom}
+                    radius={brushScreenRadius / stageView.scale}
                     stroke={BRUSH_CURSOR_STROKE_COLOR}
-                    strokeWidth={1.5 / zoom}
+                    strokeWidth={1.5 / stageView.scale}
                     fill={BRUSH_CURSOR_FILL_COLOR}
                     listening={false}
                   />

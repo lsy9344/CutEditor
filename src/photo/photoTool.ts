@@ -73,3 +73,30 @@ export function shouldEndPhotoEraseOnLayoutChange({
 }): boolean {
   return isPhotoEraseMode && wasMobileEditor !== isMobileEditor;
 }
+
+export const DEFAULT_MEDIUM_BRUSH_MIN_PHOTO_WIDTH = 320;
+
+// 지우기 모드에 들어갈 때의 붓 기본 크기(설계 9.5). 확대된 사진의 화면 폭(px)이 좁으면 작게로 시작합니다.
+export function getDefaultBrushSize(visiblePhotoWidthPx: number): BrushSize {
+  if (!Number.isFinite(visiblePhotoWidthPx)) return "small";
+  return visiblePhotoWidthPx >= DEFAULT_MEDIUM_BRUSH_MIN_PHOTO_WIDTH ? "medium" : "small";
+}
+
+// 사진 가로 구간과 칸이 겹치는 폭(설계 9.5, SP-9). 같은 좌표계(캔버스 좌표)의 값을 받습니다. 회전은 무시합니다.
+// photoWidth가 음수(좌우 뒤집힘)여도 구간으로 바꿔 셉니다.
+export function getVisiblePhotoSpanWidth({
+  photoLeft,
+  photoWidth,
+  slotLeft,
+  slotWidth,
+}: {
+  photoLeft: number;
+  photoWidth: number;
+  slotLeft: number;
+  slotWidth: number;
+}): number {
+  if ([photoLeft, photoWidth, slotLeft, slotWidth].some((value) => !Number.isFinite(value))) return Number.NaN;
+  const photoStart = Math.min(photoLeft, photoLeft + photoWidth);
+  const photoEnd = Math.max(photoLeft, photoLeft + photoWidth);
+  return Math.max(0, Math.min(photoEnd, slotLeft + slotWidth) - Math.max(photoStart, slotLeft));
+}

@@ -50,8 +50,8 @@ test("캔버스 Stage는 화면용 크기를 zoom에 맞춰 확장한다", () =>
   assert.match(source, /const stageHeight = Math\.ceil\(frameLayout\.canvasHeight \* zoom\);/);
   assert.match(source, /width=\{stageWidth\}/);
   assert.match(source, /height=\{stageHeight\}/);
-  assert.match(source, /scaleX=\{zoom\}/);
-  assert.match(source, /scaleY=\{zoom\}/);
+  assert.match(source, /scaleX=\{stageView\.scale\}/);
+  assert.match(source, /scaleY=\{stageView\.scale\}/);
 });
 
 test("모바일 시트 본문은 내부 스크롤이 가능해야 한다", () => {

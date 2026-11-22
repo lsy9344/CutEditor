@@ -15,6 +15,9 @@ type FakeStage = {
   scale: (next: { x: number; y: number }) => void;
   scaleX: () => number;
   scaleY: () => number;
+  position: (next: { x: number; y: number }) => void;
+  x: () => number;
+  y: () => number;
   batchDraw: () => void;
   container: () => { isConnected: boolean };
   getLayers: () => unknown[];
@@ -29,6 +32,8 @@ function createFakeStage(
   let height = 720;
   let scaleX = 1.5;
   let scaleY = 1.5;
+  let positionX = 0;
+  let positionY = 0;
 
   const sizeCalls: Array<{ width: number; height: number }> = [];
   const scaleCalls: Array<{ x: number; y: number }> = [];
@@ -49,6 +54,12 @@ function createFakeStage(
     },
     scaleX: () => scaleX,
     scaleY: () => scaleY,
+    position: (next) => {
+      positionX = next.x;
+      positionY = next.y;
+    },
+    x: () => positionX,
+    y: () => positionY,
     batchDraw: () => {
       batchDrawCalls += 1;
     },
@@ -291,4 +302,38 @@ test("exportStageToBlob은 덮어쓰기가 없으면 크기·배율을 더 만�
     assert.deepEqual({ width: stage.width(), height: stage.height() }, { width: 480, height: 720 });
     assert.deepEqual({ x: stage.scaleX(), y: stage.scaleY() }, { x: 1.5, y: 1.5 });
   });
+});
+
+// 보정표 D-8: 지우기 모드에서 확대해 Stage 위치가 0이 아니어도 캡처는 원점에서 하고, 끝나면 표시 위치로 돌립니다.
+test("exportStageToBlob은 캡처 때 Stage 위치를 원점(0, 0)으로 두고 캡처 뒤 표시 위치로 되돌린다", async () => {
+  const capturedPositions: Array<{ x: number; y: number }> = [];
+  const { stage } = createFakeStage(async () => {
+    capturedPositions.push({ x: stage.x(), y: stage.y() });
+    return new Blob(["ok"], { type: "image/png" });
+  });
+  stage.position({ x: 37, y: -12 });
+
+  await withImmediateFrames(async () => {
+    await exportStageToBlob({ frameType: "4v_1", stage });
+  });
+
+  assert.deepEqual(capturedPositions, [{ x: 0, y: 0 }], "캡처 때 Stage 위치가 원점이 아닙니다");
+  assert.deepEqual({ x: stage.x(), y: stage.y() }, { x: 37, y: -12 }, "처음 표시 위치로 되돌리지 않았습니다");
+
+  // 기다리는 사이 다시 그리기가 위치를 덮어쓰면, 캡처는 원점에서 하고 끝나면 마지막으로 들어온 표시 위치로 돌립니다.
+  const OVERWRITTEN_POSITION = { x: 5, y: 9 };
+  const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    stage.position(OVERWRITTEN_POSITION);
+    callback(0);
+    return 1;
+  }) as typeof requestAnimationFrame;
+  try {
+    await exportStageToBlob({ frameType: "4v_1", stage });
+  } finally {
+    globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+  }
+
+  assert.deepEqual(capturedPositions, [{ x: 0, y: 0 }, { x: 0, y: 0 }], "덮어쓴 위치로 캡처했습니다");
+  assert.deepEqual({ x: stage.x(), y: stage.y() }, OVERWRITTEN_POSITION, "옛 표시 위치로 되돌렸습니다");
 });

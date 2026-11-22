@@ -11,6 +11,11 @@ type StageScale = {
   y: number;
 };
 
+type StagePosition = {
+  x: number;
+  y: number;
+};
+
 type BlobRenderConfig = {
   mimeType?: string;
   pixelRatio?: number;
@@ -23,6 +28,9 @@ export type StageExportTarget = {
   scale: (next: StageScale) => void;
   scaleX: () => number;
   scaleY: () => number;
+  position: (next: StagePosition) => void;
+  x: () => number;
+  y: () => number;
   batchDraw: () => void;
   container: () => { isConnected: boolean };
   getLayers: () => ReadonlyArray<unknown>;
@@ -62,38 +70,48 @@ export async function exportStageToBlob({
   });
   const previousSize = { width: stage.width(), height: stage.height() };
   const previousScale = { x: stage.scaleX(), y: stage.scaleY() };
+  const previousPosition = { x: stage.x(), y: stage.y() };
   const planSize = { width: frameLayout.canvasWidth, height: frameLayout.canvasHeight };
   const planScale = { x: 1, y: 1 };
+  // 지우기 모드 확대로 Stage가 옮겨져 있어도 캡처는 원점에서 합니다(보정표 D-8).
+  const planPosition = { x: 0, y: 0 };
   // 끝난 뒤 돌려놓을 표시 값. 기다리는 사이 화면 맞춤이 새 값을 넣었으면 그 값으로 바뀝니다(UX5-1).
   let displaySize = previousSize;
   let displayScale = previousScale;
+  let displayPosition = previousPosition;
 
   const restoreStage = () => {
     stage.size(displaySize);
     stage.scale(displayScale);
+    stage.position(displayPosition);
     stage.batchDraw();
   };
 
   const isStageAtPlan = (): boolean => stage.width() === planSize.width
     && stage.height() === planSize.height
     && stage.scaleX() === planScale.x
-    && stage.scaleY() === planScale.y;
+    && stage.scaleY() === planScale.y
+    && stage.x() === planPosition.x
+    && stage.y() === planPosition.y;
 
   // 마지막 대기 뒤 캡처 직전에 Stage가 살아 있는지 봅니다. 아니면 캡처하지 않고 null(대기)로 끝냅니다. 낮은 배율 재렌더도 같습니다.
   const renderBlob = async (pixelRatio: number): Promise<Blob | null> => {
     stage.size(planSize);
     stage.scale(planScale);
+    stage.position(planPosition);
     stage.batchDraw();
     await waitForNextFrame();
     if (!isStageAlive(stage)) return null;
 
-    // 기다리는 사이 화면 맞춤이 표시 크기·배율을 덮어썼으면 그 값을 표시 값으로 기억하고, 계획 값을 그 자리에서 다시 설정합니다.
+    // 기다리는 사이 화면 맞춤이 표시 크기·배율·위치를 덮어썼으면 그 값을 표시 값으로 기억하고, 계획 값을 그 자리에서 다시 설정합니다.
     // 이 아래에는 await가 없어야 합니다(캡처 전에 또 덮어쓸 틈을 주지 않음).
     if (!isStageAtPlan()) {
       displaySize = { width: stage.width(), height: stage.height() };
       displayScale = { x: stage.scaleX(), y: stage.scaleY() };
+      displayPosition = { x: stage.x(), y: stage.y() };
       stage.size(planSize);
       stage.scale(planScale);
+      stage.position(planPosition);
     }
 
     const blobResult = await stage.toBlob({

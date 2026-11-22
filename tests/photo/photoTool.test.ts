@@ -4,7 +4,9 @@ import assert from "node:assert/strict";
 import {
   BRUSH_SCREEN_RADIUS,
   BRUSH_SIZE_OPTIONS,
+  getDefaultBrushSize,
   getLocalBrushRadius,
+  getVisiblePhotoSpanWidth,
   isBrushPointerStart,
   shouldEndPhotoEraseOnLayoutChange,
   shouldKeepPhotoEraseMode,
@@ -95,4 +97,30 @@ test("배치가 그대로면 사진 지우기 모드를 지킨다", () => {
 
 test("사진 지우기 모드가 아니면 배치가 바뀌어도 끝낼 것이 없다", () => {
   assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, isPhotoEraseMode: false }), false);
+});
+
+test("확대된 사진 화면 폭이 320px 이상이면 붓 기본 크기는 보통이다", () => {
+  assert.equal(getDefaultBrushSize(320), "medium");
+  assert.equal(getDefaultBrushSize(586), "medium");
+});
+
+test("확대된 사진 화면 폭이 320px보다 작거나 알 수 없으면 붓 기본 크기는 작게다", () => {
+  for (const width of [319, 89, 0, Number.NaN, -5]) {
+    assert.equal(getDefaultBrushSize(width), "small", `폭 ${width}`);
+  }
+});
+
+test("사진 가로 구간과 칸이 겹치는 폭을 돌려준다", () => {
+  assert.equal(getVisiblePhotoSpanWidth({ photoLeft: 150, photoWidth: 200, slotLeft: 100, slotWidth: 400 }), 200);
+  assert.equal(getVisiblePhotoSpanWidth({ photoLeft: 50, photoWidth: 600, slotLeft: 100, slotWidth: 400 }), 400);
+  assert.equal(getVisiblePhotoSpanWidth({ photoLeft: 400, photoWidth: 200, slotLeft: 100, slotWidth: 400 }), 100);
+  assert.equal(getVisiblePhotoSpanWidth({ photoLeft: 600, photoWidth: 200, slotLeft: 100, slotWidth: 400 }), 0);
+});
+
+test("좌우 뒤집힌 사진도 겹치는 폭을 구하고, 값이 유한하지 않으면 NaN이다", () => {
+  assert.equal(getVisiblePhotoSpanWidth({ photoLeft: 300, photoWidth: -200, slotLeft: 100, slotWidth: 400 }), 200);
+  const span = { photoLeft: 150, photoWidth: 200, slotLeft: 100, slotWidth: 400 };
+  for (const key of Object.keys(span) as (keyof typeof span)[]) {
+    assert.ok(Number.isNaN(getVisiblePhotoSpanWidth({ ...span, [key]: Number.NaN })), `${key} NaN`);
+  }
 });

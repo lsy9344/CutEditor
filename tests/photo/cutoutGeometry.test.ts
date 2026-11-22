@@ -105,7 +105,7 @@ test("getCutoutBrushScreenRadius ignores rotation and flip signs", () => {
 test("가장자리 지우기 미리보기와 실제 처리에 같은 상한 반지름을 쓴다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
-  assert.match(source, /strokeWidth=\{\(2 \* brushScreenRadius\) \/ zoom\}/);
+  assert.match(source, /strokeWidth=\{\(2 \* brushScreenRadius\) \/ stageView\.scale\}/);
   assert.match(
     source,
     /getLocalBrushRadius\(\s*getCutoutBrushScreenRadius\(requestedScreenRadius, targetSticker, zoom\),/,

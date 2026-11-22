@@ -61,3 +61,40 @@ export function getAutoFitZoomChange({
   if (isSaving) return null;
   return Math.abs(fittedZoom - currentZoom) > AUTO_FIT_ZOOM_TOLERANCE ? fittedZoom : null;
 }
+
+type EraseZoomSlot = { x: number; y: number; width: number; height: number };
+
+type GetEraseZoomViewArgs = {
+  isErasing: boolean;
+  stageWidth: number;
+  stageHeight: number;
+  zoom: number;
+  slot: EraseZoomSlot | null;
+};
+
+export type StageView = { scale: number; x: number; y: number };
+
+export const ERASE_ZOOM_MAX = 4;
+export const ERASE_ZOOM_MIN_GAIN = 1.25;
+
+// 지우기 모드에서 고른 칸을 Stage 상자 안에 꽉 차게 보이는 배율과 위치(설계 9.1). 단위: slot은 캔버스 좌표, 나머지는 화면 px
+export function getEraseZoomView({ isErasing, stageWidth, stageHeight, zoom, slot }: GetEraseZoomViewArgs): StageView {
+  const fitView = { scale: zoom, x: 0, y: 0 };
+  if (!isErasing || !slot) return fitView;
+  const sizes = [stageWidth, stageHeight, zoom, slot.width, slot.height];
+  if (sizes.some((size) => !Number.isFinite(size) || size <= 0)) return fitView;
+  if (!Number.isFinite(slot.x) || !Number.isFinite(slot.y)) return fitView;
+  const edgePadding = Math.min(16, Math.round(0.05 * Math.min(stageWidth, stageHeight)));
+  const gain = Math.min(
+    (stageWidth - 2 * edgePadding) / (slot.width * zoom),
+    (stageHeight - 2 * edgePadding) / (slot.height * zoom),
+    ERASE_ZOOM_MAX,
+  );
+  if (!(gain >= ERASE_ZOOM_MIN_GAIN)) return fitView;
+  const scale = zoom * gain;
+  return {
+    scale,
+    x: stageWidth / 2 - (slot.x + slot.width / 2) * scale,
+    y: stageHeight / 2 - (slot.y + slot.height / 2) * scale,
+  };
+}
