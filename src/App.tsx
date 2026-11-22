@@ -53,7 +53,7 @@ import { getCategorySelectionOutcome, getFrameSelectionDecision, hasFrameContent
 import type { BrushStroke, PhotoEdits } from './photo/photoEdits'
 import { appendEraseStroke, copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
 import type { BrushSize, PhotoToolMode } from './photo/photoTool'
-import { shouldKeepPhotoEraseMode } from './photo/photoTool'
+import { shouldEndPhotoEraseOnLayoutChange, shouldKeepPhotoEraseMode } from './photo/photoTool'
 import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
   getMobileExportLimits,
@@ -479,6 +479,11 @@ function App() {
   const [photoToolMode, setPhotoToolMode] = useState<PhotoToolMode>("none");
   const [brushSize, setBrushSize] = useState<BrushSize>("medium");
   const [eraseOwnerImageId, setEraseOwnerImageId] = useState<string | null>(null);
+  // 사진 지우기 모드를 끝낼 때 모드와 소유 사진 id를 함께 비웁니다(ST1-3). 포커스 복귀는 각 UI 핸들러가 맡습니다.
+  const endPhotoEraseMode = useCallback(() => {
+    setPhotoToolMode("none");
+    setEraseOwnerImageId(null);
+  }, []);
   // 선택이 바뀌면 도구 모드를 끕니다. 사진 지우기 모드는 빼고, 아래 소유 사진 효과가 정합니다(D-1).
   useEffect(() => { setPhotoToolMode((mode) => (mode === "erase-photo" ? mode : "none")); }, [editorState.selection]);
   const currentDocument = useMemo<EditorDocument>(() => ({
@@ -881,6 +886,16 @@ function App() {
     if (isRefocusNeeded) focusReturnTarget({ origin: 'frame-change', opener: null });
   }, [isMobileEditor, mobilePanel]);
 
+  // 배치가 휴대폰↔데스크톱으로 바뀌면 캔버스가 다시 마운트되어 붓이 기본값으로 돌아갑니다. 사진 지우기 모드도 함께 끝냅니다(D-6, ST1-1).
+  // 선택과 이미 그린 획은 그대로 둡니다. 모드 상자가 한 번도 그려지지 않도록 layout 효과로 둡니다.
+  const previousIsMobileEditorForEraseRef = useRef(isMobileEditor);
+  useLayoutEffect(() => {
+    const wasMobileEditor = previousIsMobileEditorForEraseRef.current;
+    previousIsMobileEditorForEraseRef.current = isMobileEditor;
+    if (!shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor, isMobileEditor, isPhotoEraseMode: photoToolMode === "erase-photo" })) return;
+    endPhotoEraseMode();
+  }, [isMobileEditor, photoToolMode, endPhotoEraseMode]);
+
   // 휴대폰 시트가 떠 있는 동안 뒤 화면에 inert를 걸고, 카드에 포커스를 줍니다(미리 고른 버튼 없음, 설계 10장).
   // 시트는 isMobileEditor일 때만 그려지므로 같은 값으로 거릅니다. 시트가 안 그려지면 mobileSheetRef가 비어 아무것도 하지 않습니다.
   useEffect(() => {
@@ -1265,8 +1280,8 @@ function App() {
   useLayoutEffect(() => {
     if (photoToolMode !== "erase-photo") return;
     if (shouldKeepPhotoEraseMode({ eraseOwnerImageId, selectedImageId: selectedPhotoId, userImages: editorState.userImages })) return;
-    setPhotoToolMode("none");
-  }, [photoToolMode, eraseOwnerImageId, selectedPhotoId, editorState.userImages]);
+    endPhotoEraseMode();
+  }, [photoToolMode, eraseOwnerImageId, selectedPhotoId, editorState.userImages, endPhotoEraseMode]);
 
   // 완성 획을 최신 문서에 덧붙입니다(SP-4).
   const handlePhotoEraseStrokeAdd = (imageId: string, stroke: BrushStroke) => {
@@ -1872,8 +1887,7 @@ function App() {
           // 확인은 기다린 뒤 읽은 캔버스 하나에만 합니다(UX3-1). 렌더도 그 캔버스로 합니다.
           prepareCanvas: async () => {
             setCompareHeld(false);
-            setPhotoToolMode("none");
-            setEraseOwnerImageId(null);
+            endPhotoEraseMode();
             setExportMode(true);
             await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
             const stage = stageRef.current; // 기다린 뒤 한 번만 읽습니다. 이 캔버스를 확인하고 이 캔버스로 렌더합니다

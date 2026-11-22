@@ -220,6 +220,8 @@ const SLOT_LIST_VISIBLE_STYLE: React.CSSProperties = { display: 'flex', flexDire
 // 화면이 1px 좁아질 때 여백을 1/6px씩 줄이면 줄이 패널 안쪽보다 항상 12px 좁습니다. 390px 이상은 16px 그대로이고 320px에서 약 4px입니다.
 // '되돌리기'는 minWidth: min-content로 한 단어 글자가 버튼 밖으로 나가지 않게 합니다.
 const HISTORY_BUTTON_PADDING = '0 clamp(4px, calc(16px - (390px - 100vw) / 6), 16px)';
+// components.css에서 캔버스와 제어줄을 문서 위쪽에 붙이는 휴대폰 세로 배치 조건과 같습니다.
+const MOBILE_PORTRAIT_MEDIA = '(max-width: 768px) and (orientation: portrait)';
 
 const toLegacyFrameFileName = (frameType: FrameType): string | null => {
   if (frameType === "1l") return "1_l";
@@ -539,6 +541,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
   const photoEditSections = getPhotoEditSections(PHOTO_EDIT_FEATURES);
   const isPhotoEraseMode = Boolean(selectedImage) && photoEditSections.showErase && photoEdit.toolMode === "erase-photo";
+  // 휴대폰 세로에서는 제어판을 스크롤 기준점에서 뺍니다. 그러지 않으면 '자세히'를 펼칠 때 문서가 밀려
+  // 누른 버튼이 붙박이 캔버스 뒤로 들어갑니다(ST1-2). 화면이 돌거나 바뀌면 캔버스 크기가 바뀌어 다시 그려지므로 그때 다시 읽습니다.
+  const isMobilePortraitLayout = typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia(MOBILE_PORTRAIT_MEDIA).matches;
   const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isCutoutCacheMissing = selectedSticker?.cutout ? !hasCutoutWorkingCanvas(selectedSticker.id) : false;
@@ -2738,7 +2744,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           ref={controlPanelRef}
           className="canvas-control-panel"
           onKeyDown={handleControlPanelKeyDown}
-          style={isPhotoEraseMode && erasePanelWidth !== null ? { minWidth: `${Math.min(erasePanelWidth, erasePanelAvailableWidth ?? erasePanelWidth)}px` } : undefined}
+          style={{
+            overflowAnchor: isMobilePortraitLayout ? 'none' : undefined,
+            minWidth: isPhotoEraseMode && erasePanelWidth !== null ? `${Math.min(erasePanelWidth, erasePanelAvailableWidth ?? erasePanelWidth)}px` : undefined,
+          }}
         >
           <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
             <button

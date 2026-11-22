@@ -59,3 +59,17 @@ export function shouldKeepPhotoEraseMode({
   if (!eraseOwnerImageId || selectedImageId !== eraseOwnerImageId) return false;
   return userImages.some((image) => image.id === eraseOwnerImageId);
 }
+
+// 휴대폰·데스크톱 배치가 바뀌면 캔버스가 다시 마운트되어 붓이 기본값으로 돌아가므로,
+// 사진 지우기 모드도 함께 끝낼지 정합니다(D-6, ST1-1). 판단 방식은 shouldCloseMobileSheet와 같습니다.
+export function shouldEndPhotoEraseOnLayoutChange({
+  wasMobileEditor,
+  isMobileEditor,
+  isPhotoEraseMode,
+}: {
+  wasMobileEditor: boolean;
+  isMobileEditor: boolean;
+  isPhotoEraseMode: boolean;
+}): boolean {
+  return isPhotoEraseMode && wasMobileEditor !== isMobileEditor;
+}

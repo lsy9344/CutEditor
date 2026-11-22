@@ -6,6 +6,7 @@ import {
   BRUSH_SIZE_OPTIONS,
   getLocalBrushRadius,
   isBrushPointerStart,
+  shouldEndPhotoEraseOnLayoutChange,
   shouldKeepPhotoEraseMode,
   toNormalizedStroke,
 } from "../../src/photo/photoTool.ts";
@@ -80,4 +81,18 @@ test("실제 선택 사진이 소유 사진과 다르거나 없으면 지우기 
     shouldKeepPhotoEraseMode({ eraseOwnerImageId: null, selectedImageId: "photo-1", userImages: ERASE_TEST_IMAGES }),
     false,
   );
+});
+
+test("휴대폰·데스크톱 배치가 어느 쪽으로든 바뀌면 사진 지우기 모드를 끝낸다", () => {
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, isPhotoEraseMode: true }), true);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: false, isMobileEditor: true, isPhotoEraseMode: true }), true);
+});
+
+test("배치가 그대로면 사진 지우기 모드를 지킨다", () => {
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: true, isPhotoEraseMode: true }), false);
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: false, isMobileEditor: false, isPhotoEraseMode: true }), false);
+});
+
+test("사진 지우기 모드가 아니면 배치가 바뀌어도 끝낼 것이 없다", () => {
+  assert.equal(shouldEndPhotoEraseOnLayoutChange({ wasMobileEditor: true, isMobileEditor: false, isPhotoEraseMode: false }), false);
 });
