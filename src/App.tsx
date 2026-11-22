@@ -61,7 +61,8 @@ import {
   isShareAbortError,
   shouldShowManualSaveHintImmediately,
 } from './utils/exportBehavior'
-import { exportStageToBlob, type StageDisplayTransform } from './utils/stageExport'
+import { exportStageToBlob } from './utils/stageExport'
+import type { StageDisplayTransform } from './utils/stageExport'
 import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone } from './photo/segmentation'
 import {
   createCutoutWorkingCanvas,
