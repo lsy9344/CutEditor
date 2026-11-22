@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
-import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line, Transformer } from "react-konva";
+import { Stage, Layer, Image as KonvaImage, Rect, Group, Text, Line, Circle, Transformer } from "react-konva";
 import Konva from "konva";
 import type { Template } from "../state/types";
 import type { FrameType, UserImage } from "../types/frame";
@@ -10,6 +10,7 @@ import { getTextDimensions } from "./textTransform";
 import {
   getAngleInputDegrees,
   getAngleInputValue,
+  getCanvasEscapeAction,
   getCenterRotatedTransform,
   getCenterScaledTransform,
   getClampedKeyboardMove,
@@ -567,20 +568,44 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const eraseStartButtonRef = useRef<HTMLButtonElement | null>(null);
   const eraseDoneButtonRef = useRef<HTMLButtonElement | null>(null);
   const eraseFocusTargetRef = useRef<EraseModeFocusTarget>("none");
+  const brushCursorRef = useRef<Konva.Circle | null>(null);
 
   const drawBrushPreview = (points: number[]) => {
     brushLineRef.current?.points(points);
     brushLineRef.current?.getLayer()?.batchDraw();
   };
 
+  const hideBrushCursor = () => {
+    const brushCursor = brushCursorRef.current;
+    if (!brushCursor || !brushCursor.visible()) return;
+    brushCursor.visible(false);
+    brushCursor.getLayer()?.batchDraw();
+  };
+
+  // 마우스로 칠하기 전에만 붓 원을 보입니다. 터치·펜과 칠하는 중에는 미리보기 선이 알려 줍니다(설계 8.4).
+  const moveBrushCursor = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    if (event.evt.pointerType !== "mouse" || brushDraftRef.current) {
+      hideBrushCursor();
+      return;
+    }
+    const brushCursor = brushCursorRef.current;
+    const pointerPosition = event.target.getStage()?.getRelativePointerPosition();
+    if (!brushCursor || !pointerPosition) return;
+    brushCursor.position(pointerPosition);
+    brushCursor.visible(true);
+    brushCursor.getLayer()?.batchDraw();
+  };
+
   const cancelBrushStroke = () => {
     brushDraftRef.current = null;
     drawBrushPreview([]);
+    hideBrushCursor();
   };
 
   const startBrushStroke = (event: Konva.KonvaEventObject<PointerEvent>, targetId: string) => {
     if (!isBrushPointerStart(event.evt.pointerType, event.evt.isPrimary, event.evt.button)) return;
     if (brushDraftRef.current) cancelBrushStroke();
+    hideBrushCursor();
     const overlay = event.target;
     const local = overlay.getRelativePointerPosition();
     const stagePoint = overlay.getStage()?.getRelativePointerPosition();
@@ -759,6 +784,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (focusTarget === "erase-done") eraseDoneButtonRef.current?.focus();
     else eraseStartButtonRef.current?.focus();
   });
+
+  // 오버레이가 사라질 때는 onMouseLeave가 오지 않으므로, 모드가 끝나면 십자 커서를 되돌립니다(설계 8.4).
+  useEffect(() => {
+    if (photoEdit.toolMode !== "erase-photo") return;
+    return () => setStageCursor("default");
+  }, [photoEdit.toolMode, setStageCursor]);
 
   // 모드에서 거는 제어판 최소 폭이 지금 쓸 수 있는 폭을 넘지 않게, 창 크기가 바뀔 때마다 다시 잽니다(보정표 D-6).
   useEffect(() => {
@@ -1279,6 +1310,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     if (e.key === "Escape") {
       e.preventDefault();
+      if (getCanvasEscapeAction(photoEdit.toolMode) === "end-erase-mode") {
+        photoEdit.onToolModeChange("none");
+        return;
+      }
       onSelect?.(null);
       onSlotSelect?.(null);
       return;
@@ -1391,6 +1426,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     onTextDelete,
     onStickerDelete,
     onStickerUpdate,
+    photoEdit.onToolModeChange,
+    photoEdit.toolMode,
     selectImage,
     selectedImage,
     selectedText,
@@ -2220,7 +2257,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             });
                           }}
                         />
-                        {isSelectedImage && photoEdit.toolMode === "erase-photo" && (
+                        {userImage.id === selectedImageId && photoEdit.toolMode === "erase-photo" && (
                           <Rect
                             x={centerX}
                             y={centerY}
@@ -2231,6 +2268,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             rotation={uRotation}
                             fill="transparent"
                             onPointerDown={(event) => startBrushStroke(event, userImage.id)}
+                            onPointerMove={moveBrushCursor}
+                            onMouseEnter={() => setStageCursor("crosshair")}
+                            onMouseLeave={() => {
+                              setStageCursor("default");
+                              hideBrushCursor();
+                            }}
                           />
                         )}
                       </Group>
@@ -2672,6 +2715,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     strokeWidth={(2 * brushScreenRadius) / zoom}
                     lineCap="round"
                     lineJoin="round"
+                  />
+                  <Circle
+                    ref={brushCursorRef}
+                    visible={false}
+                    radius={brushScreenRadius / zoom}
+                    stroke="#000"
+                    strokeWidth={1.5 / zoom}
+                    fill="rgba(255,107,53,0.25)"
+                    listening={false}
                   />
                 </Layer>
               )}
