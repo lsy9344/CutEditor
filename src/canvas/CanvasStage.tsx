@@ -11,6 +11,7 @@ import {
   getAngleInputDegrees,
   getAngleInputValue,
   getCanvasEscapeAction,
+  getControlPanelEscapeAction,
   getCenterRotatedTransform,
   getCenterScaledTransform,
   getClampedKeyboardMove,
@@ -44,7 +45,9 @@ import { getCutoutImagesState } from "../photo/cutoutTypes";
 import type { CutoutChanges, CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
 import { hasCutoutWorkingCanvas } from "../photo/cutoutCache";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
-import { getCutoutBrushScreenRadius, stickerLocalToSourceUv, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
+import { canvasPointToPhotoUv, getCutoutBrushScreenRadius, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
+import type { PhotoPlacement } from "../photo/cutoutGeometry";
+import { getCutoutPickButtons, getRestartChanges } from "../photo/cutoutCreate";
 import {
   applyPresetToEdits,
   isDefaultPhotoEdits,
@@ -112,11 +115,17 @@ export type CanvasPhotoEditProps = {
   onBrushSizeChange: (size: BrushSize) => void;
 };
 
+export type CanvasCutoutPick = { sourceImageId: string; stickerId: string | null; message: string };
+
 export type CanvasCutoutEditProps = {
   errorMessage: string | null;
   onRegenerate: (stickerId: string, changes: CutoutChanges) => void;
-  onPreloadPointModel: () => void;
   onSave: ((stickerId: string, opener: HTMLElement) => void) | null;
+  pick: CanvasCutoutPick | null; // 첫 고르기(stickerId null)·다시 고르기 중일 때
+  onPick: (point: { x: number; y: number }) => void;
+  onPickStart: (stickerId: string) => void;
+  onPickCancel: () => void;
+  firstPickCancelRef: React.RefObject<HTMLButtonElement>;
 };
 
 export type CanvasStageProps = {
@@ -560,8 +569,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const brushScreenRadius = photoEdit.toolMode === "erase-cutout" && selectedSticker?.cutout
     ? getCutoutBrushScreenRadius(BRUSH_SCREEN_RADIUS[activeBrushSize], selectedSticker, zoom)
     : BRUSH_SCREEN_RADIUS[activeBrushSize];
+  const isCutoutPickMode = photoEdit.toolMode === "pick-point" && cutoutEdit.pick !== null;
+  const cutoutSourcePhotoMissing = selectedSticker?.cutout ? !userImages.some((image) => image.id === selectedSticker.cutout?.sourceImageId) : false;
   // 칸 목록으로 골라 selection이 비어 있어도 사진 지우기 모드에서는 캔버스가 터치를 모두 받아야 획이 페이지 스크롤로 새지 않습니다.
-  const isTouchManipulationActive = Boolean(selection) || isPhotoEraseMode;
+  // 첫 고르기는 선택이 비어 있어도 칸 사진 누름이 스크롤로 새지 않게 합니다.
+  const isTouchManipulationActive = Boolean(selection) || isPhotoEraseMode || isCutoutPickMode;
 
   useEffect(() => {
     if (!photoEditSections.showBox && photoEdit.compareHeld) {
@@ -679,14 +691,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     }
   };
 
-  const handleCutoutPick = (event: Konva.KonvaEventObject<PointerEvent>, sticker: { id: string; width: number; height: number; cutout?: CutoutSource }) => {
-    if (!sticker.cutout) return;
-    const local = event.target.getRelativePointerPosition();
-    if (!local) return;
-    const point = stickerLocalToSourceUv(local, { width: sticker.width, height: sticker.height }, sticker.cutout.crop, sticker.cutout.workingSize);
-    if (point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1) return;
-    photoEdit.onToolModeChange("none");
-    cutoutEdit.onRegenerate(sticker.id, { target: { kind: "point", x: point.x, y: point.y } });
+  // 칸 사진을 누르면 사진 전체 0~1 좌표로 바꿔 App에 넘깁니다(설계 5.2). 칸 밖·빈 여백은 무시합니다.
+  const handlePhotoPick = (event: Konva.KonvaEventObject<PointerEvent>, placement: PhotoPlacement) => {
+    event.cancelBubble = true; // 선택이 바뀌지 않게
+    const point = event.target.getLayer()?.getRelativePointerPosition();
+    if (!point) return;
+    const uv = canvasPointToPhotoUv(point, placement);
+    if (uv) cutoutEdit.onPick(uv);
   };
 
   const finishBrushStrokeRef = useRef(finishBrushStroke);
@@ -781,9 +792,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   // 제어판 안 어디에 포커스가 있어도 Esc로 지우기 모드를 끝냅니다(S-15). 창 단위 Esc 듣기(App 되돌리기, 글씨체 창)로 올라가지 않게 멈춥니다.
   const handleControlPanelKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Escape" || photoEdit.toolMode !== "erase-photo") return;
+    if (event.key !== "Escape") return;
+    const action = getControlPanelEscapeAction(photoEdit.toolMode);
+    if (action === "none") return;
     event.preventDefault();
     event.stopPropagation();
+    if (action === "end-pick-mode") {
+      cutoutEdit.onPickCancel();
+      return;
+    }
     eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: true });
     photoEdit.onToolModeChange("none");
   };
@@ -1356,8 +1373,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     if (e.key === "Escape") {
       e.preventDefault();
-      if (getCanvasEscapeAction(photoEdit.toolMode) === "end-erase-mode") {
+      const escapeAction = getCanvasEscapeAction(photoEdit.toolMode);
+      if (escapeAction === "end-erase-mode") {
         photoEdit.onToolModeChange("none");
+        return;
+      }
+      if (escapeAction === "end-pick-mode") {
+        cutoutEdit.onPickCancel();
         return;
       }
       onSelect?.(null);
@@ -1474,6 +1496,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     onStickerUpdate,
     photoEdit.onToolModeChange,
     photoEdit.toolMode,
+    cutoutEdit.onPickCancel,
     selectImage,
     selectedImage,
     selectedText,
@@ -1952,10 +1975,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // Stage wrapper에 고정 크기를 설정하여 Stage 콘텐츠가 컨테이너를 확장하지 않도록 함
   const stageWidth = frameLayout ? Math.ceil(frameLayout.canvasWidth * zoom) : 0;
   const stageHeight = frameLayout ? Math.ceil(frameLayout.canvasHeight * zoom) : 0;
-  const eraseSlot = frameLayout && isPhotoEraseMode && selectedImage && !exportMode
-    ? frameLayout.slots.find((slot) => slot.id === selectedImage.slotId) ?? null
+  const pickImage = isCutoutPickMode ? userImages.find((image) => image.id === cutoutEdit.pick?.sourceImageId) ?? null : null;
+  const zoomImage = isPhotoEraseMode ? selectedImage : pickImage; // 사진 지우기 칸 또는 고르기 대상 사진의 칸
+  const zoomSlot = frameLayout && zoomImage && !exportMode
+    ? frameLayout.slots.find((slot) => slot.id === zoomImage.slotId) ?? null
     : null;
-  const stageView = getEraseZoomView({ isErasing: eraseSlot !== null, stageWidth, stageHeight, zoom, slot: eraseSlot });
+  const stageView = getEraseZoomView({ isErasing: zoomSlot !== null, stageWidth, stageHeight, zoom, slot: zoomSlot });
 
   // 저장이 끝나면 App이 이 값을 한 묶음으로 Stage에 되돌립니다. Stage에 props가 적용된 같은 커밋에서 적습니다(보정표 D-13).
   useLayoutEffect(() => {
@@ -2361,6 +2386,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                             }}
                           />
                         )}
+                        {isCutoutPickMode && userImage.id === cutoutEdit.pick?.sourceImageId && (
+                          <Rect
+                            x={slot.x}
+                            y={slot.y}
+                            width={slot.width}
+                            height={slot.height}
+                            fill="transparent"
+                            onPointerDown={(event) => handlePhotoPick(event, { slot, displaySize: { width: displayWidth, height: displayHeight }, offset: { x: uX, y: uY }, scale: { x: uScaleX, y: uScaleY }, rotation: uRotation })}
+                            onMouseEnter={() => setStageCursor("crosshair")}
+                            onMouseLeave={() => setStageCursor("default")}
+                          />
+                        )}
                       </Group>
                     );
                   }
@@ -2576,7 +2613,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </Layer>
 
               {/* 스티커 레이어 (텍스트 레이어 직전에 표시) */}
-              <Layer listening={photoEdit.toolMode !== "erase-photo"}>
+              <Layer listening={photoEdit.toolMode === "none" || photoEdit.toolMode === "erase-cutout"} opacity={isCutoutPickMode ? 0.3 : 1}>
                 {stickers.map((sticker) => {
                   const isSelected = selection === sticker.id;
                   const stickerImage = loadedStickerImages.get(sticker.id) ?? null;
@@ -2642,7 +2679,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           }}
                         />
                       )}
-                      {isSelected && sticker.cutout && (photoEdit.toolMode === "pick-point" || photoEdit.toolMode === "erase-cutout") && (
+                      {isSelected && sticker.cutout && photoEdit.toolMode === "erase-cutout" && (
                         <Rect
                           x={sticker.x}
                           y={sticker.y}
@@ -2654,13 +2691,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           offsetY={sticker.flipY ? sticker.height : 0}
                           rotation={sticker.rotation}
                           fill="transparent"
-                          onPointerDown={(event) => {
-                            if (photoEdit.toolMode === "pick-point") {
-                              handleCutoutPick(event, sticker);
-                            } else {
-                              startBrushStroke(event, sticker.id);
-                            }
-                          }}
+                          onPointerDown={(event) => startBrushStroke(event, sticker.id)}
                         />
                       )}
                       {isSelected && !exportMode && photoEdit.toolMode === "none" && (
@@ -2891,6 +2922,35 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </button>
             )}
           </div>
+          {/* 첫 고르기: 못 찾았을 때 칸 사진을 눌러 고르게 하는 안내(설계 5.2) */}
+          {cutoutEdit.pick && cutoutEdit.pick.stickerId === null && (
+            <div style={{
+              border: 'var(--border-width) solid var(--linear-neutral-500)',
+              padding: '12px',
+              background: 'var(--linear-neutral-700)',
+              marginTop: '8px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}>
+              <h4 style={{ margin: '0', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{CUTOUT_COPY.sectionTitle}</h4>
+              <p
+                role="status"
+                style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}
+              >
+                {cutoutEdit.pick.message}
+              </p>
+              <button
+                ref={cutoutEdit.firstPickCancelRef}
+                type="button"
+                className="linear-button linear-button--secondary"
+                onClick={cutoutEdit.onPickCancel}
+                style={PHOTO_PANEL_BUTTON_STYLE}
+              >
+                {CUTOUT_COPY.cancel}
+              </button>
+            </div>
+          )}
           {/* 칸 버튼 목록: 키보드로 들어오면 보이고, 마우스 손님에게는 숨깁니다(설계 7.4) */}
           <div
             role="group"
@@ -3302,28 +3362,30 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               <h4 style={{ margin: '0', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{selectedSticker.cutout ? CUTOUT_COPY.sectionTitle : '스티커 편집'}</h4>
 
               {selectedSticker.cutout && (() => {
+                const cutout = selectedSticker.cutout;
                 const cutoutToolButtonStyle = { ...PHOTO_PANEL_BUTTON_STYLE, opacity: isCutoutCacheMissing ? 0.5 : 1 };
-                const outline = selectedSticker.cutout.outline;
+                const outline = cutout.outline;
+                const isPickDisabled = isCutoutCacheMissing || cutoutSourcePhotoMissing;
+                const pick = cutoutEdit.pick?.stickerId === selectedSticker.id ? cutoutEdit.pick : null;
 
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {isCutoutCacheMissing && (
                       <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.cacheMissing}</p>
                     )}
-                    {selectedSticker.cutout.target.kind === "everyone" ? (
-                      <button
-                        type="button"
-                        className="linear-button linear-button--secondary"
-                        onClick={() => {
-                          cutoutEdit.onPreloadPointModel();
-                          photoEdit.onToolModeChange("pick-point");
-                        }}
-                        disabled={isCutoutCacheMissing}
-                        style={cutoutToolButtonStyle}
-                      >
-                        {CUTOUT_COPY.pickOne}
-                      </button>
-                    ) : (
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => cutoutEdit.onPickStart(selectedSticker.id)}
+                      disabled={isPickDisabled}
+                      style={{ ...cutoutToolButtonStyle, opacity: isPickDisabled ? 0.5 : 1 }}
+                    >
+                      {CUTOUT_COPY.pickOne}
+                    </button>
+                    {cutoutSourcePhotoMissing && (
+                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.pickNeedsPhoto}</p>
+                    )}
+                    {getCutoutPickButtons(cutout).includes("everyone") && (
                       <button
                         type="button"
                         className="linear-button linear-button--secondary"
@@ -3334,15 +3396,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         {CUTOUT_COPY.everyone}
                       </button>
                     )}
-                    {photoEdit.toolMode === "pick-point" && (
+                    {pick && (
                       <>
-                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>{CUTOUT_COPY.pickGuide}</p>
+                        <p
+                          role="status"
+                          style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}
+                        >
+                          {pick.message}
+                        </p>
                         <button
                           type="button"
                           className="linear-button linear-button--secondary"
-                          onClick={() => photoEdit.onToolModeChange("none")}
-                          disabled={isCutoutCacheMissing}
-                          style={cutoutToolButtonStyle}
+                          onClick={cutoutEdit.onPickCancel}
+                          style={PHOTO_PANEL_BUTTON_STYLE}
                         >
                           {CUTOUT_COPY.cancel}
                         </button>
@@ -3373,7 +3439,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     <button
                       type="button"
                       className="linear-button linear-button--secondary"
-                      onClick={() => cutoutEdit.onRegenerate(selectedSticker.id, { target: { kind: "everyone" }, outline: true, eraseStrokes: [] })}
+                      onClick={() => cutoutEdit.onRegenerate(selectedSticker.id, getRestartChanges(cutout))}
                       disabled={isCutoutCacheMissing}
                       style={cutoutToolButtonStyle}
                     >

@@ -53,7 +53,7 @@ import { getCategorySelectionOutcome, getFrameSelectionDecision, hasFrameContent
 import type { BrushStroke, PhotoEdits } from './photo/photoEdits'
 import { appendEraseStroke, copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
 import type { BrushSize, LayoutMediaMatches, PhotoToolMode } from './photo/photoTool'
-import { LAYOUT_MEDIA_QUERIES, shouldEndPhotoEraseOnLayoutChange, shouldKeepPhotoEraseMode } from './photo/photoTool'
+import { LAYOUT_MEDIA_QUERIES, shouldEndPhotoEraseOnLayoutChange, shouldKeepCutoutPickMode, shouldKeepPhotoEraseMode } from './photo/photoTool'
 import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
   getMobileExportLimits,
@@ -63,7 +63,7 @@ import {
 } from './utils/exportBehavior'
 import { exportStageToBlob } from './utils/stageExport'
 import type { StageDisplayTransform } from './utils/stageExport'
-import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentEveryone, waitForSegmenter } from './photo/segmentation'
+import { abandonPendingSegmenters, preloadPointSegmentation, preloadSegmentation, segmentAtPoint, segmentEveryone, waitForSegmenter } from './photo/segmentation'
 import {
   createCutoutWorkingCanvas,
   isCancelledAfterPendingInput,
@@ -82,7 +82,9 @@ import {
 } from './photo/cutoutCache'
 import { keepStickerCenter } from './photo/cutoutGeometry'
 import { CUTOUT_COPY } from './photo/cutoutCopy'
-import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
+import type { CutoutChanges, CutoutImagesState, CutoutSubject } from './photo/cutoutTypes'
+import type { CutoutAttempt } from './photo/cutoutCreate'
+import { getCutoutNotFoundMessage, getCutoutSubject, getPickChanges, getStartTarget } from './photo/cutoutCreate'
 import { PHOTO_EDIT_FEATURES } from './photo/photoEditFeatures'
 import type { EditorMenu } from './ui/editorMenu'
 import { getMenuAfterSelect, getSelectedMenu } from './ui/editorMenu'
@@ -121,6 +123,9 @@ type SaveFilePickerOptions = {
   excludeAcceptAllOption?: boolean;
   startIn?: FileSystemFileHandle | 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
 };
+
+// 첫 고르기(stickerId null)·다시 고르기 세션. 첫 고르기는 못 찾은 작업 캔버스를 다시 씁니다(설계 4.7).
+type CutoutPickSession = { sourceImageId: string; stickerId: string | null; frame: FrameType | null; subject: CutoutSubject; workingCanvas: HTMLCanvasElement | null; message: string };
 
 type BoothyLaunchPhoto = {
   assetId: string;
@@ -505,7 +510,8 @@ function App() {
     setEraseOwnerImageId(null);
   }, []);
   // 선택이 바뀌면 도구 모드를 끕니다. 사진 지우기 모드는 빼고, 아래 소유 사진 효과가 정합니다(D-1).
-  useEffect(() => { setPhotoToolMode((mode) => (mode === "erase-photo" ? mode : "none")); }, [editorState.selection]);
+  // 고르기 모드는 아래 세션 효과가 정합니다(Codex 필수 5).
+  useEffect(() => { setPhotoToolMode((mode) => (mode === "erase-photo" || mode === "pick-point" ? mode : "none")); }, [editorState.selection]);
   const currentDocument = useMemo<EditorDocument>(() => ({
     userImages: editorState.userImages,
     texts,
@@ -528,10 +534,24 @@ function App() {
   const [cutoutBusyId, setCutoutBusyId] = useState<string | null>(null);
   const [cutoutError, setCutoutError] = useState<{ targetId: string; message: string } | null>(null);
   const [cutoutPreparing, setCutoutPreparing] = useState(false);
+  const [cutoutSubject, setCutoutSubject] = useState<CutoutSubject>("person"); // 새로고침이면 기본값(설계 Q12)
+  const [cutoutPick, setCutoutPick] = useState<CutoutPickSession | null>(null); // 첫 고르기(stickerId null)·다시 고르기 세션
+  const firstPickCancelRef = useRef<HTMLButtonElement>(null);
   const [cutoutImagesState, setCutoutImagesState] = useState<CutoutImagesState>({ kind: "ready" }); // 내 사진 스티커의 현재 PNG가 캔버스에 올라갔는지
   const cutoutImagesStateRef = useRef(cutoutImagesState); // 저장 위치 창을 기다린 뒤에도 지금 값을 읽으려고 둡니다(UX2-1)
   cutoutImagesStateRef.current = cutoutImagesState;
   const cutoutRunRef = useRef(0); // 누끼 작업마다 1 올림. '취소'를 누르면 1 올려 그 작업의 결과를 버림
+  // 고르기 모드를 끝냅니다. 진행 중인 누끼 작업이 있으면 결과를 버립니다(Codex 필수 5). 포커스는 부른 쪽이 정합니다.
+  const endCutoutPickMode = useCallback(() => {
+    setPhotoToolMode((mode) => (mode === "pick-point" ? "none" : mode));
+    setCutoutPick(null);
+    if (!cutoutBusyId) return;
+    cutoutRunRef.current += 1;
+    abandonPendingSegmenters();
+    setCutoutBusyId(null);
+    setCutoutPreparing(false);
+    setCutoutError(null);
+  }, [cutoutBusyId]);
   const cutoutLockRef = useRef<HTMLDivElement>(null);
   const appContainerRef = useRef<HTMLDivElement>(null); // 잠금 중 덮개를 뺀 나머지 자식에 inert를 걸 바깥 div
   const [notice, setNotice] = useState<AppNotice | null>(null); // 확인창 하나(설계 4.5)
@@ -874,6 +894,12 @@ function App() {
     mobileSheetOpenerRef.current = null;
     if (opener && pickFocusReturnIndex([describeFocusCandidate(opener)]) === 0) focusWithoutScrollIfVisible(opener);
   }, [mobilePanel, isTutorialOpen]);
+
+  // 첫 고르기에 들어오면(잠금이 풀린 뒤) [취소]로 포커스를 옮깁니다. 잠금·시트 효과의 복귀보다 뒤에 선언해 마지막에 이깁니다(Codex 필수 6).
+  useEffect(() => {
+    if (!cutoutPick || cutoutPick.stickerId !== null || cutoutBusyId) return;
+    firstPickCancelRef.current?.focus();
+  }, [cutoutPick?.sourceImageId, cutoutPick?.stickerId, cutoutBusyId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -1355,6 +1381,15 @@ function App() {
     endPhotoEraseMode();
   }, [photoToolMode, eraseOwnerImageId, selectedPhotoId, editorState.userImages, endPhotoEraseMode]);
 
+  useLayoutEffect(() => {
+    if (photoToolMode !== "pick-point") return;
+    if (shouldKeepCutoutPickMode({ owner: cutoutPick, selection: editorState.selection, userImages: editorState.userImages, frame: editorState.selectedFrame, isCanvasVisible: canvasMode === "editor" })) return;
+    endCutoutPickMode(); // 다른 선택, 원본 사진 빼기·바꾸기(같은 칸 새 사진은 id가 바뀜), 프레임 변경, 프레임 갤러리로 나감(Codex 2차 필수 7)
+  }, [photoToolMode, cutoutPick, editorState.selection, editorState.userImages, editorState.selectedFrame, canvasMode, endCutoutPickMode]);
+  // 되돌리기·저장 진입처럼 모드만 끈 길에서도 세션과 보관 캔버스를 비웁니다.
+  // 갤러리로 나가면 CanvasStage가 내려가므로 캔버스 쪽 정리에 기대지 않습니다.
+  useEffect(() => { if (photoToolMode !== "pick-point") setCutoutPick(null); }, [photoToolMode]);
+
   // 완성 획을 최신 문서에 덧붙입니다(SP-4).
   const handlePhotoEraseStrokeAdd = (imageId: string, stroke: BrushStroke) => {
     setEditorState((previous) => ({ ...previous, userImages: appendEraseStroke(previous.userImages, imageId, stroke) }));
@@ -1620,10 +1655,109 @@ function App() {
     setCutoutPreparing(false); // 준비 중 취소: 덮개가 닫히므로 글줄도 처음으로
   };
 
-  const handleCutoutCreate = async (imageId: string) => {
+  // 첫 고르기·다시 고르기의 못 찾음·예외는 고르기 안내 한 곳에, 나머지는 지금 경고 자리에 보입니다(Codex 필수 7).
+  const showCutoutMessage = (attempt: CutoutAttempt, targetId: string, message: string) => {
+    if (attempt === "first-pick" || attempt === "replace-pick") {
+      setCutoutPick((pick) => (pick ? { ...pick, message } : pick));
+      return;
+    }
+    setCutoutError({ targetId, message });
+  };
+
+  const focusAfterCutoutPick = (sourceImageId: string | null) => {
+    window.requestAnimationFrame(() => {
+      const thumbnail = sourceImageId ? document.querySelector<HTMLElement>(`[data-cutout-image-id="${CSS.escape(sourceImageId)}"]`) : null;
+      if (thumbnail && thumbnail.offsetParent !== null) { thumbnail.focus(); return; } // 데스크톱 만들기 패널이 열려 있을 때
+      if (document.activeElement && document.activeElement !== document.body) return;
+      document.querySelector<HTMLElement>('[data-focus-return="canvas"]')?.focus();
+    });
+  };
+
+  // [취소]·Esc(캔버스·제어판). 첫 고르기는 썸네일, 아니면 캔버스로 돌아갑니다.
+  const handleCutoutPickCancel = () => {
+    const returnImageId = cutoutPick?.stickerId === null ? cutoutPick.sourceImageId : null;
+    endCutoutPickMode();
+    focusAfterCutoutPick(returnImageId);
+  };
+
+  const enterCutoutFirstPick = (sourceImageId: string, subject: CutoutSubject, workingCanvas: HTMLCanvasElement) => {
+    handleSelect(null);
+    handlePhotoToolModeChange("pick-point");
+    setCutoutPick({ sourceImageId, stickerId: null, frame: editorState.selectedFrame, subject, workingCanvas, message: CUTOUT_COPY.notFound });
+    setMobilePanel(null); // 휴대폰: 시트를 닫고 칸 사진을 누르게 함
+    void preloadPointSegmentation().catch(() => undefined);
+  };
+
+  const enterCutoutReplacePick = (stickerId: string) => {
+    const sticker = stickers.find((item) => item.id === stickerId);
+    if (!sticker?.cutout) return;
+    handlePhotoToolModeChange("pick-point");
+    setCutoutPick({ sourceImageId: sticker.cutout.sourceImageId, stickerId, frame: editorState.selectedFrame, subject: getCutoutSubject(sticker.cutout), workingCanvas: null, message: CUTOUT_COPY.pickGuide });
+    setCutoutError(null);
+    void preloadPointSegmentation().catch(() => undefined);
+  };
+
+  const handleCutoutPickPoint = (point: { x: number; y: number }) => {
+    if (!cutoutPick) return;
+    if (cutoutPick.stickerId === null) { void handleCutoutFirstPick(point); return; }
+    void handleCutoutRegenerate(cutoutPick.stickerId, getPickChanges(point), "replace-pick");
+  };
+
+  const handleCutoutFirstPick = async (point: { x: number; y: number }) => {
+    if (cutoutBusyId || !cutoutPick || cutoutPick.stickerId !== null || !cutoutPick.workingCanvas) return;
+    const { sourceImageId, subject, workingCanvas } = cutoutPick;
+    const target = getPickChanges(point).target;
+    cutoutRunRef.current += 1;
+    const runId = cutoutRunRef.current;
+    const isCancelled = () => cutoutRunRef.current !== runId;
+    let pendingUrl: string | null = null; // 붙이기 전까지 이 함수가 가진 PNG URL
+    setCutoutBusyId(sourceImageId);
+    setCutoutError(null);
+    try {
+      if (!(await waitForSegmenter("point", setCutoutPreparing, isCancelled))) return;
+      await waitForPaint();
+      if (isCancelled()) return;
+      const confidence = await segmentAtPoint(workingCanvas, point, isCancelled); // 모델을 기다린 뒤 segment() 바로 앞에서도 확인
+      if (!confidence || isCancelled()) return; // 취소됐으면 렌더를 시작하지 않음
+      const result = await renderCutoutSticker(workingCanvas, confidence, { outline: true, eraseStrokes: [] });
+      if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
+      // 동기 계산 직후의 취소 입력을 처리한 뒤 결과를 반영한다.
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
+      if (result.kind === "not-found") {
+        showCutoutMessage("first-pick", sourceImageId, getCutoutNotFoundMessage("first-pick")); // 모드를 남겨 다시 누르게 함
+        return;
+      }
+      await loadImageElement(result.url); // 붙이기 전에 PNG를 디코드
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
+      // 여기부터 finally까지 await가 없습니다. 기록 경계·붙이기·캐시 등록·잠금 해제·모드 끄기가 한 배치입니다.
+      const newSticker: CanvasSticker = {
+        ...buildCenteredSticker(result.url, { width: result.width, height: result.height }),
+        cutout: { sourceImageId, subject, target, outline: true, eraseStrokes: [], crop: result.crop, workingSize: result.workingSize },
+      };
+      flushHistory(); // 붙이기 직전에 기록 경계를 닫음
+      setStickers((previous) => [...previous, newSticker]);
+      pendingUrl = null; // 문서로 넘김. 이제 'URL 해제' effect가 맡음
+      selectInsertedSticker(newSticker.id);
+      setCutoutWorkingCanvas(newSticker.id, workingCanvas);
+      rememberCutoutConfidence(newSticker.id, target, confidence);
+      setCutoutImagesState({ kind: "loading" }); // 캔버스가 새 PNG를 올릴 때까지 저장을 막음
+      setCutoutPick(null);
+      setPhotoToolMode("none");
+    } catch {
+      if (await isCancelledAfterPendingInput(isCancelled)) return;
+      showCutoutMessage("first-pick", sourceImageId, CUTOUT_COPY.loadFailed); // 모드를 남김
+    } finally {
+      if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 붙이지 못한 URL
+      if (!isCancelled()) setCutoutBusyId(null);
+    }
+  };
+
+  const handleCutoutCreate = async (imageId: string, subject: CutoutSubject) => {
     if (cutoutBusyId) return;
     const image = editorState.userImages.find((userImage) => userImage.id === imageId);
     if (!image) return;
+    endCutoutPickMode(); // 새 만들기는 열린 고르기를 끝냄
+    const target = getStartTarget(subject);
     cutoutRunRef.current += 1;
     const runId = cutoutRunRef.current;
     const isCancelled = () => cutoutRunRef.current !== runId;
@@ -1631,13 +1765,15 @@ function App() {
     setCutoutBusyId(imageId);
     setCutoutError(null);
     try {
-      if (!(await waitForSegmenter("everyone", setCutoutPreparing, isCancelled))) return;
+      if (!(await waitForSegmenter(target.kind === "everyone" ? "everyone" : "point", setCutoutPreparing, isCancelled))) return;
       await waitForPaint();
       if (isCancelled()) return;
       const source = await loadImageElement(image.url);
       if (isCancelled()) return; // 원본 디코드를 기다리는 동안 취소
       const workingCanvas = createCutoutWorkingCanvas(source, image.edits);
-      const confidence = await segmentEveryone(workingCanvas, isCancelled); // 모델을 기다린 뒤 segment() 바로 앞에서도 확인
+      const confidence = target.kind === "point"
+        ? await segmentAtPoint(workingCanvas, { x: target.x, y: target.y }, isCancelled)
+        : await segmentEveryone(workingCanvas, isCancelled); // 모델을 기다린 뒤 segment() 바로 앞에서도 확인
       if (!confidence || isCancelled()) return; // 취소됐으면 렌더를 시작하지 않음
       const result = await renderCutoutSticker(workingCanvas, confidence, { outline: true, eraseStrokes: [] });
       if (result.kind === "ok") pendingUrl = result.url; // 만들자마자 소유권을 잡음
@@ -1645,7 +1781,7 @@ function App() {
       // 프레임 경계를 지나 대기 입력을 처리한 뒤 작업 번호를 다시 본다.
       if (await isCancelledAfterPendingInput(isCancelled)) return;
       if (result.kind === "not-found") {
-        setCutoutError({ targetId: imageId, message: CUTOUT_COPY.notFound });
+        enterCutoutFirstPick(imageId, subject, workingCanvas); // 칸 사진을 눌러 고르게 함
         return;
       }
       await loadImageElement(result.url); // 붙이기 전에 PNG를 디코드
@@ -1653,7 +1789,7 @@ function App() {
       // 여기부터 finally까지 await가 없습니다. 기록 경계·붙이기·캐시 등록·잠금 해제가 한 배치입니다.
       const newSticker: CanvasSticker = {
         ...buildCenteredSticker(result.url, { width: result.width, height: result.height }),
-        cutout: { sourceImageId: imageId, target: { kind: "everyone" }, outline: true, eraseStrokes: [], crop: result.crop, workingSize: result.workingSize },
+        cutout: { sourceImageId: imageId, subject, target, outline: true, eraseStrokes: [], crop: result.crop, workingSize: result.workingSize },
       };
       // 붙이기 직전에 기록 경계를 닫음. 앞의 변경과 묶이지 않고 누끼만 한 단계가 됨
       flushHistory();
@@ -1661,23 +1797,24 @@ function App() {
       pendingUrl = null; // 문서로 넘김. 이제 'URL 해제' effect가 맡음
       selectInsertedSticker(newSticker.id);
       setCutoutWorkingCanvas(newSticker.id, workingCanvas);
-      rememberCutoutConfidence(newSticker.id, { kind: "everyone" }, confidence);
+      rememberCutoutConfidence(newSticker.id, target, confidence);
       setCutoutImagesState({ kind: "loading" }); // 캔버스가 새 PNG를 올릴 때까지 저장을 막음
       setMobilePanel(null); // 모바일 시트를 닫아 붙은 결과를 바로 보여 줌
     } catch {
       // 동기 추론 실패로 곧바로 catch에 들어온 경우에도 같은 경계를 둔다.
       if (await isCancelledAfterPendingInput(isCancelled)) return;
-      setCutoutError({ targetId: imageId, message: CUTOUT_COPY.loadFailed });
+      showCutoutMessage("create", imageId, CUTOUT_COPY.loadFailed);
     } finally {
       if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 붙이지 못한 URL
       if (!isCancelled()) setCutoutBusyId(null); // 취소했으면 이미 풀렸고, 그 뒤 시작한 새 작업의 잠금은 건드리지 않음
     }
   };
 
-  const handleCutoutRegenerate = async (stickerId: string, changes: CutoutChanges) => {
+  const handleCutoutRegenerate = async (stickerId: string, changes: CutoutChanges, attempt: CutoutAttempt = "edit") => {
     if (cutoutBusyId) return;
     const sticker = stickers.find((item) => item.id === stickerId);
     if (!sticker?.cutout) return;
+    if (attempt === "edit") endCutoutPickMode(); // 다시 고르기 중 다듬기 버튼: 세션을 끝내 안내가 한 곳에만 남게 함
     const workingCanvas = getCutoutWorkingCanvas(stickerId);
     if (!workingCanvas) {
       setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.cacheMissing });
@@ -1703,7 +1840,7 @@ function App() {
       // 동기 계산 직후의 취소 입력을 처리한 뒤 결과를 반영한다.
       if (await isCancelledAfterPendingInput(isCancelled)) return;
       if (result.kind === "not-found") {
-        setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.notFound });
+        showCutoutMessage(attempt, stickerId, getCutoutNotFoundMessage(attempt)); // 스티커·기록·캐시는 그대로
         return;
       }
       await loadImageElement(result.url); // 바꾸기 전에 PNG를 디코드
@@ -1723,9 +1860,10 @@ function App() {
       pendingUrl = null; // 문서로 넘김. 이제 Phase 1의 'URL 해제' effect가 맡음
       rememberCutoutConfidence(stickerId, nextSource.target, confidence); // 성공한 작업의 마스크만 캐시에 넣음
       setCutoutImagesState({ kind: "loading" }); // 새 PNG를 캔버스가 올릴 때까지 저장을 막음
+      if (attempt === "replace-pick") { setCutoutPick(null); setPhotoToolMode("none"); }
     } catch {
       if (await isCancelledAfterPendingInput(isCancelled)) return;
-      setCutoutError({ targetId: stickerId, message: CUTOUT_COPY.loadFailed });
+      showCutoutMessage(attempt, stickerId, CUTOUT_COPY.loadFailed);
     } finally {
       if (pendingUrl) URL.revokeObjectURL(pendingUrl); // 바꾸지 못한 URL
       if (!isCancelled()) setCutoutBusyId(null);
@@ -2396,8 +2534,14 @@ function App() {
     cutoutSection: {
       images: cutoutCandidateImages,
       errorMessage: cutoutError && cutoutCandidateImages.some((image) => image.id === cutoutError.targetId) ? cutoutError.message : null,
-      onCreate: (imageId: string) => { void handleCutoutCreate(imageId); },
+      onCreate: (imageId: string) => { void handleCutoutCreate(imageId, PHOTO_EDIT_FEATURES.cutoutSubjectChoice ? cutoutSubject : "person"); },
       onPreload: () => { void preloadSegmentation().catch(() => undefined); },
+      subject: cutoutSubject,
+      showSubjectChoice: PHOTO_EDIT_FEATURES.cutoutSubjectChoice,
+      onSubjectChange: (subject: CutoutSubject) => {
+        setCutoutSubject(subject);
+        if (subject === "thing") void preloadPointSegmentation().catch(() => undefined);
+      },
     },
   };
 
@@ -2445,7 +2589,11 @@ function App() {
       cutoutEdit={{
         errorMessage: cutoutError && cutoutError.targetId === editorState.selection ? cutoutError.message : null,
         onRegenerate: (stickerId: string, changes: CutoutChanges) => { void handleCutoutRegenerate(stickerId, changes); },
-        onPreloadPointModel: () => { void preloadPointSegmentation().catch(() => undefined); },
+        pick: photoToolMode === "pick-point" && cutoutPick ? { sourceImageId: cutoutPick.sourceImageId, stickerId: cutoutPick.stickerId, message: cutoutPick.message } : null,
+        onPick: handleCutoutPickPoint,
+        onPickStart: enterCutoutReplacePick,
+        onPickCancel: handleCutoutPickCancel,
+        firstPickCancelRef,
         onSave: expectsBoothySessionSave ? null : (stickerId: string, opener: HTMLElement) => { void handleStickerSave(stickerId, opener); },
       }}
       stageRefExternal={stageRef}

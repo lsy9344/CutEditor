@@ -9,9 +9,9 @@ test("#12 getCutoutTargetKey는 모두 함께와 지점을 구분한다", () => 
   assert.equal(getCutoutTargetKey({ kind: "point", x: 0.4, y: 0.25 }), "point:0.4000:0.2500");
 });
 
-test("#13 CUTOUT_COPY는 설계 6.4·6.6의 문구를 쓴다", () => {
-  assert.equal(CUTOUT_COPY.pickOne, "한 사람만 고르기");
-  assert.equal(CUTOUT_COPY.notFound, "사람을 찾지 못했어요. 사람이 크게 나온 사진으로 해 보세요.");
+test("#13 CUTOUT_COPY는 2단계 설계 6장의 문구를 쓴다", () => {
+  assert.equal(CUTOUT_COPY.pickOne, "눌러서 고르기");
+  assert.equal(CUTOUT_COPY.notFound, "스티커로 만들 것을 사진에서 눌러 주세요");
   assert.equal(
     CUTOUT_COPY.missingStickers(2),
     "불러오지 못한 스티커 2개는 저장 그림에 들어가지 않아요.",

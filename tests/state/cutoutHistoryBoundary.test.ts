@@ -75,7 +75,7 @@ test("잠금 중 끝나 보류된 Boothy 사진은 누끼 다음 단계로 붙�
 
 function getCutoutCreateBody(): string {
   const source = readFileSync("src/App.tsx", "utf8");
-  const start = source.indexOf("const handleCutoutCreate = async (imageId: string) => {");
+  const start = source.indexOf("const handleCutoutCreate = async (imageId: string, subject: CutoutSubject) => {");
   assert.ok(start >= 0, "handleCutoutCreate를 찾지 못했습니다.");
 
   const end = source.indexOf("const handleCutoutRegenerate =", start);
@@ -86,13 +86,35 @@ function getCutoutCreateBody(): string {
 
 function getCutoutRegenerateBody(): string {
   const source = readFileSync("src/App.tsx", "utf8");
-  const start = source.indexOf("const handleCutoutRegenerate = async (stickerId: string, changes: CutoutChanges) => {");
+  const start = source.indexOf(
+    "const handleCutoutRegenerate = async (stickerId: string, changes: CutoutChanges, attempt: CutoutAttempt = \"edit\") => {",
+  );
   assert.ok(start >= 0, "handleCutoutRegenerate를 찾지 못했습니다.");
 
   const end = source.indexOf("const handleStickerUpdate =", start);
   assert.ok(end > start, "handleCutoutRegenerate의 끝을 찾지 못했습니다.");
 
   return source.slice(start, end);
+}
+
+function getCutoutFirstPickBody(): string {
+  const source = readFileSync("src/App.tsx", "utf8");
+  const start = source.indexOf("const handleCutoutFirstPick = async (point: { x: number; y: number }) => {");
+  assert.ok(start >= 0, "handleCutoutFirstPick을 찾지 못했습니다.");
+
+  const end = source.indexOf("const handleCutoutCreate = async", start);
+  assert.ok(end > start, "handleCutoutFirstPick의 끝을 찾지 못했습니다.");
+
+  return source.slice(start, end);
+}
+
+// not-found 분기부터 그 안의 첫 return;까지
+function getNotFoundSection(body: string): string {
+  const start = body.indexOf('if (result.kind === "not-found") {');
+  assert.ok(start >= 0, "not-found 분기를 찾지 못했습니다.");
+  const end = body.indexOf("return;", start);
+  assert.ok(end > start, "not-found 분기의 return을 찾지 못했습니다.");
+  return body.slice(start, end);
 }
 
 test("잠금 중 끝난 Boothy 사진과 일반 스티커 두 개는 사진 다음 렌더에서 완료 순서대로 한 단계씩 붙는다", () => {
@@ -176,12 +198,12 @@ test("입력 양보 경계는 동기 계산 중 예약된 취소를 처리한 �
 });
 
 test("만들기와 다시 만들기는 결과·사람 없음·예외를 반영하기 전에 같은 취소 경계를 지난다", () => {
-  for (const body of [getCutoutCreateBody(), getCutoutRegenerateBody()]) {
+  for (const body of [getCutoutCreateBody(), getCutoutRegenerateBody(), getCutoutFirstPickBody()]) {
     assert.doesNotMatch(body, /setTimeout/);
     assert.equal((body.match(/await isCancelledAfterPendingInput\(isCancelled\)/g) ?? []).length, 3);
     assert.match(
       body,
-      /if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*if \(result\.kind === "not-found"\) \{\s*setCutoutError\(/,
+      /if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*if \(result\.kind === "not-found"\) \{/,
     );
     assert.match(
       body,
@@ -189,8 +211,12 @@ test("만들기와 다시 만들기는 결과·사람 없음·예외를 반영�
     );
     assert.match(
       body,
-      /\} catch \{\s*(?:\/\/[^\n]*\n\s*)*if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*setCutoutError\(/,
+      /\} catch \{\s*(?:\/\/[^\n]*\n\s*)*if \(await isCancelledAfterPendingInput\(isCancelled\)\) return;\s*showCutoutMessage\(/,
     );
+  }
+  assert.match(getCutoutCreateBody(), /if \(result\.kind === "not-found"\) \{\s*enterCutoutFirstPick\(/);
+  for (const body of [getCutoutRegenerateBody(), getCutoutFirstPickBody()]) {
+    assert.match(body, /if \(result\.kind === "not-found"\) \{\s*showCutoutMessage\(/);
   }
 
   const source = readFileSync("src/App.tsx", "utf8");
@@ -209,7 +235,7 @@ test("누르고 있는 동안 끝난 누끼도 성공 경로 한 곳에서 캐�
 
   const applyIndex = body.indexOf("setStickers((previous) => [...previous, newSticker]);");
   const workingCanvasIndex = body.indexOf("setCutoutWorkingCanvas(newSticker.id, workingCanvas);");
-  const confidenceIndex = body.indexOf('rememberCutoutConfidence(newSticker.id, { kind: "everyone" }, confidence);');
+  const confidenceIndex = body.indexOf("rememberCutoutConfidence(newSticker.id, target, confidence);");
   const loadingIndex = body.indexOf('setCutoutImagesState({ kind: "loading" });');
   const mobilePanelIndex = body.indexOf("setMobilePanel(null);", applyIndex);
 
@@ -239,4 +265,52 @@ test("모델 준비 표시는 추론이 필요한 작업에서만 켜고 취소�
   const cancelBody = source.slice(cancelStart, source.indexOf("};", cancelStart));
   assert.ok(cancelBody.includes("setCutoutPreparing(false);"), "취소가 준비 표시를 끄지 않습니다.");
   assert.ok(source.includes("cutoutPreparing ? CUTOUT_COPY.preparing : CUTOUT_COPY.creating"));
+});
+
+test("첫 고르기 성공은 붙이기·작업 캔버스·누른 점 캐시·저장 막기·모드 끄기 순서로 한 배치에서 한다", () => {
+  const body = getCutoutFirstPickBody();
+  assert.ok(body.includes("segmentAtPoint(workingCanvas, point, isCancelled)"), "누른 점으로 추론하지 않습니다.");
+
+  const applyIndex = body.indexOf("setStickers((previous) => [...previous, newSticker]);");
+  const workingCanvasIndex = body.indexOf("setCutoutWorkingCanvas(newSticker.id, workingCanvas);");
+  const confidenceIndex = body.indexOf("rememberCutoutConfidence(newSticker.id, target, confidence);");
+  const loadingIndex = body.indexOf('setCutoutImagesState({ kind: "loading" });');
+  const modeIndex = body.indexOf('setPhotoToolMode("none");');
+
+  assert.ok(applyIndex >= 0, "스티커 붙이기를 찾지 못했습니다.");
+  assert.ok(workingCanvasIndex > applyIndex, "작업 캔버스 등록은 붙이기 뒤여야 합니다.");
+  assert.ok(confidenceIndex > workingCanvasIndex, "누른 점 캐시 등록은 작업 캔버스 등록 뒤여야 합니다.");
+  assert.ok(loadingIndex > confidenceIndex, "저장 막기는 캐시 등록 뒤여야 합니다.");
+  assert.ok(modeIndex > loadingIndex, "고르기 모드 끄기는 같은 배치의 끝이어야 합니다.");
+});
+
+test("대상을 바꿔도 종류·획·테두리는 그대로이고 못 찾으면 스티커와 기록을 건드리지 않는다", () => {
+  assert.ok(getCutoutRegenerateBody().includes("const nextSource = { ...sticker.cutout, ...changes };"));
+  assert.ok(readFileSync("src/App.tsx", "utf8").includes("getPickChanges("));
+  assert.ok(readFileSync("src/canvas/CanvasStage.tsx", "utf8").includes("getRestartChanges("));
+
+  for (const body of [getCutoutCreateBody(), getCutoutRegenerateBody(), getCutoutFirstPickBody()]) {
+    const notFoundSection = getNotFoundSection(body);
+    assert.ok(!notFoundSection.includes("setStickers("), "못 찾음에서 스티커를 바꿉니다.");
+    assert.ok(!notFoundSection.includes("flushHistory("), "못 찾음에서 기록 경계를 닫습니다.");
+    assert.ok(!notFoundSection.includes("rememberCutoutConfidence("), "못 찾음에서 캐시를 등록합니다.");
+  }
+});
+
+test("고르기를 끝내는 길은 진행 중 작업을 버리고 새 만들기는 세션을 끝낸다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+  const endStart = source.indexOf("const endCutoutPickMode = useCallback(");
+  assert.ok(endStart >= 0, "endCutoutPickMode를 찾지 못했습니다.");
+  const endBody = source.slice(endStart, source.indexOf("}, [", endStart));
+  assert.ok(endBody.includes("cutoutRunRef.current += 1;"), "고르기를 끝낼 때 진행 중 작업을 버리지 않습니다.");
+
+  assert.ok(source.includes("shouldKeepCutoutPickMode("));
+  assert.ok(getCutoutCreateBody().includes("endCutoutPickMode("), "새 만들기가 고르기 세션을 끝내지 않습니다.");
+  assert.ok(
+    getCutoutRegenerateBody().includes('if (attempt === "edit") endCutoutPickMode();'),
+    "다시 고르기 중 다듬기 버튼이 고르기 세션을 끝내지 않습니다.",
+  );
+  assert.ok(source.includes('if (photoToolMode !== "pick-point") setCutoutPick(null);'));
+  assert.ok(source.includes("frame: editorState.selectedFrame"));
+  assert.ok(source.includes('isCanvasVisible: canvasMode === "editor"'));
 });

@@ -193,8 +193,8 @@ test("isDefaultPhotoEdits는 지우기 획이 있으면 거짓이고 presetId는
   );
 });
 
-test("PHOTO_EDIT_FEATURES는 세 기능을 모두 켠다", () => {
-  assert.deepEqual(PHOTO_EDIT_FEATURES, { adjust: true, erase: true, cutout: true });
+test("PHOTO_EDIT_FEATURES는 모든 기능을 켠다", () => {
+  assert.deepEqual(PHOTO_EDIT_FEATURES, { adjust: true, erase: true, cutout: true, cutoutSubjectChoice: true });
 });
 
 test("getPhotoEditSections는 기능 스위치에 따라 보일 줄을 정한다", () => {

@@ -1,10 +1,12 @@
 import type { BrushStroke } from "./photoEdits.ts";
 
 export type CutoutTarget = { kind: "everyone" } | { kind: "point"; x: number; y: number };
+export type CutoutSubject = "person" | "thing";
 export type CutoutRect = { x: number; y: number; width: number; height: number };
 export type CutoutSize = { width: number; height: number };
 export type CutoutSource = {
   sourceImageId: string;
+  subject?: CutoutSubject; // 없으면 사람(1단계 스티커)
   target: CutoutTarget;
   outline: boolean;
   eraseStrokes: BrushStroke[];

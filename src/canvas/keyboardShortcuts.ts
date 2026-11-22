@@ -296,7 +296,20 @@ export const getAngleInputValue = ({
   rotation: number;
 }): string => (draft !== null && draft.targetId === targetId ? draft.text : String(Math.round(rotation)));
 
-export type CanvasEscapeAction = "end-erase-mode" | "clear-selection";
+export type CanvasEscapeAction = "end-erase-mode" | "end-pick-mode" | "clear-selection";
 
-export const getCanvasEscapeAction = (toolMode: PhotoToolMode): CanvasEscapeAction =>
-  toolMode === "erase-photo" ? "end-erase-mode" : "clear-selection";
+// 고르기 모드의 첫 고르기는 선택이 이미 비어 있어 선택 해제로는 끝나지 않으므로 고르기를 끝냅니다(2단계 1.6 다름 12).
+export const getCanvasEscapeAction = (toolMode: PhotoToolMode): CanvasEscapeAction => {
+  if (toolMode === "erase-photo") return "end-erase-mode";
+  if (toolMode === "pick-point") return "end-pick-mode";
+  return "clear-selection";
+};
+
+export type ControlPanelEscapeAction = "end-erase-mode" | "end-pick-mode" | "none";
+
+// 제어판(예: [취소]에 포커스)에서 누른 Esc. 캔버스 처리기가 받지 못하므로 따로 정합니다(Codex 필수 6).
+export const getControlPanelEscapeAction = (toolMode: PhotoToolMode): ControlPanelEscapeAction => {
+  if (toolMode === "erase-photo") return "end-erase-mode";
+  if (toolMode === "pick-point") return "end-pick-mode";
+  return "none";
+};

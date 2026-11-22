@@ -60,6 +60,28 @@ export function shouldKeepPhotoEraseMode({
   return userImages.some((image) => image.id === eraseOwnerImageId);
 }
 
+export type CutoutPickOwner = { sourceImageId: string; stickerId: string | null; frame: string | null };
+
+// 고르기 모드를 남길지(Codex 필수 5). 첫 고르기는 선택이 비어 있을 때, 다시 고르기는 그 스티커가 선택돼 있을 때만, 둘 다 주인 사진이 칸에 있을 때만 남깁니다.
+// 프레임이 바뀌었거나 캔버스가 보이지 않으면(프레임 갤러리) 끝냅니다. 프레임을 바꿔도 원본 칸과 선택 null이 그대로일 수 있어서입니다(Codex 2차 필수 7).
+export function shouldKeepCutoutPickMode({
+  owner,
+  selection,
+  userImages,
+  frame,
+  isCanvasVisible,
+}: {
+  owner: CutoutPickOwner | null;
+  selection: string | null;
+  userImages: ReadonlyArray<{ id: string }>;
+  frame: string | null;
+  isCanvasVisible: boolean;
+}): boolean {
+  if (!owner || !isCanvasVisible || owner.frame !== frame) return false;
+  if (selection !== owner.stickerId) return false;
+  return userImages.some((image) => image.id === owner.sourceImageId);
+}
+
 // components.css에서 제어판·캔버스 배치와 제어판 보통 폭을 바꾸는 미디어 조건입니다(보정표 D-13).
 // 세로 휴대폰의 붙박이 캔버스, 768px 이하의 세로 쌓기·제어판 전체 폭, 낮은 가로 화면의 가로 배치입니다.
 export const LAYOUT_MEDIA_QUERIES = {

@@ -5,6 +5,7 @@ import {
   getCanvasEscapeAction,
   getCenterRotatedTransform,
   getCenterScaledTransform,
+  getControlPanelEscapeAction,
   isActivationKey,
   isTabLeavingImages,
 } from "../../src/canvas/keyboardShortcuts.ts";
@@ -153,5 +154,15 @@ test("캔버스 Esc: 지우기 모드면 모드만 끝낸다", () => {
 test("캔버스 Esc: 지우기 모드가 아니면 지금처럼 선택을 푼다", () => {
   assert.equal(getCanvasEscapeAction("none"), "clear-selection");
   assert.equal(getCanvasEscapeAction("erase-cutout"), "clear-selection");
-  assert.equal(getCanvasEscapeAction("pick-point"), "clear-selection");
+});
+
+test("캔버스 Esc: 고르기 모드에서는 고르기를 끝낸다", () => {
+  assert.equal(getCanvasEscapeAction("pick-point"), "end-pick-mode");
+});
+
+test("제어판 Esc: 사진 지우기와 고르기에서만 끝내기로 쓴다", () => {
+  assert.equal(getControlPanelEscapeAction("erase-photo"), "end-erase-mode");
+  assert.equal(getControlPanelEscapeAction("pick-point"), "end-pick-mode");
+  assert.equal(getControlPanelEscapeAction("none"), "none");
+  assert.equal(getControlPanelEscapeAction("erase-cutout"), "none");
 });

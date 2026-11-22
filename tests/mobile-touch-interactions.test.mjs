@@ -35,7 +35,7 @@ test("App은 캔버스 selection에 editorState 선택값을 그대로 전달한
 test("CanvasStage는 선택된 이미지만 모바일에서 직접 조작할 수 있게 제한한다", () => {
   const source = readFileSync("src/canvas/CanvasStage.tsx", "utf8");
 
-  assert.match(source, /const isTouchManipulationActive = Boolean\(selection\) \|\| isPhotoEraseMode;/);
+  assert.match(source, /const isTouchManipulationActive = Boolean\(selection\) \|\| isPhotoEraseMode \|\| isCutoutPickMode;/);
   assert.match(source, /const isSelectedImage = selection === userImage\.id;/);
   assert.match(source, /draggable=\{!exportMode && isSelectedImage && photoEdit\.toolMode === "none"\}/);
   assert.match(source, /selectImage\(userImage\.id, userImage\.slotId\);/);

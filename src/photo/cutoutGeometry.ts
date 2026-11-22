@@ -47,6 +47,38 @@ export function stickerLocalToSourceUv(
   };
 }
 
+// 칸 사진이 캔버스에 놓인 모양입니다(CanvasStage 칸 사진 그리기와 같음, 설계 4.4).
+export type PhotoPlacement = {
+  slot: CutoutRect; // 프레임 칸(캔버스 좌표)
+  displaySize: CutoutSize; // getContainedImageSize 결과
+  offset: { x: number; y: number }; // userImage.x / y
+  scale: { x: number; y: number }; // userImage.scaleX / scaleY (음수면 뒤집기)
+  rotation: number; // 도. Konva 기본처럼 사진 왼쪽 위가 회전 중심
+};
+
+// 캔버스 점을 사진 전체 0~1 좌표로 바꿉니다. 칸 밖(잘려 안 보이는 곳)과 칸 안의 빈 여백은 null입니다.
+// 작업 캔버스가 사진 전체를 비율 그대로 담으므로 스티커 crop은 들어가지 않습니다(설계 4.4).
+export function canvasPointToPhotoUv(
+  point: { x: number; y: number },
+  placement: PhotoPlacement,
+): { x: number; y: number } | null {
+  const { slot, displaySize, offset, scale, rotation } = placement;
+  if (point.x < slot.x || point.x > slot.x + slot.width || point.y < slot.y || point.y > slot.y + slot.height) {
+    return null;
+  }
+
+  const topLeft = {
+    x: slot.x + (slot.width - displaySize.width) / 2 + offset.x,
+    y: slot.y + (slot.height - displaySize.height) / 2 + offset.y,
+  };
+  const unrotated = rotate({ x: point.x - topLeft.x, y: point.y - topLeft.y }, (-rotation * Math.PI) / 180);
+  const u = unrotated.x / scale.x / displaySize.width;
+  const v = unrotated.y / scale.y / displaySize.height;
+  if (!(u >= 0 && u <= 1 && v >= 0 && v <= 1)) return null;
+
+  return { x: u, y: v };
+}
+
 export function stickerStrokeToSourceStroke(
   localPoints: number[],
   localRadius: number,

@@ -11,6 +11,7 @@ import {
   isBrushPointerStart,
   LAYOUT_MEDIA_QUERIES,
   shouldEndPhotoEraseOnLayoutChange,
+  shouldKeepCutoutPickMode,
   shouldKeepPhotoEraseMode,
   toNormalizedStroke,
 } from "../../src/photo/photoTool.ts";
@@ -146,4 +147,31 @@ test("좌우 뒤집힌 사진도 겹치는 폭을 구하고, 값이 유한하지
   for (const key of Object.keys(span) as (keyof typeof span)[]) {
     assert.ok(Number.isNaN(getVisiblePhotoSpanWidth({ ...span, [key]: Number.NaN })), `${key} NaN`);
   }
+});
+
+test("고르기 모드는 같은 프레임의 보이는 캔버스에서 주인 사진이 칸에 있고 선택이 주인과 맞을 때만 남는다", () => {
+  const common = { frame: "4v_1", isCanvasVisible: true };
+  const withPhoto = [{ id: "p1" }, { id: "p2" }];
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: null, selection: null, userImages: withPhoto }), false);
+
+  const firstPick = { sourceImageId: "p1", stickerId: null, frame: "4v_1" };
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: firstPick, selection: null, userImages: withPhoto }), true);
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: firstPick, selection: "p2", userImages: withPhoto }), false);
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: firstPick, selection: null, userImages: [{ id: "p2" }] }), false);
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: firstPick, selection: null, userImages: [{ id: "p3" }] }), false);
+
+  const replacePick = { sourceImageId: "p1", stickerId: "s1", frame: "4v_1" };
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: replacePick, selection: "s1", userImages: withPhoto }), true);
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: replacePick, selection: null, userImages: withPhoto }), false);
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: replacePick, selection: "s2", userImages: withPhoto }), false);
+  assert.equal(shouldKeepCutoutPickMode({ ...common, owner: replacePick, selection: "s1", userImages: [{ id: "p2" }] }), false);
+
+  assert.equal(
+    shouldKeepCutoutPickMode({ owner: firstPick, selection: null, userImages: withPhoto, frame: "6v_1", isCanvasVisible: true }),
+    false,
+  );
+  assert.equal(
+    shouldKeepCutoutPickMode({ owner: firstPick, selection: null, userImages: withPhoto, frame: "4v_1", isCanvasVisible: false }),
+    false,
+  );
 });

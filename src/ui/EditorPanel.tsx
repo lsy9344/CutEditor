@@ -13,7 +13,7 @@ import { getNextTextTransformState, getRenderedTextWidth } from "../canvas/textT
 import { getTextDeleteFocusTarget, getWrappedFocusIndex, setInertOutside } from "../state/modalFocus";
 import type { EditorPanelTab } from "./editorMenu";
 import { getDeletableSticker } from "./editorMenu";
-import type { CutoutSource } from "../photo/cutoutTypes";
+import type { CutoutSource, CutoutSubject } from "../photo/cutoutTypes";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -156,6 +156,9 @@ export type EditorPanelProps = {
     errorMessage: string | null;
     onCreate: (imageId: string) => void;
     onPreload: () => void;
+    subject: CutoutSubject;
+    showSubjectChoice: boolean;
+    onSubjectChange: (subject: CutoutSubject) => void;
   };
   forcedTab?: EditorPanelTab | null;
   showActionRail?: boolean;
@@ -1101,7 +1104,28 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 <p>{CUTOUT_COPY.noPhoto}</p>
               ) : (
                 <>
-                  <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>{CUTOUT_COPY.tip}</p>
+                  {cutoutSection.showSubjectChoice && (
+                    <div role="group" aria-label={CUTOUT_COPY.subjectGroup} style={{ display: 'flex', gap: 'var(--linear-space-2)' }}>
+                      {([
+                        { subject: 'person', label: CUTOUT_COPY.subjectPerson },
+                        { subject: 'thing', label: CUTOUT_COPY.subjectThing },
+                      ] as const).map((option) => (
+                        <button
+                          key={option.subject}
+                          type="button"
+                          className={`linear-button ${cutoutSection.subject === option.subject ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                          aria-pressed={cutoutSection.subject === option.subject}
+                          onClick={() => cutoutSection.onSubjectChange(option.subject)}
+                          style={{ flex: 1, minHeight: '44px', fontSize: '14px' }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>
+                    {cutoutSection.showSubjectChoice && cutoutSection.subject === 'thing' ? CUTOUT_COPY.tipThing : CUTOUT_COPY.tipPerson}
+                  </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                     {cutoutSection.images.map((image, index) => (
                       <button
@@ -1109,6 +1133,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                         type="button"
                         className="linear-button linear-button--secondary"
                         aria-label={`${index + 1}번째 사진으로 내 사진 스티커 만들기`}
+                        data-cutout-image-id={image.id}
                         onClick={() => cutoutSection.onCreate(image.id)}
                         style={{ width: 72, height: 72, padding: 0, overflow: 'hidden' }}
                       >
