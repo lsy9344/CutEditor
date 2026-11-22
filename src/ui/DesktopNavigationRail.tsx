@@ -1,6 +1,9 @@
 import React from 'react'
+import { PHOTO_EDIT_FEATURES } from '../photo/photoEditFeatures'
+import { CUTOUT_COPY } from '../photo/cutoutCopy'
+import type { EditorMenu } from './editorMenu'
 
-export type DesktopPanel = 'frames' | 'text' | 'sticker' | null;
+export type DesktopPanel = EditorMenu | null;
 
 export type DesktopNavigationRailProps = {
   activePanel: DesktopPanel;
@@ -65,6 +68,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         type="button"
         onClick={() => onTogglePanel('frames')}
         style={railButtonStyle(activePanel === 'frames')}
+        aria-expanded={activePanel === 'frames'}
         className={tutorialStep === 0 ? 'tutorial-highlight' : undefined}
       >
         <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -81,6 +85,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         type="button"
         onClick={() => onTogglePanel('text')}
         style={railButtonStyle(activePanel === 'text')}
+        aria-expanded={activePanel === 'text'}
         className={tutorialStep === 1 ? 'tutorial-highlight' : undefined}
       >
         <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -96,6 +101,7 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         type="button"
         onClick={() => onTogglePanel('sticker')}
         style={railButtonStyle(activePanel === 'sticker')}
+        aria-expanded={activePanel === 'sticker'}
         className={tutorialStep === 2 ? 'tutorial-highlight' : undefined}
       >
         <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -106,6 +112,21 @@ export const DesktopNavigationRail: React.FC<DesktopNavigationRailProps> = ({
         </svg>
         <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>스티커</span>
       </button>
+
+      {PHOTO_EDIT_FEATURES.cutout && (
+        <button
+          type="button"
+          onClick={() => onTogglePanel('cutout')}
+          style={railButtonStyle(activePanel === 'cutout')}
+          aria-expanded={activePanel === 'cutout'}
+        >
+          <svg width="29" height="29" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21v-1a8 8 0 0 1 16 0v1" />
+          </svg>
+          <span style={{ fontSize: '13px', fontWeight: 'bold', whiteSpace: 'normal', wordBreak: 'keep-all', textAlign: 'center' }}>{CUTOUT_COPY.sectionTitle}</span>
+        </button>
+      )}
 
       <button
         type="button"

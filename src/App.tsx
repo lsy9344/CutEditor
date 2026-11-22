@@ -81,6 +81,9 @@ import {
 import { keepStickerCenter } from './photo/cutoutGeometry'
 import { CUTOUT_COPY } from './photo/cutoutCopy'
 import type { CutoutChanges, CutoutImagesState } from './photo/cutoutTypes'
+import { PHOTO_EDIT_FEATURES } from './photo/photoEditFeatures'
+import type { EditorMenu } from './ui/editorMenu'
+import { getMenuAfterSelect, getSelectedMenu } from './ui/editorMenu'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin, PickFocusTarget } from './state/modalFocus'
@@ -794,8 +797,8 @@ function App() {
   ));
   // 제어판·캔버스 배치 미디어 조건은 change 이벤트로 따라가 회전 직후 첫 렌더부터 맞는 값을 씁니다(보정표 D-13).
   const [layoutMedia, setLayoutMedia] = useState<LayoutMediaMatches>(readLayoutMediaMatches);
-  const [mobilePanel, setMobilePanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
-  const [desktopPanel, setDesktopPanel] = useState<'frames' | 'text' | 'sticker' | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<EditorMenu | null>(null);
+  const [desktopPanel, setDesktopPanel] = useState<EditorMenu | null>(null);
   const [tutorialStep, setTutorialStep] = useState<number | null>(0);
   const tutorialRef0 = useRef<HTMLButtonElement>(null);
   const tutorialRef1 = useRef<HTMLButtonElement>(null);
@@ -1037,6 +1040,8 @@ function App() {
 
   const handleSelect = (id: string | null) => {
     const selectedImage = id ? editorState.userImages.find((image) => image.id === id) : null;
+    // 고른 대상의 메뉴. 열린 패널을 이 메뉴로 맞춥니다(설계 5.5). 휴대폰 시트는 모달이라 열린 동안 캔버스 선택이 없습니다.
+    const selectedMenu = getSelectedMenu({ id, texts, stickers });
 
     setEditorState(prev => ({
       ...prev,
@@ -1045,17 +1050,27 @@ function App() {
     }))
 
     // 텍스트/스티커 선택 상태 업데이트
-    if (id && texts.some(text => text.id === id)) {
+    if (selectedMenu === 'text') {
       setSelectedTextId(id);
       setSelectedStickerId(null);
-    } else if (id && stickers.some(sticker => sticker.id === id)) {
+    } else if (selectedMenu === 'sticker' || selectedMenu === 'cutout') {
       setSelectedStickerId(id);
       setSelectedTextId(null);
     } else {
       setSelectedTextId(null);
       setSelectedStickerId(null);
     }
+
+    // 휴대폰에서는 숨은 데스크톱 패널을 바꾸지 않습니다. 바꾸면 창을 넓혔을 때 사람이 열어 둔 패널이 다른 패널로 바뀌어 있습니다.
+    if (!isMobileEditor) setDesktopPanel((openMenu) => getMenuAfterSelect({ openMenu, selectedMenu }));
   }
+
+  // 이미 고른 글씨·스티커를 다시 누르거나 끌기 시작할 때도 열린 패널을 맞춥니다(Codex 필수 2). 데스크톱 배치에서만 합니다(Codex 2차 필수 3).
+  const handleReselect = (id: string) => {
+    if (isMobileEditor) return;
+    const selectedMenu = getSelectedMenu({ id, texts, stickers });
+    setDesktopPanel((openMenu) => getMenuAfterSelect({ openMenu, selectedMenu }));
+  };
 
   const handleSlotSelect = (slotId: string | null) => {
     setEditorState(prev => ({ ...prev, selectedSlot: slotId }))
@@ -2283,6 +2298,10 @@ function App() {
     },
   };
 
+  // 768px 이하 낮은 가로(휴대폰 가로)에서는 CSS가 앱 높이를 풀고 제어판을 캔버스 아래로 쌓아 툴바가 화면 밖으로 늘어납니다(Codex 필수 5).
+  // 편집 화면에서만 앱 높이를 화면 높이로 묶고, 캔버스와 제어판을 844×390처럼 가로로 놓습니다. 제어판은 스스로 스크롤합니다.
+  const isNarrowLandscapeEditor = isMobileEditor && canvasMode === 'editor' && layoutMedia.isNarrow && layoutMedia.isShortLandscape;
+
   const mainCanvasContent = canvasMode === 'gallery' ? (
     <FrameGallery
       selectedCategory={activeCategory}
@@ -2328,12 +2347,14 @@ function App() {
       stageRefExternal={stageRef}
       stageDisplayRefExternal={stageDisplayRef}
       isMobilePortraitLayout={layoutMedia.isMobilePortrait}
+      isNarrowLandscapeLayout={isNarrowLandscapeEditor}
       texts={texts}
       stickers={stickers}
       onPhotoImagesStateChange={handlePhotoImagesStateChange}
       onCutoutImagesStateChange={handleCutoutImagesStateChange}
       onDecorImagesStateChange={handleDecorImagesStateChange}
       onSelect={handleSelect}
+      onReselect={handleReselect}
       onSlotSelect={handleSlotSelect}
       onZoomChange={handleZoomChange}
       onImageUpload={handleImageUpload}
@@ -2350,14 +2371,36 @@ function App() {
     />
   );
 
+  // 휴대폰 툴바 5칸(설계 4.3, 12장, Codex 필수 5). 누끼가 꺼져 있으면 4칸 그대로입니다.
+  // 세로: 5열, 간격 8, 버튼 좌우 여백 4 → 360px 폭에서도 칸마다 44 이상.
+  // 낮은 가로: 1열 그대로, 간격·안쪽 여백 4 → 높이 320 화면에서도 다섯 칸이 툴바 안에 들어감.
+  const hasCutoutMenu = PHOTO_EDIT_FEATURES.cutout;
+  const isCutoutToolbarShort = hasCutoutMenu && layoutMedia.isShortLandscape;
+  const mobileToolbarStyle: React.CSSProperties | undefined = !hasCutoutMenu
+    ? undefined
+    : isCutoutToolbarShort
+      ? { gap: '4px', padding: '4px' }
+      : { gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: '8px' };
+  const mobileMenuButtonStyle: React.CSSProperties | undefined = !hasCutoutMenu
+    ? undefined
+    : isCutoutToolbarShort
+      ? { minHeight: '44px', padding: '4px 2px' }
+      : { padding: '0 4px' };
+
   const mobileSheetTitle = mobilePanel === 'frames'
     ? '프레임 선택'
     : mobilePanel === 'text'
       ? '글씨 편집'
-      : '스티커 편집';
+      : mobilePanel === 'cutout'
+        ? CUTOUT_COPY.sheetTitle
+        : '스티커 편집';
 
   return (
-    <div ref={appContainerRef} className="app-container">
+    <div
+      ref={appContainerRef}
+      className="app-container"
+      style={isNarrowLandscapeEditor ? { height: '100dvh' } : undefined}
+    >
       {cutoutBusyId && (
         <div
           ref={cutoutLockRef}
@@ -2446,11 +2489,15 @@ function App() {
               {mainCanvasContent}
             </div>
             {/* 모바일 액션 바 */}
-            <div className="app-mobile-toolbar linear-card">
+            <div
+              className="app-mobile-toolbar linear-card"
+              style={mobileToolbarStyle}
+            >
               <button
                 ref={mobileTutorialRef0}
                 type="button"
                 className={`linear-button ${mobilePanel === 'frames' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 0 ? ' tutorial-highlight' : ''}`}
+                style={mobileMenuButtonStyle}
                 onClick={(event) => {
                   mobileSheetOpenerRef.current = event.currentTarget;
                   setMobilePanel((prev) => prev === 'frames' ? null : 'frames');
@@ -2462,6 +2509,7 @@ function App() {
                 ref={mobileTutorialRef1}
                 type="button"
                 className={`linear-button ${mobilePanel === 'text' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 1 ? ' tutorial-highlight' : ''}`}
+                style={mobileMenuButtonStyle}
                 onClick={(event) => {
                   mobileSheetOpenerRef.current = event.currentTarget;
                   setMobilePanel((prev) => prev === 'text' ? null : 'text');
@@ -2473,6 +2521,7 @@ function App() {
                 ref={mobileTutorialRef2}
                 type="button"
                 className={`linear-button ${mobilePanel === 'sticker' ? 'linear-button--primary' : 'linear-button--secondary'}${tutorialStep === 2 ? ' tutorial-highlight' : ''}`}
+                style={mobileMenuButtonStyle}
                 onClick={(event) => {
                   mobileSheetOpenerRef.current = event.currentTarget;
                   setMobilePanel((prev) => prev === 'sticker' ? null : 'sticker');
@@ -2480,6 +2529,20 @@ function App() {
               >
                 스티커
               </button>
+              {hasCutoutMenu && (
+                <button
+                  type="button"
+                  className={`linear-button ${mobilePanel === 'cutout' ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  style={mobileMenuButtonStyle}
+                  aria-label={CUTOUT_COPY.sectionTitle}
+                  onClick={(event) => {
+                    mobileSheetOpenerRef.current = event.currentTarget;
+                    setMobilePanel((prev) => prev === 'cutout' ? null : 'cutout');
+                  }}
+                >
+                  {CUTOUT_COPY.menuShortLabel}
+                </button>
+              )}
               <button
                 ref={mobileTutorialRef3}
                 type="button"
@@ -2487,7 +2550,11 @@ function App() {
                 onClick={handleSaveRequest}
                 disabled={!editorState.selectedFrame || isExportInFlight}
                 title={editorState.selectedFrame ? undefined : '먼저 프레임을 골라 주세요'}
-                style={{ opacity: !editorState.selectedFrame || isExportInFlight ? 0.5 : 1 }}
+                style={{
+                  opacity: !editorState.selectedFrame || isExportInFlight ? 0.5 : 1,
+                  minHeight: isCutoutToolbarShort ? '52px' : undefined,
+                  padding: !hasCutoutMenu ? undefined : isCutoutToolbarShort ? '4px 2px' : '0 4px',
+                }}
                 data-focus-return="save"
               >
                 저장

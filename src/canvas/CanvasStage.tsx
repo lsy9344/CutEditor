@@ -138,6 +138,7 @@ export type CanvasStageProps = {
   stageRefExternal?: React.RefObject<Konva.Stage | null>; // 외부에서 Stage 접근용
   stageDisplayRefExternal?: React.MutableRefObject<StageDisplayTransform | null>; // 마지막으로 커밋한 Stage 표시 변환(저장 뒤 복원용, 보정표 D-13)
   isMobilePortraitLayout?: boolean; // components.css의 휴대폰 세로 배치 미디어 조건 값(App이 change 이벤트로 따라감)
+  isNarrowLandscapeLayout?: boolean; // 768px 이하 낮은 가로 편집 화면: 캔버스와 제어판을 가로로 놓음(App이 정함)
   texts?: Array<{
     id: string;
     text: string;
@@ -169,6 +170,7 @@ export type CanvasStageProps = {
     cutout?: CutoutSource;
   }>;
   onSelect?: (id: string | null) => void;
+  onReselect?: (id: string) => void; // 이미 고른 글씨·스티커를 다시 누르거나 끌기 시작함(메뉴 맞추기)
   onSlotSelect?: (slotId: string | null) => void;
   onZoomChange?: (zoom: number) => void;
   onImageUpload?: (file: File, slotId: string) => void;
@@ -283,9 +285,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   stageRefExternal,
   stageDisplayRefExternal,
   isMobilePortraitLayout = false,
+  isNarrowLandscapeLayout = false,
   texts = [],
   stickers = [],
   onSelect,
+  onReselect,
   onSlotSelect,
   onImageUpload,
   onRequestImageImport,
@@ -549,6 +553,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isCutoutCacheMissing = selectedSticker?.cutout ? !hasCutoutWorkingCanvas(selectedSticker.id) : false;
+  // 공통 조작 높이: 누끼 다듬기 카드에서만 44, 일반 '스티커 편집' 카드는 지금처럼 32입니다(계획 4.1 #12).
+  const stickerControlHeight = selectedSticker?.cutout ? '44px' : '32px';
+  const stickerDetailButtonStyle = selectedSticker?.cutout ? PHOTO_DETAIL_BUTTON_STYLE : DETAIL_BUTTON_STYLE;
   const brushScreenRadius = photoEdit.toolMode === "erase-cutout" && selectedSticker?.cutout
     ? getCutoutBrushScreenRadius(BRUSH_SCREEN_RADIUS[activeBrushSize], selectedSticker, zoom)
     : BRUSH_SCREEN_RADIUS[activeBrushSize];
@@ -854,21 +861,23 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const selectSticker = useCallback((stickerId: string) => {
     if (selection === stickerId) {
+      onReselect?.(stickerId);
       focusCanvasArea();
       return;
     }
     onSelect?.(stickerId);
     focusCanvasArea();
-  }, [focusCanvasArea, onSelect, selection]);
+  }, [focusCanvasArea, onReselect, onSelect, selection]);
 
   const selectText = useCallback((textId: string) => {
     if (selection === textId) {
+      onReselect?.(textId);
       focusCanvasArea();
       return;
     }
     onSelect?.(textId);
     focusCanvasArea();
-  }, [focusCanvasArea, onSelect, selection]);
+  }, [focusCanvasArea, onReselect, onSelect, selection]);
 
   const clearCanvasSelection = useCallback(() => {
     onSelect?.(null);
@@ -2150,7 +2159,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         ['--mobile-canvas-height' as string]: `${containerSize.height}px`,
       } as React.CSSProperties}
     >
-      <div className="canvas-stage-layout">
+      <div
+        className="canvas-stage-layout"
+        style={isNarrowLandscapeLayout ? { flexDirection: 'row', alignItems: 'stretch' } : undefined}
+      >
         <div
           ref={containerRef}
           className="canvas-stage-area"
@@ -2812,6 +2824,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             // 누른 버튼이 붙박이 캔버스 뒤로 들어갑니다(ST1-2).
             overflowAnchor: isMobilePortraitLayout ? 'none' : undefined,
             minWidth: isPhotoEraseMode && erasePanelWidth !== null ? `${Math.min(erasePanelWidth, erasePanelAvailableWidth ?? erasePanelWidth)}px` : undefined,
+            // 768px 이하 낮은 가로: 768px 이하용 CSS(전체 폭·가로 줄바꿈)를 되돌려 세로 목록으로 두고, 캔버스 몫을 남깁니다(Codex 필수 5).
+            ...(isNarrowLandscapeLayout ? { width: 'auto', maxWidth: '50%', flexDirection: 'column', flexWrap: 'nowrap', alignItems: 'stretch', justifyContent: 'flex-start' } : {}),
           }}
         >
           <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
@@ -3284,168 +3298,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               flexDirection: 'column',
               gap: '10px'
             }}>
-              <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>스티커 편집</h4>
-
-              {/* 반전 버튼 */}
-              <div style={{ display: 'flex', gap: '6px' }}>
-                <button
-                  type="button"
-                  className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipX: !selectedSticker.flipX })}
-                  aria-pressed={Boolean(selectedSticker.flipX)}
-                  style={{
-                    flex: 1,
-                    minHeight: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                    minWidth: 0,
-                    padding: '0 6px',
-                    fontSize: '14px',
-                    border: 'var(--border-width) solid var(--linear-neutral-500)',
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="7 2 3 6 7 10" />
-                    <polyline points="17 2 21 6 17 10" />
-                    <line x1="3" y1="6" x2="21" y2="6" />
-                  </svg>
-                  {selectedSticker.flipX ? <span aria-hidden="true">✓ </span> : null}
-                  좌우 뒤집기
-                </button>
-                <button
-                  type="button"
-                  className={`linear-button ${selectedSticker.flipY ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipY: !selectedSticker.flipY })}
-                  aria-pressed={Boolean(selectedSticker.flipY)}
-                  style={{
-                    flex: 1,
-                    minHeight: '32px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '4px',
-                    minWidth: 0,
-                    padding: '0 6px',
-                    fontSize: '14px',
-                    border: 'var(--border-width) solid var(--linear-neutral-500)',
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="2 7 6 3 10 7" />
-                    <polyline points="2 17 6 21 10 17" />
-                    <line x1="6" y1="3" x2="6" y2="21" />
-                  </svg>
-                  {selectedSticker.flipY ? <span aria-hidden="true">✓ </span> : null}
-                  위아래 뒤집기
-                </button>
-              </div>
-
-              {/* 색상 틴트 */}
-              {!selectedSticker.cutout && (
-                <div>
-                  <p style={{ fontSize: '14px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색 바꾸기</p>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <input
-                      type="color"
-                      className="linear-input"
-                      value={selectedSticker.tintColor ?? '#000000'}
-                      onChange={(e) => onStickerUpdate?.(selectedSticker.id, { tintColor: e.target.value })}
-                      style={{
-                        width: '32px',
-                        height: '32px',
-                        padding: '2px',
-                        border: 'var(--border-width) solid var(--linear-neutral-500)',
-                        cursor: 'pointer',
-                      }}
-                      title="스티커 색 고르기"
-                      aria-label="스티커 색 고르기"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="button"
-                className="linear-button linear-button--secondary"
-                aria-expanded={isStickerDetailOpen}
-                onClick={() => setIsStickerDetailOpen((open) => !open)}
-                style={DETAIL_BUTTON_STYLE}
-              >
-                {isStickerDetailOpen ? '접기' : '자세히'}
-              </button>
-              {isStickerDetailOpen && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>스티커 옮기기</p>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {MOVE_BUTTONS.map((moveButton) => (
-                      <button
-                        key={moveButton.label}
-                        type="button"
-                        className="linear-button linear-button--secondary"
-                        onClick={() => moveSelectedStickerBy(moveButton.delta)}
-                        style={DETAIL_BUTTON_STYLE}
-                      >
-                        {moveButton.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    <button type="button" className="linear-button linear-button--secondary" onClick={() => scaleSelectedStickerBy(1 / KEYBOARD_SCALE_FACTOR)} style={DETAIL_BUTTON_STYLE}>
-                      작게 하기
-                    </button>
-                    <button type="button" className="linear-button linear-button--secondary" onClick={() => scaleSelectedStickerBy(KEYBOARD_SCALE_FACTOR)} style={DETAIL_BUTTON_STYLE}>
-                      크게 하기
-                    </button>
-                    <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedStickerBy(-STICKER_TILT_STEP)} style={DETAIL_BUTTON_STYLE}>
-                      왼쪽으로 기울이기
-                    </button>
-                    <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedStickerBy(STICKER_TILT_STEP)} style={DETAIL_BUTTON_STYLE}>
-                      오른쪽으로 기울이기
-                    </button>
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-                    스티커 각도(°)
-                    <input
-                      type="number"
-                      className="linear-input"
-                      step="1"
-                      value={getAngleInputValue({ draft: stickerAngleDraft, targetId: selectedSticker.id, rotation: selectedSticker.rotation })}
-                      onChange={(event) => {
-                        const degrees = getAngleInputDegrees(event.currentTarget.valueAsNumber);
-                        setStickerAngleDraft({ targetId: selectedSticker.id, text: degrees === null ? event.currentTarget.value : String(degrees) }); // 보이는 값 = 적용한 값(UP-6)
-                        if (degrees === null) return;
-                        rotateSelectedStickerBy(degrees - selectedSticker.rotation);
-                      }}
-                      onBlur={() => setStickerAngleDraft(null)}
-                      style={{ width: '88px', minHeight: '32px', fontSize: '14px' }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="linear-button linear-button--secondary"
-                    onClick={() => onStickerUpdate?.(selectedSticker.id, getStickerEditResetUpdates())}
-                    disabled={!canResetStickerEdit}
-                    style={{
-                      height: '32px',
-                      fontSize: '14px',
-                      border: 'var(--border-width) solid var(--linear-neutral-500)',
-                      opacity: canResetStickerEdit ? 1 : 0.5,
-                    }}
-                  >
-                    처음대로
-                  </button>
-                </div>
-              )}
+              <h4 style={{ margin: '0', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{selectedSticker.cutout ? CUTOUT_COPY.sectionTitle : '스티커 편집'}</h4>
 
               {selectedSticker.cutout && (() => {
-                const cutoutToolButtonStyle = {
-                  height: '32px',
-                  fontSize: '14px',
-                  border: 'var(--border-width) solid var(--linear-neutral-500)',
-                  opacity: isCutoutCacheMissing ? 0.5 : 1,
-                };
+                const cutoutToolButtonStyle = { ...PHOTO_PANEL_BUTTON_STYLE, opacity: isCutoutCacheMissing ? 0.5 : 1 };
                 const outline = selectedSticker.cutout.outline;
 
                 return (
@@ -3510,9 +3366,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                         disabled={isCutoutCacheMissing}
                         style={cutoutToolButtonStyle}
                       >
-                        {CUTOUT_COPY.eraseEdge}
+                        {CUTOUT_COPY.eraser}
                       </button>
-                    ) : renderBrushControls(CUTOUT_COPY.eraseEdgeGuide)}
+                    ) : renderBrushControls(CUTOUT_COPY.eraserGuide)}
                     <button
                       type="button"
                       className="linear-button linear-button--secondary"
@@ -3523,11 +3379,189 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       {CUTOUT_COPY.restart}
                     </button>
                     {cutoutEdit.errorMessage && (
-                      <p className="linear-status--warning" style={{ margin: 0, fontSize: '14px' }}>{cutoutEdit.errorMessage}</p>
+                      <p
+                        className="linear-status--warning"
+                        style={{ margin: 0, fontSize: '14px' }}
+                      >
+                        {cutoutEdit.errorMessage}
+                      </p>
                     )}
                   </div>
                 );
               })()}
+
+              {/* 반전 버튼 */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`linear-button ${selectedSticker.flipX ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipX: !selectedSticker.flipX })}
+                  aria-pressed={Boolean(selectedSticker.flipX)}
+                  style={{
+                    flex: 1,
+                    minHeight: stickerControlHeight,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    minWidth: 0,
+                    padding: '0 6px',
+                    fontSize: '14px',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="7 2 3 6 7 10" />
+                    <polyline points="17 2 21 6 17 10" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                  </svg>
+                  {selectedSticker.flipX ? <span aria-hidden="true">✓ </span> : null}
+                  좌우 뒤집기
+                </button>
+                <button
+                  type="button"
+                  className={`linear-button ${selectedSticker.flipY ? 'linear-button--primary' : 'linear-button--secondary'}`}
+                  onClick={() => onStickerUpdate?.(selectedSticker.id, { flipY: !selectedSticker.flipY })}
+                  aria-pressed={Boolean(selectedSticker.flipY)}
+                  style={{
+                    flex: 1,
+                    minHeight: stickerControlHeight,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '4px',
+                    minWidth: 0,
+                    padding: '0 6px',
+                    fontSize: '14px',
+                    border: 'var(--border-width) solid var(--linear-neutral-500)',
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="2 7 6 3 10 7" />
+                    <polyline points="2 17 6 21 10 17" />
+                    <line x1="6" y1="3" x2="6" y2="21" />
+                  </svg>
+                  {selectedSticker.flipY ? <span aria-hidden="true">✓ </span> : null}
+                  위아래 뒤집기
+                </button>
+              </div>
+
+              {/* 색상 틴트 */}
+              {!selectedSticker.cutout && (
+                <div>
+                  <p style={{ fontSize: '14px', color: 'var(--linear-secondary-300)', margin: '0 0 4px 0' }}>색 바꾸기</p>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    <input
+                      type="color"
+                      className="linear-input"
+                      value={selectedSticker.tintColor ?? '#000000'}
+                      onChange={(e) => onStickerUpdate?.(selectedSticker.id, { tintColor: e.target.value })}
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        padding: '2px',
+                        border: 'var(--border-width) solid var(--linear-neutral-500)',
+                        cursor: 'pointer',
+                      }}
+                      title="스티커 색 고르기"
+                      aria-label="스티커 색 고르기"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="linear-button linear-button--secondary"
+                aria-expanded={isStickerDetailOpen}
+                onClick={() => setIsStickerDetailOpen((open) => !open)}
+                style={stickerDetailButtonStyle}
+              >
+                {isStickerDetailOpen ? '접기' : '자세히'}
+              </button>
+              {isStickerDetailOpen && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>스티커 옮기기</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {MOVE_BUTTONS.map((moveButton) => (
+                      <button
+                        key={moveButton.label}
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => moveSelectedStickerBy(moveButton.delta)}
+                        style={stickerDetailButtonStyle}
+                      >
+                        {moveButton.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => scaleSelectedStickerBy(1 / KEYBOARD_SCALE_FACTOR)}
+                      style={stickerDetailButtonStyle}
+                    >
+                      작게 하기
+                    </button>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => scaleSelectedStickerBy(KEYBOARD_SCALE_FACTOR)}
+                      style={stickerDetailButtonStyle}
+                    >
+                      크게 하기
+                    </button>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => rotateSelectedStickerBy(-STICKER_TILT_STEP)}
+                      style={stickerDetailButtonStyle}
+                    >
+                      왼쪽으로 기울이기
+                    </button>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => rotateSelectedStickerBy(STICKER_TILT_STEP)}
+                      style={stickerDetailButtonStyle}
+                    >
+                      오른쪽으로 기울이기
+                    </button>
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
+                    스티커 각도(°)
+                    <input
+                      type="number"
+                      className="linear-input"
+                      step="1"
+                      value={getAngleInputValue({ draft: stickerAngleDraft, targetId: selectedSticker.id, rotation: selectedSticker.rotation })}
+                      onChange={(event) => {
+                        const degrees = getAngleInputDegrees(event.currentTarget.valueAsNumber);
+                        setStickerAngleDraft({ targetId: selectedSticker.id, text: degrees === null ? event.currentTarget.value : String(degrees) }); // 보이는 값 = 적용한 값(UP-6)
+                        if (degrees === null) return;
+                        rotateSelectedStickerBy(degrees - selectedSticker.rotation);
+                      }}
+                      onBlur={() => setStickerAngleDraft(null)}
+                      style={{ width: '88px', minHeight: stickerControlHeight, fontSize: '14px' }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => onStickerUpdate?.(selectedSticker.id, getStickerEditResetUpdates())}
+                    disabled={!canResetStickerEdit}
+                    style={{
+                      height: stickerControlHeight,
+                      fontSize: '14px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)',
+                      opacity: canResetStickerEdit ? 1 : 0.5,
+                    }}
+                  >
+                    처음대로
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

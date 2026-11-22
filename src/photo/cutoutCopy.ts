@@ -1,5 +1,7 @@
 export const CUTOUT_COPY = {
   sectionTitle: "내 사진 스티커",
+  menuShortLabel: "사진 스티커",
+  sheetTitle: "내 사진 스티커 만들기",
   sectionDescription: "사진을 누르면 사람만 오려서 붙여요",
   tip: "한 사람만 크게 나온 사진일수록 깔끔해요",
   noPhoto: "먼저 칸에 사진을 넣어 주세요",
@@ -12,8 +14,8 @@ export const CUTOUT_COPY = {
   pickGuide: "남길 사람을 눌러 주세요",
   everyone: "모두 함께",
   outline: "흰 테두리",
-  eraseEdge: "가장자리 지우기",
-  eraseEdgeGuide: "지울 가장자리를 칠하세요. 손을 떼면 지워져요.",
+  eraser: "지우개",
+  eraserGuide: "지우개로 지울 곳을 칠하세요. 손을 떼면 지워져요.",
   restart: "처음부터 다시",
   cancel: "취소",
   cacheMissing: "이 스티커는 다시 만들어야 다듬을 수 있어요",

@@ -11,6 +11,9 @@ import { KEYBOARD_MOVE_FAST_STEP, KEYBOARD_SCALE_FACTOR, getAngleInputDegrees, g
 import type { AngleDraft } from "../canvas/keyboardShortcuts";
 import { getNextTextTransformState, getRenderedTextWidth } from "../canvas/textTransform";
 import { getTextDeleteFocusTarget, getWrappedFocusIndex, setInertOutside } from "../state/modalFocus";
+import type { EditorPanelTab } from "./editorMenu";
+import { getDeletableSticker } from "./editorMenu";
+import type { CutoutSource } from "../photo/cutoutTypes";
 
 type TextAlign = "left" | "center" | "right";
 
@@ -102,6 +105,7 @@ export type EditorPanelProps = {
     flipX: boolean;
     flipY: boolean;
     tintColor: string | null;
+    cutout?: CutoutSource;
   };
   onTextInsert?: (textData: {
     text: string;
@@ -153,7 +157,7 @@ export type EditorPanelProps = {
     onCreate: (imageId: string) => void;
     onPreload: () => void;
   };
-  forcedTab?: "text" | "sticker" | null;
+  forcedTab?: EditorPanelTab | null;
   showActionRail?: boolean;
   showExportButton?: boolean;
 };
@@ -175,7 +179,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   showActionRail = true,
   showExportButton = true,
 }) => {
-  const [activeTab, setActiveTab] = useState<"text" | "sticker" | null>(forcedTab ?? null);
+  const [activeTab, setActiveTab] = useState<EditorPanelTab | null>(forcedTab ?? null);
   const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
   const [isTextDetailOpen, setIsTextDetailOpen] = useState(false); // 글씨 '자세히'는 기본으로 접어 둡니다
   const [textAngleDraft, setTextAngleDraft] = useState<AngleDraft | null>(null); // 각도 칸에 쓰는 중인 글자(스티커와 같은 까닭). 글씨 ID에 묶어 다른 글씨가 선택되면 버립니다(UX5-6)
@@ -230,15 +234,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   useEffect(() => {
     if (selectedText) {
       setTextInput(selectedText.text);
-      setActiveTab("text");
     }
   }, [selectedText]);
-
-  useEffect(() => {
-    if (selectedSticker) {
-      setActiveTab("sticker");
-    }
-  }, [selectedSticker]);
 
   useEffect(() => {
     if (forcedTab !== undefined) {
@@ -247,7 +244,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   }, [forcedTab]);
 
   useEffect(() => {
-    if (activeTab !== 'sticker' || !cutoutSection || !PHOTO_EDIT_FEATURES.cutout) return;
+    if (activeTab !== 'cutout' || !cutoutSection || !PHOTO_EDIT_FEATURES.cutout) return;
     cutoutSection.onPreload();
   }, [activeTab]);
 
@@ -486,6 +483,32 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     paddingRight: 'var(--linear-space-3)',
     marginLeft: '-2px',
   };
+
+  // '이 스티커 지우기'(설계 5.4). '스티커' 탭과 '내 사진 스티커' 탭이 함께 씁니다. 각 탭은 그 종류의 스티커만 넘깁니다(계획 1.4 #1).
+  const renderStickerDeleteButton = (targetSticker: { id: string } | undefined) => (
+    <div
+      className="linear-mt-4"
+      style={{ display: 'flex', justifyContent: 'center', paddingRight: 'var(--linear-space-3)' }}
+    >
+      <button
+        type="button"
+        className="linear-button linear-button--secondary"
+        onClick={() => {
+          if (targetSticker && onStickerDelete) onStickerDelete(targetSticker.id);
+        }}
+        disabled={!targetSticker}
+        style={{
+          opacity: targetSticker ? 1 : 0.5,
+          borderColor: 'var(--linear-neutral-500)',
+          color: 'var(--linear-neutral-50)',
+          minHeight: '44px',
+          fontSize: '14px'
+        }}
+      >
+        이 스티커 지우기
+      </button>
+    </div>
+  );
 
   return (
     <div style={{
@@ -923,46 +946,6 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)', flex: 1, minHeight: 0 }}>
               {!selectedStickerCategory ? (
                 <>
-                  {cutoutSection && PHOTO_EDIT_FEATURES.cutout && (
-                    <div
-                      style={{
-                        border: 'var(--border-width) solid var(--linear-neutral-500)',
-                        padding: '12px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                      }}
-                    >
-                      <h3>{CUTOUT_COPY.sectionTitle}</h3>
-                      <p style={{ fontSize: 'var(--linear-text-sm)' }}>{CUTOUT_COPY.sectionDescription}</p>
-                      <p style={{ fontSize: '11px', color: 'var(--linear-secondary-400)' }}>{CUTOUT_COPY.tip}</p>
-                      {cutoutSection.images.length === 0 ? (
-                        <p>{CUTOUT_COPY.noPhoto}</p>
-                      ) : (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                          {cutoutSection.images.map((image, index) => (
-                            <button
-                              key={image.id}
-                              type="button"
-                              className="linear-button linear-button--secondary"
-                              aria-label={`${index + 1}번째 사진으로 내 사진 스티커 만들기`}
-                              onClick={() => cutoutSection.onCreate(image.id)}
-                              style={{ width: 72, height: 72, padding: 0, overflow: 'hidden' }}
-                            >
-                              <img
-                                src={image.url}
-                                alt=""
-                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {cutoutSection.errorMessage && (
-                        <p className="linear-status--warning">{cutoutSection.errorMessage}</p>
-                      )}
-                    </div>
-                  )}
                   <h3>스티커 선택</h3>
                   <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>
                     스티커를 누르면 사진에 붙어요
@@ -1106,25 +1089,43 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
                 </>
               )}
 
-              <div className="linear-mt-4" style={{ display: 'flex', justifyContent: 'center', paddingRight: 'var(--linear-space-3)' }}>
-                <button
-                  type="button"
-                  className="linear-button linear-button--secondary"
-                  onClick={() => {
-                    if (selectedSticker && onStickerDelete) onStickerDelete(selectedSticker.id);
-                  }}
-                  disabled={!selectedSticker}
-                  style={{
-                    opacity: selectedSticker ? 1 : 0.5,
-                    borderColor: 'var(--linear-neutral-500)',
-                    color: 'var(--linear-neutral-50)',
-                    minHeight: '44px',
-                    fontSize: '14px'
-                  }}
-                >
-                  이 스티커 지우기
-                </button>
-              </div>
+              {renderStickerDeleteButton(getDeletableSticker({ panelTab: 'sticker', selectedSticker }))}
+            </div>
+          )}
+
+          {activeTab === 'cutout' && cutoutSection && PHOTO_EDIT_FEATURES.cutout && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--linear-space-2)', flex: 1, minHeight: 0, overflowY: 'auto', paddingRight: 'var(--linear-space-3)' }}>
+              <h3>{CUTOUT_COPY.sectionTitle}</h3>
+              <p style={{ fontSize: 'var(--linear-text-sm)' }}>{CUTOUT_COPY.sectionDescription}</p>
+              {cutoutSection.images.length === 0 ? (
+                <p>{CUTOUT_COPY.noPhoto}</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 'var(--linear-text-sm)', color: 'var(--linear-secondary-400)' }}>{CUTOUT_COPY.tip}</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {cutoutSection.images.map((image, index) => (
+                      <button
+                        key={image.id}
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        aria-label={`${index + 1}번째 사진으로 내 사진 스티커 만들기`}
+                        onClick={() => cutoutSection.onCreate(image.id)}
+                        style={{ width: 72, height: 72, padding: 0, overflow: 'hidden' }}
+                      >
+                        <img
+                          src={image.url}
+                          alt=""
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  {cutoutSection.errorMessage && (
+                    <p className="linear-status--warning">{cutoutSection.errorMessage}</p>
+                  )}
+                </>
+              )}
+              {renderStickerDeleteButton(getDeletableSticker({ panelTab: 'cutout', selectedSticker }))}
             </div>
           )}
 
