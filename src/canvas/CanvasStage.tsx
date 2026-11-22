@@ -62,6 +62,8 @@ import {
   isBrushPointerStart,
   toNormalizedStroke,
 } from "../photo/photoTool";
+import { getEraseModeFocusTarget } from "../state/modalFocus";
+import type { EraseModeFocusTarget } from "../state/modalFocus";
 import type { LoadedPhotoImage, PhotoImagesState } from "../state/photoLoadState";
 import { getPhotoImagesState, isCurrentPhotoLoad } from "../state/photoLoadState";
 import { getDecorImagesState, isFrameColorApplied } from "../state/decorImagesState";
@@ -77,6 +79,7 @@ const MOVE_BUTTONS = [
 ] as const;
 const STICKER_TILT_STEP = 15; // 스티커 기울이기 각도(설계 8.2)
 const DETAIL_BUTTON_STYLE = { minHeight: '32px', fontSize: '14px', padding: '0 8px' } as const;
+const PHOTO_DETAIL_BUTTON_STYLE = { ...DETAIL_BUTTON_STYLE, minHeight: '44px' } as const;
 
 // 모바일에서 드래그 중에도 동일 노드가 터치 이벤트를 계속 받도록 유지한다.
 Konva.hitOnDragEnabled = true;
@@ -351,6 +354,18 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedImage = getSelectedImageFromState({ selection, selectedSlot, userImages });
   const selectedImageId = selectedImage?.id ?? null;
   const [isAdjustDetailOpen, setIsAdjustDetailOpen] = useState(false);
+  const [isPositionDetailOpen, setIsPositionDetailOpen] = useState(false);
+  // 사진 지우기 붓 크기는 스티커 붓 크기(photoEdit.brushSize)와 따로 둡니다(SP-3).
+  const [photoEraseBrushSize, setPhotoEraseBrushSize] = useState<BrushSize>("medium");
+  // 지우기 모드에서 제어판이 받는 폭을 보통 상태와 같게 지킵니다(SP-8).
+  const [erasePanelWidth, setErasePanelWidth] = useState<number | null>(null);
+  const [erasePanelAvailableWidth, setErasePanelAvailableWidth] = useState<number | null>(null);
+  const controlPanelRef = useRef<HTMLDivElement | null>(null);
+  const activeBrushSize = photoEdit.toolMode === "erase-photo" ? photoEraseBrushSize : photoEdit.brushSize;
+  const setActiveBrushSize = (size: BrushSize) => {
+    if (photoEdit.toolMode === "erase-photo") setPhotoEraseBrushSize(size);
+    else photoEdit.onBrushSizeChange(size);
+  };
   const [isStickerDetailOpen, setIsStickerDetailOpen] = useState(false); // 스티커 '자세히'는 기본으로 접어 둡니다
   const [stickerAngleDraft, setStickerAngleDraft] = useState<AngleDraft | null>(null); // 각도 칸에 쓰는 중인 글자. 스티커 ID에 묶어 다른 스티커가 선택되면 버립니다(UX5-6)
   const [appliedToAllCount, setAppliedToAllCount] = useState<number | null>(null); // '모든 사진에 적용' 결과 표시
@@ -368,6 +383,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   useEffect(() => {
     setIsAdjustDetailOpen(false);
+    setIsPositionDetailOpen(false);
   }, [selectedImageId]);
 
   useEffect(() => {
@@ -518,12 +534,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const selectedText = selection ? texts.find((text) => text.id === selection) ?? null : null;
   const selectedSticker = selection ? stickers.find((sticker) => sticker.id === selection) ?? null : null;
   const photoEditSections = getPhotoEditSections(PHOTO_EDIT_FEATURES);
+  const isPhotoEraseMode = Boolean(selectedImage) && photoEditSections.showErase && photoEdit.toolMode === "erase-photo";
   const hasEditedPhotos = userImages.some((image) => !isDefaultPhotoEdits(image.edits));
   const canResetStickerEdit = selectedSticker ? hasStickerEditChanges(selectedSticker) : false;
   const isCutoutCacheMissing = selectedSticker?.cutout ? !hasCutoutWorkingCanvas(selectedSticker.id) : false;
   const brushScreenRadius = photoEdit.toolMode === "erase-cutout" && selectedSticker?.cutout
-    ? getCutoutBrushScreenRadius(BRUSH_SCREEN_RADIUS[photoEdit.brushSize], selectedSticker, zoom)
-    : BRUSH_SCREEN_RADIUS[photoEdit.brushSize];
+    ? getCutoutBrushScreenRadius(BRUSH_SCREEN_RADIUS[activeBrushSize], selectedSticker, zoom)
+    : BRUSH_SCREEN_RADIUS[activeBrushSize];
   const isTouchManipulationActive = Boolean(selection);
 
   useEffect(() => {
@@ -547,6 +564,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const brushLineRef = useRef<Konva.Line | null>(null);
   const brushDraftRef = useRef<BrushDraft | null>(null);
+  const eraseStartButtonRef = useRef<HTMLButtonElement | null>(null);
+  const eraseDoneButtonRef = useRef<HTMLButtonElement | null>(null);
+  const eraseFocusTargetRef = useRef<EraseModeFocusTarget>("none");
 
   const drawBrushPreview = (points: number[]) => {
     brushLineRef.current?.points(points);
@@ -592,7 +612,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (!draft || draft.pointerId !== pointerId) return;
     cancelBrushStroke();
     if (draft.mode !== photoEdit.toolMode) return;
-    const requestedScreenRadius = BRUSH_SCREEN_RADIUS[photoEdit.brushSize];
+    const requestedScreenRadius = BRUSH_SCREEN_RADIUS[activeBrushSize];
     if (draft.mode === "erase-photo") {
       const targetImage = userImages.find((userImage) => userImage.id === draft.targetId);
       if (!targetImage) return;
@@ -665,33 +685,44 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
   const renderBrushControls = (guideText: string) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-secondary-300)" }}>{guideText}</p>
-      <div style={{ display: "flex", gap: "6px" }}>
-        {BRUSH_SIZE_OPTIONS.map((option) => (
-          <button
-            key={option.size}
-            type="button"
-            className={`linear-button ${photoEdit.brushSize === option.size ? "linear-button--primary" : "linear-button--secondary"}`}
-            onClick={() => photoEdit.onBrushSizeChange(option.size)}
-            style={{
-              flex: 1,
-              height: "32px",
-              padding: "0 8px",
-              fontSize: "14px",
-              border: "var(--border-width) solid var(--linear-neutral-500)",
-            }}
-          >
-            {option.label}
-          </button>
-        ))}
+      <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-neutral-50)" }}>{guideText}</p>
+      <div role="group" aria-label="붓 크기" style={{ display: "flex", gap: "6px" }}>
+        {BRUSH_SIZE_OPTIONS.map((option) => {
+          const isBrushSelected = activeBrushSize === option.size;
+          return (
+            <button
+              key={option.size}
+              type="button"
+              className="linear-button linear-button--secondary"
+              aria-pressed={isBrushSelected}
+              onClick={() => setActiveBrushSize(option.size)}
+              style={{
+                flex: 1,
+                minWidth: "44px",
+                minHeight: "44px",
+                padding: "0 8px",
+                fontSize: "14px",
+                border: "var(--border-width) solid var(--linear-neutral-500)",
+              }}
+            >
+              {isBrushSelected ? <span aria-hidden="true">✓ </span> : null}{option.label}
+            </button>
+          );
+        })}
       </div>
       <button
+        ref={eraseDoneButtonRef}
         type="button"
         className="linear-button linear-button--primary"
-        onClick={() => photoEdit.onToolModeChange("none")}
+        onClick={(event) => {
+          if (photoEdit.toolMode === "erase-photo") {
+            eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: event.currentTarget.matches(":focus-visible") });
+          }
+          photoEdit.onToolModeChange("none");
+        }}
         style={{
-          height: "32px",
-          fontSize: "14px",
+          minHeight: "52px",
+          fontSize: "16px",
           border: "var(--border-width) solid var(--linear-neutral-500)",
         }}
       >
@@ -699,6 +730,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       </button>
     </div>
   );
+
+  // 제어판 안 어디에 포커스가 있어도 Esc로 지우기 모드를 끝냅니다(S-15). 창 단위 Esc 듣기(App 되돌리기, 글씨체 창)로 올라가지 않게 멈춥니다.
+  const handleControlPanelKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape" || photoEdit.toolMode !== "erase-photo") return;
+    event.preventDefault();
+    event.stopPropagation();
+    eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: true });
+    photoEdit.onToolModeChange("none");
+  };
 
   const focusCanvasArea = useCallback(() => {
     stageWrapperRef.current?.focus({ preventScroll: true });
@@ -710,6 +750,30 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       stageContainer.style.cursor = cursor;
     }
   }, []);
+
+  // 지우기 모드에 키보드로 들어가고 나올 때, 다음 그리기 뒤 한 번만 포커스를 옮깁니다(설계 8.3, src/ui/EditorPanel.tsx 201-208 본보기).
+  useLayoutEffect(() => {
+    const focusTarget = eraseFocusTargetRef.current;
+    if (focusTarget === "none") return;
+    eraseFocusTargetRef.current = "none";
+    if (focusTarget === "erase-done") eraseDoneButtonRef.current?.focus();
+    else eraseStartButtonRef.current?.focus();
+  });
+
+  // 모드에서 거는 제어판 최소 폭이 지금 쓸 수 있는 폭을 넘지 않게, 창 크기가 바뀔 때마다 다시 잽니다(보정표 D-6).
+  useEffect(() => {
+    if (!isPhotoEraseMode) return;
+    const measurePanelAvailableWidth = () => {
+      const panelParent = controlPanelRef.current?.parentElement;
+      setErasePanelAvailableWidth(panelParent ? panelParent.clientWidth : null);
+    };
+    measurePanelAvailableWidth();
+    window.addEventListener("resize", measurePanelAvailableWidth);
+    return () => {
+      window.removeEventListener("resize", measurePanelAvailableWidth);
+      setErasePanelAvailableWidth(null); // 다음 진입의 첫 그리기가 지난 값을 쓰지 않게 비웁니다.
+    };
+  }, [isPhotoEraseMode]);
 
   const selectImage = useCallback((imageId: string, slotId: string) => {
     if (selection === imageId && selectedSlot === slotId) {
@@ -2615,7 +2679,12 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           </div>
         </div>
 
-        <div className="canvas-control-panel">
+        <div
+          ref={controlPanelRef}
+          className="canvas-control-panel"
+          onKeyDown={handleControlPanelKeyDown}
+          style={isPhotoEraseMode && erasePanelWidth !== null ? { minWidth: `${Math.min(erasePanelWidth, erasePanelAvailableWidth ?? erasePanelWidth)}px` } : undefined}
+        >
           <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
             <button
               type="button"
@@ -2702,6 +2771,265 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </button>
             ))}
           </div>
+          {isPhotoEraseMode && (
+            <div
+              className="linear-status--warning"
+              role="group"
+              aria-labelledby="erase-mode-title"
+              style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '10px', width: 0, minWidth: '100%', boxSizing: 'border-box' }}
+            >
+              <h4 id="erase-mode-title" style={{ margin: 0, fontSize: '16px', color: 'var(--linear-neutral-50)' }}>바닥 얼룩 지우는 중</h4>
+              {renderBrushControls("얼룩을 손가락(마우스)으로 칠하세요. 손을 떼면 지워져요.")}
+            </div>
+          )}
+
+          {!isPhotoEraseMode && (
+            <>
+              {selectedImage && photoEditSections.showErase && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
+                  <button
+                    ref={eraseStartButtonRef}
+                    type="button"
+                    className="linear-button linear-button--primary"
+                    aria-describedby={selectedImage.edits.erase.length === 0 ? 'erase-start-guide' : undefined}
+                    onClick={(event) => {
+                      eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: event.currentTarget.matches(":focus-visible") });
+                      setShowCustomPalette(false);
+                      setErasePanelWidth(controlPanelRef.current?.getBoundingClientRect().width ?? null);
+                      setPhotoEraseBrushSize("medium");
+                      photoEdit.onToolModeChange("erase-photo");
+                    }}
+                    style={{ width: '100%', minHeight: '52px', gap: '8px', fontSize: '16px', border: 'var(--border-width) solid var(--linear-neutral-500)' }}
+                  >
+                    <svg aria-hidden="true" focusable="false" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 3l7 7-9 9-7-7z" />
+                      <path d="M9 8l7 7" />
+                      <path d="M3 22h18" />
+                    </svg>
+                    바닥 얼룩 지우기
+                  </button>
+                  {selectedImage.edits.erase.length === 0 && (
+                    <p id="erase-start-guide" style={{ margin: 0, fontSize: '14px', color: 'var(--linear-neutral-50)' }}>이 버튼을 누른 뒤 얼룩을 칠하면 지워져요.</p>
+                  )}
+                </div>
+              )}
+
+              {selectedImage && photoEditSections.showAdjust && (
+                <div
+                  role="group"
+                  aria-labelledby="photo-color-title"
+                  style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', boxSizing: 'border-box', borderTop: '1px solid var(--linear-neutral-500)', paddingTop: '12px' }}
+                >
+                  <h4 id="photo-color-title" style={{ margin: 0, fontSize: '16px', color: 'var(--linear-neutral-50)' }}>사진 색</h4>
+                  {isDefaultPhotoEdits(selectedImage.edits) && (
+                    <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-neutral-50)' }}>
+                      버튼을 누르면 바로 바뀌어요. [되돌리기]로 돌아갈 수 있어요.
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {PHOTO_PRESETS.map((preset) => {
+                      const isPresetSelected = selectedImage.edits.presetId === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          aria-pressed={isPresetSelected}
+                          onClick={() => photoEdit.onEditsChange(selectedImage.id, applyPresetToEdits(selectedImage.edits, preset.id))}
+                          style={{
+                            minHeight: '44px',
+                            minWidth: '44px',
+                            padding: '0 8px',
+                            fontSize: '14px',
+                            border: 'var(--border-width) solid var(--linear-neutral-500)'
+                          }}
+                        >
+                          {isPresetSelected ? <span aria-hidden="true">✓ </span> : null}{preset.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {userImages.length >= 2 && (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <button
+                        type="button"
+                        className="linear-button linear-button--secondary"
+                        onClick={() => {
+                          photoEdit.onApplyAdjustToAll(selectedImage.id);
+                          setAppliedToAllCount(userImages.length);
+                        }}
+                        style={{
+                          minHeight: '44px',
+                          fontSize: '14px',
+                          border: 'var(--border-width) solid var(--linear-neutral-500)'
+                        }}
+                      >
+                        모든 사진에 적용
+                      </button>
+                      <div role="status">
+                        {appliedToAllCount !== null && (
+                          <p
+                            className="linear-status--success"
+                            style={{ margin: '10px 0 0', fontSize: '14px' }}
+                          >
+                            사진 {appliedToAllCount}장에 적용했어요
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => setIsAdjustDetailOpen(!isAdjustDetailOpen)}
+                    aria-expanded={isAdjustDetailOpen}
+                    style={{
+                      minHeight: '44px',
+                      fontSize: '14px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)'
+                    }}
+                  >
+                    {isAdjustDetailOpen ? '접기' : '자세히'}
+                  </button>
+
+                  {isAdjustDetailOpen && PHOTO_ADJUST_FIELDS.map((field) => {
+                    const adjustValue = selectedImage.edits.adjust[field.key];
+                    return (
+                      <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <p style={{ fontSize: '14px', width: '64px', margin: 0, color: 'var(--linear-secondary-300)' }}>{field.label}</p>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          aria-label={`${field.label} 줄이기`}
+                          disabled={adjustValue <= field.min}
+                          onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, -1))}
+                          style={{
+                            minWidth: '44px',
+                            minHeight: '44px',
+                            fontSize: '14px',
+                            border: 'var(--border-width) solid var(--linear-neutral-500)'
+                          }}
+                        >
+                          −
+                        </button>
+                        <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{adjustValue}</span>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          aria-label={`${field.label} 늘리기`}
+                          disabled={adjustValue >= field.max}
+                          onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, 1))}
+                          style={{
+                            minWidth: '44px',
+                            minHeight: '44px',
+                            fontSize: '14px',
+                            border: 'var(--border-width) solid var(--linear-neutral-500)'
+                          }}
+                        >
+                          +
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {selectedImage && (
+                <div
+                  role="group"
+                  aria-labelledby="photo-position-title"
+                  style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', boxSizing: 'border-box', borderTop: '1px solid var(--linear-neutral-500)', paddingTop: '12px' }}
+                >
+                  <h4 id="photo-position-title" style={{ margin: 0, fontSize: '16px', color: 'var(--linear-neutral-50)' }}>사진 크기와 위치</h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <label htmlFor="photo-scale-input" style={{ color: 'var(--linear-neutral-50)', fontSize: '14px' }}>크기</label>
+                    <input
+                      id="photo-scale-input"
+                      type="number"
+                      className="linear-input"
+                      value={getScalePercent(selectedImage.scaleX)}
+                      onChange={(e) => {
+                        const nextScale = getScaleFromPercent(parseFloat(e.target.value));
+                        if (nextScale === null) return;
+                        handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
+                      }}
+                      min="10"
+                      step="10"
+                      style={{ width: '80px', fontSize: '14px', minHeight: '44px' }}
+                      title="사진 크기(%)"
+                    />
+                    <span style={{ color: 'var(--linear-secondary-400)', fontSize: '14px' }}>%</span>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => rotateSelectedImageBy(-90)}
+                      style={{ minHeight: '44px', fontSize: '14px', padding: '0 12px' }}
+                    >
+                      왼쪽으로 돌리기
+                    </button>
+                    <button
+                      type="button"
+                      className="linear-button linear-button--secondary"
+                      onClick={() => rotateSelectedImageBy(90)}
+                      style={{ minHeight: '44px', fontSize: '14px', padding: '0 12px' }}
+                    >
+                      오른쪽으로 돌리기
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="linear-button linear-button--secondary"
+                    onClick={() => setIsPositionDetailOpen(!isPositionDetailOpen)}
+                    aria-expanded={isPositionDetailOpen}
+                    style={{
+                      minHeight: '44px',
+                      fontSize: '14px',
+                      border: 'var(--border-width) solid var(--linear-neutral-500)'
+                    }}
+                  >
+                    {isPositionDetailOpen ? '접기' : '자세히'}
+                  </button>
+                  {isPositionDetailOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>사진 옮기기</p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {MOVE_BUTTONS.map((moveButton) => (
+                          <button
+                            key={moveButton.label}
+                            type="button"
+                            className="linear-button linear-button--secondary"
+                            onClick={() => moveSelectedImageBy(moveButton.delta)}
+                            style={PHOTO_DETAIL_BUTTON_STYLE}
+                          >
+                            {moveButton.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          onClick={() => rotateSelectedImageBy(-KEYBOARD_ROTATE_STEP)}
+                          style={PHOTO_DETAIL_BUTTON_STYLE}
+                        >
+                          왼쪽으로 기울이기
+                        </button>
+                        <button
+                          type="button"
+                          className="linear-button linear-button--secondary"
+                          onClick={() => rotateSelectedImageBy(KEYBOARD_ROTATE_STEP)}
+                          style={PHOTO_DETAIL_BUTTON_STYLE}
+                        >
+                          오른쪽으로 기울이기
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
           {selectedFrame !== "1l" && (
             <div>
               <div ref={paletteAnchorRef} style={{ marginBottom: 6 }}>
@@ -2821,44 +3149,6 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
             </div>
           )}
 
-          {selectedImage && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <label htmlFor="photo-scale-input" style={{ color: 'var(--linear-neutral-50)', fontSize: '14px' }}>크기</label>
-              <input
-                id="photo-scale-input"
-                type="number"
-                className="linear-input"
-                value={getScalePercent(selectedImage.scaleX)}
-                onChange={(e) => {
-                  const nextScale = getScaleFromPercent(parseFloat(e.target.value));
-                  if (nextScale === null) return;
-                  handleImageTransform(selectedImage.id, { scaleX: nextScale, scaleY: nextScale });
-                }}
-                min="10"
-                step="10"
-                style={{ width: '80px', fontSize: '14px', minHeight: '44px' }}
-                title="사진 크기(%)"
-              />
-              <span style={{ color: 'var(--linear-secondary-400)', fontSize: '14px' }}>%</span>
-              <button
-                type="button"
-                className="linear-button linear-button--secondary"
-                onClick={() => rotateSelectedImageBy(-90)}
-                style={{ minHeight: '44px', fontSize: '14px', padding: '0 12px' }}
-              >
-                왼쪽으로 돌리기
-              </button>
-              <button
-                type="button"
-                className="linear-button linear-button--secondary"
-                onClick={() => rotateSelectedImageBy(90)}
-                style={{ minHeight: '44px', fontSize: '14px', padding: '0 12px' }}
-              >
-                오른쪽으로 돌리기
-              </button>
-            </div>
-          )}
-
           {/* 사진 빼기 버튼 */}
           {selectedImage && (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '8px' }}>
@@ -2879,179 +3169,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               </button>
             </div>
           )}
-
-          {/* 선택된 사진 보정 도구 */}
-          {selectedImage && photoEditSections.showBox && (
-            <div style={{
-              border: 'var(--border-width) solid var(--linear-neutral-500)',
-              padding: '12px',
-              background: 'var(--linear-neutral-700)',
-              marginTop: '8px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}>
-              <h4 style={{ margin: '0', fontSize: '13px', color: 'var(--linear-neutral-50)' }}>사진 보정</h4>
-
-              {photoEditSections.showErase && (
-                photoEdit.toolMode === "erase-photo"
-                  ? renderBrushControls("지울 곳을 손가락(마우스)으로 칠하세요. 손을 떼면 지워져요.")
-                  : (
-                    <button
-                      type="button"
-                      className="linear-button linear-button--secondary"
-                      onClick={() => photoEdit.onToolModeChange("erase-photo")}
-                      style={{
-                        height: '32px',
-                        fontSize: '14px',
-                        border: 'var(--border-width) solid var(--linear-neutral-500)'
-                      }}
-                    >
-                      얼룩 지우기
-                    </button>
-                  )
-              )}
-
-              {photoEditSections.showAdjust && (
-                <>
-                  {isDefaultPhotoEdits(selectedImage.edits) && (
-                    <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-neutral-50)' }}>
-                      버튼을 누르면 바로 바뀌어요. [되돌리기]로 돌아갈 수 있어요.
-                    </p>
-                  )}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {PHOTO_PRESETS.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        className={`linear-button ${selectedImage.edits.presetId === preset.id ? 'linear-button--primary' : 'linear-button--secondary'}`}
-                        onClick={() => photoEdit.onEditsChange(selectedImage.id, applyPresetToEdits(selectedImage.edits, preset.id))}
-                        style={{
-                          minHeight: '44px',
-                          minWidth: '44px',
-                          padding: '0 8px',
-                          fontSize: '14px',
-                          border: 'var(--border-width) solid var(--linear-neutral-500)'
-                        }}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {userImages.length >= 2 && (
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <button
-                        type="button"
-                        className="linear-button linear-button--secondary"
-                        onClick={() => {
-                          photoEdit.onApplyAdjustToAll(selectedImage.id);
-                          setAppliedToAllCount(userImages.length);
-                        }}
-                        style={{
-                          height: '32px',
-                          fontSize: '14px',
-                          border: 'var(--border-width) solid var(--linear-neutral-500)'
-                        }}
-                      >
-                        모든 사진에 적용
-                      </button>
-                      <div role="status">
-                        {appliedToAllCount !== null && (
-                          <p
-                            className="linear-status--success"
-                            style={{ margin: '10px 0 0', fontSize: '14px' }}
-                          >
-                            사진 {appliedToAllCount}장에 적용했어요
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    className="linear-button linear-button--secondary"
-                    onClick={() => setIsAdjustDetailOpen(!isAdjustDetailOpen)}
-                    aria-expanded={isAdjustDetailOpen}
-                    style={{
-                      height: '32px',
-                      fontSize: '14px',
-                      border: 'var(--border-width) solid var(--linear-neutral-500)'
-                    }}
-                  >
-                    {isAdjustDetailOpen ? '접기' : '자세히'}
-                  </button>
-
-                  {isAdjustDetailOpen && (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <p style={{ margin: 0, fontSize: '14px', color: 'var(--linear-secondary-300)' }}>사진 옮기기</p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {MOVE_BUTTONS.map((moveButton) => (
-                          <button
-                            key={moveButton.label}
-                            type="button"
-                            className="linear-button linear-button--secondary"
-                            onClick={() => moveSelectedImageBy(moveButton.delta)}
-                            style={DETAIL_BUTTON_STYLE}
-                          >
-                            {moveButton.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedImageBy(-KEYBOARD_ROTATE_STEP)} style={DETAIL_BUTTON_STYLE}>
-                          왼쪽으로 기울이기
-                        </button>
-                        <button type="button" className="linear-button linear-button--secondary" onClick={() => rotateSelectedImageBy(KEYBOARD_ROTATE_STEP)} style={DETAIL_BUTTON_STYLE}>
-                          오른쪽으로 기울이기
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {isAdjustDetailOpen && PHOTO_ADJUST_FIELDS.map((field) => {
-                    const adjustValue = selectedImage.edits.adjust[field.key];
-                    return (
-                      <div key={field.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <p style={{ fontSize: '14px', width: '64px', margin: 0, color: 'var(--linear-secondary-300)' }}>{field.label}</p>
-                        <button
-                          type="button"
-                          className="linear-button linear-button--secondary"
-                          aria-label={`${field.label} 줄이기`}
-                          disabled={adjustValue <= field.min}
-                          onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, -1))}
-                          style={{
-                            width: '32px',
-                            height: '28px',
-                            fontSize: '14px',
-                            border: 'var(--border-width) solid var(--linear-neutral-500)'
-                          }}
-                        >
-                          −
-                        </button>
-                        <span style={{ minWidth: '28px', textAlign: 'center', fontSize: '14px', color: 'var(--linear-neutral-50)' }}>{adjustValue}</span>
-                        <button
-                          type="button"
-                          className="linear-button linear-button--secondary"
-                          aria-label={`${field.label} 늘리기`}
-                          disabled={adjustValue >= field.max}
-                          onClick={() => photoEdit.onEditsChange(selectedImage.id, stepAdjustField(selectedImage.edits, field.key, 1))}
-                          style={{
-                            width: '32px',
-                            height: '28px',
-                            fontSize: '14px',
-                            border: 'var(--border-width) solid var(--linear-neutral-500)'
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
+            </>
           )}
 
           {/* 선택된 스티커 편집 도구 */}
