@@ -553,7 +553,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const brushScreenRadius = photoEdit.toolMode === "erase-cutout" && selectedSticker?.cutout
     ? getCutoutBrushScreenRadius(BRUSH_SCREEN_RADIUS[activeBrushSize], selectedSticker, zoom)
     : BRUSH_SCREEN_RADIUS[activeBrushSize];
-  const isTouchManipulationActive = Boolean(selection);
+  // 칸 목록으로 골라 selection이 비어 있어도 사진 지우기 모드에서는 캔버스가 터치를 모두 받아야 획이 페이지 스크롤로 새지 않습니다.
+  const isTouchManipulationActive = Boolean(selection) || isPhotoEraseMode;
 
   useEffect(() => {
     if (!photoEditSections.showBox && photoEdit.compareHeld) {
@@ -715,16 +716,13 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     };
   }, []);
 
-  useEffect(() => {
-    cancelBrushStroke();
-  }, [photoEdit.toolMode, selection]);
-
-  // 획을 긋는 도중 Stage 크기·배율·위치가 바뀌면(창 크기 변경 등) 그 획은 저장하지 않습니다(보정표 D-7). 저장된 획과 되돌리기 기록은 그대로입니다.
+  // 도구 모드나 선택이 바뀌면 진행 중 획을 취소합니다.
+  // 획을 긋는 도중 Stage 크기·배율·위치가 바뀌어도(창 크기 변경 등) 그 획은 저장하지 않습니다(보정표 D-7). 저장된 획과 되돌리기 기록은 그대로입니다.
   // Stage 크기·배율·위치(stageWidth, stageHeight, stageView)는 zoom, 프레임 배치, 확대할 칸(모드, 고른 사진의 칸, 저장 중)에서만 계산됩니다.
   const selectedImageSlotId = selectedImage?.slotId ?? null;
   useEffect(() => {
     cancelBrushStroke();
-  }, [zoom, frameLayout, isPhotoEraseMode, selectedImageSlotId, exportMode]);
+  }, [photoEdit.toolMode, selection, zoom, frameLayout, isPhotoEraseMode, selectedImageSlotId, exportMode]);
 
   const renderBrushControls = (guideText: string) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1530,6 +1528,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       if (!imgNode) return;
 
       const stage = imgNode.getStage();
+      // 아래 포인터 → 캔버스 변환은 Stage 배율만 나누고 Stage 위치(stage.x/y)는 보지 않습니다.
+      // Stage가 옮겨지는 사진 지우기 모드에서는 휠을 Stage 감싸개에서 먼저 막으므로 이 경로에 닿지 않습니다.
       // 휠 이벤트에서 getPointerPosition이 누락되는 경우가 있어, 이벤트 좌표로 보정
       let px: number | undefined;
       let py: number | undefined;
@@ -1673,6 +1673,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
     const transform: Partial<UserImage> = { scaleX: nextScale, scaleY: nextScale };
 
+    // 손가락 화면 좌표는 거리 비율에만 쓰고, Stage 위치(stage.x/y)를 반영한 캔버스 좌표로는 바꾸지 않습니다.
+    // Stage가 옮겨지는 사진 지우기 모드에서는 두 손가락 터치를 Stage 감싸개에서 먼저 막으므로 이 경로에 닿지 않습니다.
     // 슬롯 경계 보정 (이미지 위치는 유지하되 범위를 벗어나지 않도록 클램프)
     if (state.slot && state.displayWidth && state.displayHeight) {
       const node = e.target as unknown as Konva.Node;
@@ -1981,12 +1983,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   // 지우기 모드에 들어가면 보일 사진의 화면 폭(px) = 사진 가로 구간과 칸이 겹치는 폭 × 확대 배율. 회전은 무시합니다(설계 9.5, SP-9).
   // 사진이 아직 없으면 NaN → 작게
   const getErasePhotoScreenWidth = (image: UserImage): number => {
-    const slot = frameLayout.slots.find((item) => item.id === image.slotId);
-    const loadedEntry = loadedImages.get(image.id);
-    const loadedPhoto = loadedEntry && loadedEntry.url === image.url ? loadedEntry.image : null;
-    if (!slot || !loadedPhoto) return Number.NaN;
+    const displayContext = getImageDisplayContext(image);
+    if (!displayContext) return Number.NaN;
+    const { slot, displaySize } = displayContext;
     const enteredView = getEraseZoomView({ isErasing: true, stageWidth, stageHeight, zoom, slot });
-    const displaySize = getContainedImageSize(loadedPhoto.width, loadedPhoto.height, slot.width, slot.height);
     const photoOffsetX = Number.isFinite(image.x) ? image.x : 0;
     const photoScaleX = Number.isFinite(image.scaleX) ? image.scaleX : 1;
     const visiblePhotoWidth = getVisiblePhotoSpanWidth({
