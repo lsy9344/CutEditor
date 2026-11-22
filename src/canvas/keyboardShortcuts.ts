@@ -1,4 +1,5 @@
 import type { SlotPosition, UserImage } from "../types/frame";
+import type { PhotoToolMode } from "../photo/photoTool";
 
 type SelectableImage = Pick<UserImage, "id" | "slotId" | "x" | "y" | "scaleX" | "scaleY" | "rotation">;
 
@@ -294,3 +295,8 @@ export const getAngleInputValue = ({
   targetId: string | null;
   rotation: number;
 }): string => (draft !== null && draft.targetId === targetId ? draft.text : String(Math.round(rotation)));
+
+export type CanvasEscapeAction = "end-erase-mode" | "clear-selection";
+
+export const getCanvasEscapeAction = (toolMode: PhotoToolMode): CanvasEscapeAction =>
+  toolMode === "erase-photo" ? "end-erase-mode" : "clear-selection";

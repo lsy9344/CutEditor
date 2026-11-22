@@ -42,3 +42,18 @@ export function toNormalizedStroke(
   if (points.length === 0) return null;
   return { points, radius: localRadius / displayWidth };
 }
+
+// 사진 지우기 모드를 지킬지 정합니다(SP-1). 들어갈 때 고른 사진(소유 사진)이
+// 지금도 실제로 골라져 있고 문서에 남아 있을 때만 지킵니다.
+export function shouldKeepPhotoEraseMode({
+  eraseOwnerImageId,
+  selectedImageId,
+  userImages,
+}: {
+  eraseOwnerImageId: string | null;
+  selectedImageId: string | null;
+  userImages: ReadonlyArray<{ id: string }>;
+}): boolean {
+  if (!eraseOwnerImageId || selectedImageId !== eraseOwnerImageId) return false;
+  return userImages.some((image) => image.id === eraseOwnerImageId);
+}

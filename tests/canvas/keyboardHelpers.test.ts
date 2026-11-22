@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getCanvasEscapeAction,
   getCenterRotatedTransform,
   getCenterScaledTransform,
   isActivationKey,
@@ -143,4 +144,14 @@ test("가운데 기준 크기 바꾸기: 기울어진 사진도 가운데가 같
   assertClose(clamped.scaleY, 0.1, "clamped scaleY");
   assertClose(clamped.x, 10, "clamped x");
   assertClose(clamped.y, 20, "clamped y");
+});
+
+test("캔버스 Esc: 지우기 모드면 모드만 끝낸다", () => {
+  assert.equal(getCanvasEscapeAction("erase-photo"), "end-erase-mode");
+});
+
+test("캔버스 Esc: 지우기 모드가 아니면 지금처럼 선택을 푼다", () => {
+  assert.equal(getCanvasEscapeAction("none"), "clear-selection");
+  assert.equal(getCanvasEscapeAction("erase-cutout"), "clear-selection");
+  assert.equal(getCanvasEscapeAction("pick-point"), "clear-selection");
 });

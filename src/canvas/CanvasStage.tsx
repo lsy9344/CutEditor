@@ -38,7 +38,7 @@ import {
 import { getAutoFitZoomChange, getZoomToFit } from "./zoomSizing";
 import { getReadableMarkColor } from "../utils/colorContrast";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
-import type { PhotoEdits } from "../photo/photoEdits";
+import type { BrushStroke, PhotoEdits } from "../photo/photoEdits";
 import { getCutoutImagesState } from "../photo/cutoutTypes";
 import type { CutoutChanges, CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
 import { hasCutoutWorkingCanvas } from "../photo/cutoutCache";
@@ -94,6 +94,7 @@ export type CanvasPhotoEditProps = {
   compareHeld: boolean;
   onCompareHeldChange: (held: boolean) => void;
   onEditsChange: (imageId: string, edits: PhotoEdits) => void;
+  onEraseStrokeAdd: (imageId: string, stroke: BrushStroke) => void;
   onApplyAdjustToAll: (sourceImageId: string) => void;
   toolMode: PhotoToolMode;
   onToolModeChange: (mode: PhotoToolMode) => void;
@@ -598,7 +599,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       const localRadius = getLocalBrushRadius(requestedScreenRadius, draft.overlay.getAbsoluteScale().x);
       const stroke = toNormalizedStroke(draft.localPoints, draft.overlay.width(), draft.overlay.height(), localRadius);
       if (!stroke) return;
-      photoEdit.onEditsChange(targetImage.id, { ...targetImage.edits, erase: [...targetImage.edits.erase, stroke] });
+      photoEdit.onEraseStrokeAdd(targetImage.id, stroke);
     }
     if (draft.mode === "erase-cutout") {
       const targetSticker = stickers.find((sticker) => sticker.id === draft.targetId);

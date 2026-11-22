@@ -50,9 +50,10 @@ import {
   resolveTextBoxWidth,
 } from './canvas/textBoxWidth'
 import { getCategorySelectionOutcome, getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
-import type { PhotoEdits } from './photo/photoEdits'
-import { copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
+import type { BrushStroke, PhotoEdits } from './photo/photoEdits'
+import { appendEraseStroke, copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
 import type { BrushSize, PhotoToolMode } from './photo/photoTool'
+import { shouldKeepPhotoEraseMode } from './photo/photoTool'
 import { PHOTO_WORKING_MAX_SIDE } from './photo/photoRender'
 import {
   getMobileExportLimits,
@@ -86,6 +87,7 @@ import { getFocusReturnCandidates, getPickFocusTarget, getWrappedFocusIndex, isR
 import { countEmptySlots, countMissingStickers, getCanvasPreparation, getSaveRequestStep, getSaveRoute, makeSaveFilename, resolveMobileEditor, runSaveFlow } from './state/saveFlow'
 import type { DecorImagesState } from './state/decorImagesState'
 import type { SaveRetry } from './state/saveFlow'
+import { getSelectedImageFromState } from './canvas/keyboardShortcuts'
 
 type FileSystemWritableFileStream = {
   write: (data: Blob | BufferSource | string) => Promise<void>;
@@ -476,7 +478,9 @@ function App() {
   const [compareHeld, setCompareHeld] = useState(false);
   const [photoToolMode, setPhotoToolMode] = useState<PhotoToolMode>("none");
   const [brushSize, setBrushSize] = useState<BrushSize>("medium");
-  useEffect(() => { setPhotoToolMode("none"); }, [editorState.selection]);
+  const [eraseOwnerImageId, setEraseOwnerImageId] = useState<string | null>(null);
+  // 선택이 바뀌면 도구 모드를 끕니다. 사진 지우기 모드는 빼고, 아래 소유 사진 효과가 정합니다(D-1).
+  useEffect(() => { setPhotoToolMode((mode) => (mode === "erase-photo" ? mode : "none")); }, [editorState.selection]);
   const currentDocument = useMemo<EditorDocument>(() => ({
     userImages: editorState.userImages,
     texts,
@@ -721,7 +725,7 @@ function App() {
     setStickers(nextDocument.stickers);
     if (selectedTextId && !hasEditorObject(nextDocument, selectedTextId)) setSelectedTextId(null);
     if (selectedStickerId && !hasEditorObject(nextDocument, selectedStickerId)) setSelectedStickerId(null);
-    setPhotoToolMode("none");
+    setPhotoToolMode((mode) => (mode === "erase-photo" ? mode : "none"));
   };
 
   const handleUndo = () => {
@@ -1243,6 +1247,31 @@ function App() {
       userImages: previous.userImages.map((image) => (image.id === imageId ? { ...image, edits } : image)),
     }));
   }
+
+  const selectedPhotoId = getSelectedImageFromState({
+    selection: editorState.selection,
+    selectedSlot: editorState.selectedSlot,
+    userImages: editorState.userImages,
+  })?.id ?? null;
+
+  // 지우기 모드는 들어갈 때 고른 사진(소유 사진)에 묶습니다(SP-1).
+  const handlePhotoToolModeChange = (mode: PhotoToolMode) => {
+    setEraseOwnerImageId(mode === "erase-photo" ? selectedPhotoId : null);
+    setPhotoToolMode(mode);
+  };
+
+  // 캔버스·칸 목록 어느 경로든 실제 선택 사진이 바뀌거나, 소유 사진이 문서에서 사라지면 모드를 끕니다.
+  // 프레임 변경과 Delete는 선택이 null이 되거나 사진이 사라져 여기서 걸립니다. 그리기 전에 끄도록 layout 효과로 둡니다.
+  useLayoutEffect(() => {
+    if (photoToolMode !== "erase-photo") return;
+    if (shouldKeepPhotoEraseMode({ eraseOwnerImageId, selectedImageId: selectedPhotoId, userImages: editorState.userImages })) return;
+    setPhotoToolMode("none");
+  }, [photoToolMode, eraseOwnerImageId, selectedPhotoId, editorState.userImages]);
+
+  // 완성 획을 최신 문서에 덧붙입니다(SP-4).
+  const handlePhotoEraseStrokeAdd = (imageId: string, stroke: BrushStroke) => {
+    setEditorState((previous) => ({ ...previous, userImages: appendEraseStroke(previous.userImages, imageId, stroke) }));
+  };
 
   const handleApplyAdjustToAll = (sourceImageId: string) => {
     setEditorState((previous) => ({ ...previous, userImages: copyAdjustToAll(previous.userImages, sourceImageId) }));
@@ -2232,9 +2261,10 @@ function App() {
         compareHeld,
         onCompareHeldChange: setCompareHeld,
         onEditsChange: handlePhotoEditsChange,
+        onEraseStrokeAdd: handlePhotoEraseStrokeAdd,
         onApplyAdjustToAll: handleApplyAdjustToAll,
         toolMode: photoToolMode,
-        onToolModeChange: setPhotoToolMode,
+        onToolModeChange: handlePhotoToolModeChange,
         brushSize,
         onBrushSizeChange: setBrushSize,
       }}

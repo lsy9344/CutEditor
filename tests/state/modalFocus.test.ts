@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { getFocusReturnCandidates, getPickFocusTarget, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldCloseMobileSheet, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
+import { getEraseModeFocusTarget, getFocusReturnCandidates, getPickFocusTarget, getTextDeleteFocusTarget, getWrappedFocusIndex, isRectInViewport, pickFocusReturnIndex, setInertOutside, shouldCloseMobileSheet, shouldRefocusAfterLayoutChange } from "../../src/state/modalFocus.ts";
 import type { FocusCandidate } from "../../src/state/modalFocus.ts";
 
 const NORMAL_CANDIDATE: FocusCandidate = { isConnected: true, isDisabled: false, isInert: false, isHidden: false };
@@ -300,4 +300,14 @@ test("휴대폰 배치가 이어지는 동안에는 열린 시트를 닫지 않�
 
 test("데스크톱에서 휴대폰 배치로 바뀔 때는 시트를 닫지 않는다", () => {
   assert.equal(shouldCloseMobileSheet({ wasMobileEditor: false, isMobileEditor: true, isSheetOpen: true }), false);
+});
+
+test("지우기 모드 포커스: 키보드로 들어가면 완료, 나오면 지우기 버튼", () => {
+  assert.equal(getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: true }), "erase-done");
+  assert.equal(getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: true }), "erase-start");
+});
+
+test("지우기 모드 포커스: 마우스·터치로 누르면 포커스를 옮기지 않는다", () => {
+  assert.equal(getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: false }), "none");
+  assert.equal(getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: false }), "none");
 });

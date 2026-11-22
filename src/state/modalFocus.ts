@@ -111,6 +111,20 @@ export const getPickFocusTarget = ({
   return pressed === "cut-count" ? "first-frame-card" : "canvas";
 };
 
+export type EraseModeFocusTarget = "erase-done" | "erase-start" | "none";
+
+// 지우기 모드에 들어가고 나올 때 포커스를 옮길 곳(설계 8.3). 키보드로 눌렀을 때만 옮깁니다.
+export const getEraseModeFocusTarget = ({
+  change,
+  isKeyboardFocused,
+}: {
+  change: "enter" | "exit";
+  isKeyboardFocused: boolean;
+}): EraseModeFocusTarget => {
+  if (!isKeyboardFocused) return "none";
+  return change === "enter" ? "erase-done" : "erase-start";
+};
+
 type InertTarget = { inert: boolean };
 const isInertTarget = (element: object): element is InertTarget => "inert" in element;
 

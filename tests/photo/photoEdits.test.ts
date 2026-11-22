@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   PHOTO_ADJUST_FIELDS,
   PHOTO_PRESETS,
+  appendEraseStroke,
   applyPresetToEdits,
   copyAdjustToAll,
   createDefaultPhotoEdits,
@@ -217,4 +218,23 @@ test("getPhotoEditSections는 기능 스위치에 따라 보일 줄을 정한다
     showAdjust: false,
     showErase: false,
   });
+});
+
+test("획 덧붙이기는 지금 문서의 그 사진 획 끝에 붙인다", () => {
+  const imageA = { id: "a", edits: createDefaultPhotoEdits() };
+  const imageB = { id: "b", edits: { ...createDefaultPhotoEdits(), erase: [STROKE_1] } };
+  const images = [imageA, imageB];
+
+  const afterFirst = appendEraseStroke(images, "a", STROKE_1);
+  const afterSecond = appendEraseStroke(afterFirst, "a", STROKE_2);
+
+  assert.deepEqual(afterSecond[0].edits.erase, [STROKE_1, STROKE_2]);
+  assert.equal(afterSecond[1], imageB);
+  assert.deepEqual(images[0].edits.erase, []);
+});
+
+test("획 덧붙이기는 없는 사진이면 그대로 돌려준다", () => {
+  const images = [{ id: "a", edits: createDefaultPhotoEdits() }];
+
+  assert.equal(appendEraseStroke(images, "missing", STROKE_1), images);
 });

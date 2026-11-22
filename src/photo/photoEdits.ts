@@ -142,3 +142,16 @@ export function copyAdjustToAll<T extends { id: string; edits: PhotoEdits }>(
     },
   }));
 }
+
+// 완성 획을 지금 문서의 그 사진 끝에 덧붙입니다(SP-4). 화면이 들고 있던 옛 사진 값이 아니라
+// setState 함수형 갱신의 최신 배열에 붙이므로, 연달아 빨리 칠해도 앞 획을 덮어쓰지 않습니다.
+export function appendEraseStroke<T extends { id: string; edits: PhotoEdits }>(
+  images: T[],
+  imageId: string,
+  stroke: BrushStroke,
+): T[] {
+  if (!images.some((image) => image.id === imageId)) return images;
+  return images.map((image) =>
+    image.id === imageId ? { ...image, edits: { ...image.edits, erase: [...image.edits.erase, stroke] } } : image,
+  );
+}
