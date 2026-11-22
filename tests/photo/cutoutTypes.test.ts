@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import { CUTOUT_COPY } from "../../src/photo/cutoutCopy.ts";
 import { getCutoutImagesState, getCutoutTargetKey } from "../../src/photo/cutoutTypes.ts";
+import type { CutoutSource } from "../../src/photo/cutoutTypes.ts";
+import type { BrushStroke } from "../../src/photo/photoEdits.ts";
 
 test("#12 getCutoutTargetKey는 모두 함께와 지점을 구분한다", () => {
   assert.equal(getCutoutTargetKey({ kind: "everyone" }), "everyone");
@@ -55,4 +57,25 @@ test("#20 getCutoutImagesState는 읽는 중을 실패보다 먼저 본다", () 
     ]),
     { kind: "loading" },
   );
+});
+
+test("#25 종류와 clip이 있는 획과 없는 옛 획은 JSON 왕복 뒤에도 같다", () => {
+  const source: CutoutSource = {
+    sourceImageId: "img-1",
+    target: { kind: "everyone" },
+    outline: false,
+    eraseStrokes: [
+      { points: [0.1, 0.1], radius: 0.02 },
+      { points: [0.2, 0.3, 0.25, 0.35], radius: 0.03, action: "erase" },
+      { points: [0.4, 0.5], radius: 0.01, action: "restore", clip: { x: 0.1, y: 0.2, width: 0.5, height: 0.6 } },
+    ],
+    crop: { x: 10, y: 20, width: 300, height: 400 },
+    workingSize: { width: 1000, height: 800 },
+  };
+
+  assert.deepEqual(JSON.parse(JSON.stringify(source)), source);
+
+  // @ts-expect-error 사진 지우개 획에는 종류가 없습니다.
+  const photoStroke: BrushStroke = { points: [0.5, 0.5], radius: 0.01, action: "erase" };
+  assert.equal(photoStroke.points.length, 2);
 });

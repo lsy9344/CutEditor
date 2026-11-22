@@ -1,6 +1,5 @@
 import { rasterizeStroke } from "./brushMask.ts";
-import type { CutoutRect, CutoutSize } from "./cutoutTypes.ts";
-import type { BrushStroke } from "./photoEdits.ts";
+import type { CutoutRect, CutoutSize, CutoutStroke } from "./cutoutTypes.ts";
 
 const FOREGROUND_ALPHA = 128;
 
@@ -78,17 +77,42 @@ export function resizeConfidenceBilinear(source: Float32Array, from: CutoutSize,
   return resized;
 }
 
+// clip(0~1)을 화소 중심 기준 경계로 바꿉니다. 화소 i는 중심 i + 0.5가 clip 안일 때만 들어갑니다.
+// 1e-9는 경계에 꼭 맞는 중심이 소수 오차로 빠지지 않게 합니다(2단계 계획 Task 2-3.3).
+function getClipPixelBounds(clip: CutoutRect, width: number, height: number): { x0: number; y0: number; x1: number; y1: number } {
+  return {
+    x0: Math.ceil(clip.x * width - 0.5 - 1e-9),
+    y0: Math.ceil(clip.y * height - 0.5 - 1e-9),
+    x1: Math.floor((clip.x + clip.width) * width - 0.5 + 1e-9),
+    y1: Math.floor((clip.y + clip.height) * height - 0.5 + 1e-9),
+  };
+}
+
 export function applyStrokesToAlpha(
   alpha: Uint8ClampedArray,
   width: number,
   height: number,
-  strokes: BrushStroke[],
+  strokes: CutoutStroke[],
 ): void {
   if (strokes.length === 0) return;
+  // 같은 종류가 이어지는 구간마다 마스크 하나에 칠하고 시간순으로 씁니다. 종류가 없는 옛 획은 지움입니다.
   const mask = new Uint8Array(width * height);
-  for (const stroke of strokes) rasterizeStroke(stroke, width, height, mask);
-  for (let index = 0; index < alpha.length; index += 1) {
-    if (mask[index] === 1) alpha[index] = 0;
+  let runStart = 0;
+  while (runStart < strokes.length) {
+    const action = strokes[runStart].action ?? "erase";
+    let runEnd = runStart;
+    while (runEnd < strokes.length && (strokes[runEnd].action ?? "erase") === action) {
+      const stroke = strokes[runEnd];
+      const bounds = action === "restore" && stroke.clip ? getClipPixelBounds(stroke.clip, width, height) : undefined;
+      rasterizeStroke(stroke, width, height, mask, bounds);
+      runEnd += 1;
+    }
+    const value = action === "restore" ? 255 : 0;
+    for (let index = 0; index < alpha.length; index += 1) {
+      if (mask[index] === 1) alpha[index] = value;
+    }
+    mask.fill(0);
+    runStart = runEnd;
   }
 }
 
@@ -256,7 +280,7 @@ export function buildCutoutAlpha(
   photoRgba: Uint8ClampedArray,
   width: number,
   height: number,
-  eraseStrokes: BrushStroke[],
+  eraseStrokes: CutoutStroke[],
 ): Uint8ClampedArray | null {
   const alpha = refineAlpha(confidence);
   applyStrokesToAlpha(alpha, width, height, eraseStrokes);

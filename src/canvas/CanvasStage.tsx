@@ -42,11 +42,11 @@ import { getReadableMarkColor } from "../utils/colorContrast";
 import { getStickerAssetCandidates } from "../utils/stickerAssetCandidates";
 import type { BrushStroke, PhotoEdits } from "../photo/photoEdits";
 import { getCutoutImagesState } from "../photo/cutoutTypes";
-import type { CutoutChanges, CutoutImagesState, CutoutSource } from "../photo/cutoutTypes";
-import { hasCutoutWorkingCanvas } from "../photo/cutoutCache";
+import type { CutoutChanges, CutoutImagesState, CutoutRect, CutoutSize, CutoutSource, CutoutStroke } from "../photo/cutoutTypes";
+import { hasCutoutWorkingCanvas, peekCutoutWorkingCanvas } from "../photo/cutoutCache";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
-import { canvasPointToPhotoUv, getCutoutBrushScreenRadius, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
-import type { PhotoPlacement } from "../photo/cutoutGeometry";
+import { canvasPointToPhotoUv, getCutoutBrushScreenRadius, getRestoreClip, stickerStrokeToSourceStroke } from "../photo/cutoutGeometry";
+import type { PhotoPlacement, StickerFrame } from "../photo/cutoutGeometry";
 import { getCutoutPickButtons, getRestartChanges } from "../photo/cutoutCreate";
 import {
   applyPresetToEdits,
@@ -391,6 +391,11 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (photoEdit.toolMode === "erase-photo") setPhotoEraseBrushSize(size);
     else photoEdit.onBrushSizeChange(size);
   };
+  // 누끼 붓 종류: 지우개 | 되살리기. 붓에 들어갈 때마다 지우개로 시작합니다(설계 Q12).
+  const [cutoutBrushAction, setCutoutBrushAction] = useState<"erase" | "restore">("erase");
+  useEffect(() => {
+    if (photoEdit.toolMode === "erase-cutout") setCutoutBrushAction("erase");
+  }, [photoEdit.toolMode]);
   const [isStickerDetailOpen, setIsStickerDetailOpen] = useState(false); // 스티커 '자세히'는 기본으로 접어 둡니다
   const [stickerAngleDraft, setStickerAngleDraft] = useState<AngleDraft | null>(null); // 각도 칸에 쓰는 중인 글자. 스티커 ID에 묶어 다른 스티커가 선택되면 버립니다(UX5-6)
   const [appliedToAllCount, setAppliedToAllCount] = useState<number | null>(null); // '모든 사진에 적용' 결과 표시
@@ -592,6 +597,8 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     overlay: Konva.Node;
     stagePoints: number[];
     localPoints: number[];
+    // 누끼 획을 시작할 때의 붓 종류·반지름·대상·경계입니다. 획이 끝나면 이 값만 씁니다(2단계 Codex 2차 필수 11).
+    cutout?: { action: "erase" | "restore"; localRadius: number; src: string; crop: CutoutRect; workingSize: CutoutSize; stickerSize: CutoutSize };
   };
 
   const brushLineRef = useRef<Konva.Line | null>(null);
@@ -600,6 +607,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const eraseDoneButtonRef = useRef<HTMLButtonElement | null>(null);
   const eraseFocusTargetRef = useRef<EraseModeFocusTarget>("none");
   const brushCursorRef = useRef<Konva.Circle | null>(null);
+  const restoreUnderlayRef = useRef<Konva.Group | null>(null); // 되살리기 때 원본을 흐리게 까는 Group(선택 스티커 하나)
 
   const drawBrushPreview = (points: number[]) => {
     brushLineRef.current?.points(points);
@@ -633,6 +641,15 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     hideBrushCursor();
   };
 
+  // 미리보기 원과 같은 상한 반지름을 노드 로컬 좌표로 바꿉니다. 획, 입력 넓힘, 원본 깔기가 같은 값을 씁니다.
+  const getCutoutLocalRadius = (targetSticker: StickerFrame, node: Konva.Node) => {
+    const requestedScreenRadius = BRUSH_SCREEN_RADIUS[activeBrushSize];
+    return getLocalBrushRadius(
+      getCutoutBrushScreenRadius(requestedScreenRadius, targetSticker, zoom),
+      node.getAbsoluteScale().x,
+    );
+  };
+
   const startBrushStroke = (event: Konva.KonvaEventObject<PointerEvent>, targetId: string) => {
     if (!isBrushPointerStart(event.evt.pointerType, event.evt.isPrimary, event.evt.button)) return;
     if (brushDraftRef.current) cancelBrushStroke();
@@ -641,6 +658,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     const local = overlay.getRelativePointerPosition();
     const stagePoint = overlay.getStage()?.getRelativePointerPosition();
     if (!local || !stagePoint) return;
+    const targetSticker = photoEdit.toolMode === "erase-cutout" ? stickers.find((sticker) => sticker.id === targetId) : undefined;
     brushDraftRef.current = {
       pointerId: event.evt.pointerId,
       mode: photoEdit.toolMode,
@@ -648,6 +666,16 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       overlay,
       stagePoints: [stagePoint.x, stagePoint.y],
       localPoints: [local.x, local.y],
+      cutout: targetSticker?.cutout
+        ? {
+          action: cutoutBrushAction,
+          localRadius: getCutoutLocalRadius(targetSticker, overlay),
+          src: targetSticker.src,
+          crop: targetSticker.cutout.crop,
+          workingSize: targetSticker.cutout.workingSize,
+          stickerSize: { width: targetSticker.width, height: targetSticker.height },
+        }
+        : undefined,
     };
     drawBrushPreview(brushDraftRef.current.stagePoints);
   };
@@ -680,13 +708,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     if (draft.mode === "erase-cutout") {
       const targetSticker = stickers.find((sticker) => sticker.id === draft.targetId);
       if (!targetSticker?.cutout) return;
-      // 미리보기 원과 같은 상한 반지름을 실제 픽셀 처리에도 쓴다.
-      const localRadius = getLocalBrushRadius(
-        getCutoutBrushScreenRadius(requestedScreenRadius, targetSticker, zoom),
-        draft.overlay.getAbsoluteScale().x,
-      );
-      const stroke = stickerStrokeToSourceStroke(draft.localPoints, localRadius, { width: targetSticker.width, height: targetSticker.height }, targetSticker.cutout.crop, targetSticker.cutout.workingSize);
-      if (!stroke) return;
+      const snapshot = draft.cutout;
+      if (!snapshot || targetSticker.src !== snapshot.src) return; // 획 도중 대상 PNG가 바뀌면 이 획은 버립니다(Codex 2차 필수 11)
+      const isRestore = snapshot.action === "restore";
+      const sourceStroke = stickerStrokeToSourceStroke(draft.localPoints, snapshot.localRadius, snapshot.stickerSize, snapshot.crop, snapshot.workingSize, isRestore ? snapshot.localRadius : 0);
+      if (!sourceStroke) return;
+      const stroke: CutoutStroke = isRestore
+        ? { ...sourceStroke, action: "restore", clip: getRestoreClip(snapshot.crop, snapshot.workingSize, sourceStroke.radius) } // 획 시작 때 경계 + 반지름(Codex 필수 8)
+        : { ...sourceStroke, action: "erase" };
       cutoutEdit.onRegenerate(targetSticker.id, { eraseStrokes: [...targetSticker.cutout.eraseStrokes, stroke] });
     }
   };
@@ -742,8 +771,9 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
     cancelBrushStroke();
   }, [photoEdit.toolMode, selection, zoom, frameLayout, isPhotoEraseMode, selectedImageSlotId, exportMode]);
 
-  const renderBrushControls = (guideText: string) => (
+  const renderBrushControls = (guideText: string, brushPair?: React.ReactNode) => (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {brushPair}
       <p style={{ margin: 0, fontSize: "14px", color: "var(--linear-neutral-50)" }}>{guideText}</p>
       <div role="group" aria-label="붓 크기" style={{ display: "flex", gap: "6px" }}>
         {BRUSH_SIZE_OPTIONS.map((option) => {
@@ -2624,8 +2654,39 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     ? createStickerTintFilter(sticker.tintColor, getStickerTintMode(sticker.src))
                     : undefined;
 
+                  const isRestoring = isSelected && Boolean(sticker.cutout) && photoEdit.toolMode === "erase-cutout" && cutoutBrushAction === "restore";
+                  const restoreCanvas = isRestoring ? peekCutoutWorkingCanvas(sticker.id) : null;
+
                   return (
                     <Group key={sticker.id}>
+                      {/* 되살리기: 원본을 흐리게 깔아 되살릴 곳을 보입니다. 스티커 사각형 + 붓 반지름까지만 보입니다(설계 5.5) */}
+                      {restoreCanvas && sticker.cutout && (
+                        <Group
+                          ref={restoreUnderlayRef}
+                          x={sticker.x}
+                          y={sticker.y}
+                          scaleX={effectiveScaleX}
+                          scaleY={effectiveScaleY}
+                          offsetX={sticker.flipX ? sticker.width : 0}
+                          offsetY={sticker.flipY ? sticker.height : 0}
+                          rotation={sticker.rotation}
+                          listening={false}
+                          clipFunc={(context) => {
+                            const reach = restoreUnderlayRef.current ? getCutoutLocalRadius(sticker, restoreUnderlayRef.current) : 0;
+                            context.rect(-reach, -reach, sticker.width + reach * 2, sticker.height + reach * 2);
+                          }}
+                        >
+                          <KonvaImage
+                            image={restoreCanvas}
+                            x={-sticker.cutout.crop.x * (sticker.width / sticker.cutout.crop.width)}
+                            y={-sticker.cutout.crop.y * (sticker.height / sticker.cutout.crop.height)}
+                            width={sticker.cutout.workingSize.width * (sticker.width / sticker.cutout.crop.width)}
+                            height={sticker.cutout.workingSize.height * (sticker.height / sticker.cutout.crop.height)}
+                            opacity={0.4}
+                            listening={false}
+                          />
+                        </Group>
+                      )}
                       {stickerImage && (
                         <KonvaImage
                           ref={(node) => {
@@ -2691,6 +2752,14 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                           offsetY={sticker.flipY ? sticker.height : 0}
                           rotation={sticker.rotation}
                           fill="transparent"
+                          hitFunc={(context, shape) => {
+                            // 되살리기는 스티커 밖 붓 반지름 안에서 시작한 획도 받습니다. 로컬 좌표는 0..w 그대로입니다.
+                            const reach = cutoutBrushAction === "restore" ? getCutoutLocalRadius(sticker, shape) : 0;
+                            context.beginPath();
+                            context.rect(-reach, -reach, shape.width() + reach * 2, shape.height() + reach * 2);
+                            context.closePath();
+                            context.fillStrokeShape(shape);
+                          }}
                           onPointerDown={(event) => startBrushStroke(event, sticker.id)}
                         />
                       )}
@@ -3440,7 +3509,30 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                       >
                         {CUTOUT_COPY.eraser}
                       </button>
-                    ) : renderBrushControls(CUTOUT_COPY.eraserGuide)}
+                    ) : renderBrushControls(
+                      cutoutBrushAction === "restore" ? CUTOUT_COPY.restoreGuide : CUTOUT_COPY.eraserGuide,
+                      <div
+                        role="group"
+                        aria-label={CUTOUT_COPY.eraser + "·" + CUTOUT_COPY.restore}
+                        style={{ display: "flex", gap: "6px" }}
+                      >
+                        {(["erase", "restore"] as const).map((action) => {
+                          const isActionSelected = cutoutBrushAction === action;
+                          return (
+                            <button
+                              key={action}
+                              type="button"
+                              className={`linear-button ${isActionSelected ? "linear-button--primary" : "linear-button--secondary"}`}
+                              aria-pressed={isActionSelected}
+                              onClick={() => setCutoutBrushAction(action)}
+                              style={{ flex: 1, minHeight: "44px", fontSize: "14px" }}
+                            >
+                              {action === "erase" ? CUTOUT_COPY.eraser : CUTOUT_COPY.restore}
+                            </button>
+                          );
+                        })}
+                      </div>,
+                    )}
                     <button
                       type="button"
                       className="linear-button linear-button--secondary"

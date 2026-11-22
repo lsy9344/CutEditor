@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   getCutoutWorkingCanvas,
   hasCutoutWorkingCanvas,
+  peekCutoutWorkingCanvas,
   pruneCutoutCache,
   peekCutoutConfidence,
   rememberCutoutConfidence,
@@ -65,4 +66,20 @@ test("남길 스티커 목록에 없는 항목만 캐시에서 지운다", () =>
 
   assert.equal(hasCutoutWorkingCanvas("s1"), false);
   assert.equal(hasCutoutWorkingCanvas("s2"), true);
+});
+
+test("peekCutoutWorkingCanvas는 순서를 바꾸지 않는다", () => {
+  pruneCutoutCache(new Set());
+
+  const canvasA = createCanvas();
+  setCutoutWorkingCanvas("A", canvasA);
+  setCutoutWorkingCanvas("B", createCanvas());
+  setCutoutWorkingCanvas("C", createCanvas());
+  assert.equal(peekCutoutWorkingCanvas("A"), canvasA);
+  assert.equal(peekCutoutWorkingCanvas("Z"), null);
+  setCutoutWorkingCanvas("D", createCanvas());
+
+  assert.equal(hasCutoutWorkingCanvas("A"), false);
+  assert.equal(hasCutoutWorkingCanvas("B"), true);
+  assert.equal(hasCutoutWorkingCanvas("D"), true);
 });

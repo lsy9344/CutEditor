@@ -34,6 +34,11 @@ export function getCutoutWorkingCanvas(stickerId: string): HTMLCanvasElement | n
   return entry.workingCanvas;
 }
 
+// 순서를 바꾸지 않고 작업 캔버스를 읽습니다(되살리기 원본 깔기처럼 렌더 때 보기만 할 때).
+export function peekCutoutWorkingCanvas(stickerId: string): HTMLCanvasElement | null {
+  return cutoutCache.get(stickerId)?.workingCanvas ?? null;
+}
+
 export function rememberCutoutConfidence(
   stickerId: string,
   target: CutoutTarget,

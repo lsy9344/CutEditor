@@ -24,6 +24,8 @@ export const CUTOUT_COPY = {
   outline: "흰 테두리",
   eraser: "지우개",
   eraserGuide: "지우개로 지울 곳을 칠하세요. 손을 떼면 지워져요.",
+  restore: "되살리기",
+  restoreGuide: "되살릴 곳을 칠하세요. 손을 떼면 돌아와요.",
   saveSticker: "이 스티커만 저장",
   restart: "처음부터 다시",
   cancel: "취소",

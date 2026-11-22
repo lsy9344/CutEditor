@@ -85,13 +85,14 @@ export function stickerStrokeToSourceStroke(
   stickerSize: CutoutSize,
   crop: CutoutRect,
   workingSize: CutoutSize,
+  reach = 0, // 되살림은 스티커 사각형 밖 reach(로컬 좌표)까지의 점도 남깁니다
 ): BrushStroke | null {
   const points: number[] = [];
 
   for (let index = 0; index + 1 < localPoints.length; index += 2) {
     const x = localPoints[index];
     const y = localPoints[index + 1];
-    if (x < 0 || x > stickerSize.width || y < 0 || y > stickerSize.height) continue;
+    if (x < -reach || x > stickerSize.width + reach || y < -reach || y > stickerSize.height + reach) continue;
 
     const uv = stickerLocalToSourceUv({ x, y }, stickerSize, crop, workingSize);
     points.push(uv.x, uv.y);
@@ -102,6 +103,22 @@ export function stickerStrokeToSourceStroke(
   return {
     points,
     radius: (localRadius * (crop.width / stickerSize.width)) / workingSize.width,
+  };
+}
+
+// 되살림 획의 화소 한계: 획을 시작할 때의 crop(작업 픽셀)을 붓 반지름(작업 폭 기준 0~1)만큼 넓혀
+// 작업 크기 0~1로 바꾸고 사진 밖은 자릅니다(설계 4.6, 2단계 계획 1.4 필수 8).
+export function getRestoreClip(crop: CutoutRect, workingSize: CutoutSize, strokeRadius: number): CutoutRect {
+  const radiusPixels = strokeRadius * workingSize.width;
+  const left = Math.max(0, crop.x - radiusPixels);
+  const top = Math.max(0, crop.y - radiusPixels);
+  const right = Math.min(workingSize.width, crop.x + crop.width + radiusPixels);
+  const bottom = Math.min(workingSize.height, crop.y + crop.height + radiusPixels);
+  return {
+    x: left / workingSize.width,
+    y: top / workingSize.height,
+    width: (right - left) / workingSize.width,
+    height: (bottom - top) / workingSize.height,
   };
 }
 

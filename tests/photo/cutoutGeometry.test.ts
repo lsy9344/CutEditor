@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   canvasPointToPhotoUv,
   getCutoutBrushScreenRadius,
+  getRestoreClip,
   keepStickerCenter,
   stickerLocalToSourceUv,
   stickerStrokeToSourceStroke,
@@ -74,6 +75,53 @@ test("stickerStrokeToSourceStroke returns null when no points remain", () => {
   const result = stickerStrokeToSourceStroke([-5, 10], 10, stickerSize, crop, workingSize);
 
   assert.equal(result, null);
+});
+
+test("stickerStrokeToSourceStroke keeps points within reach outside the sticker", () => {
+  const square = { width: 100, height: 100 };
+  const squareCrop = { x: 0, y: 0, width: 100, height: 100 };
+  const squareWorking = { width: 200, height: 200 };
+
+  const reached = stickerStrokeToSourceStroke([-5, 50, -15, 50], 4, square, squareCrop, squareWorking, 10);
+  assert.deepEqual(reached?.points, [-0.025, 0.25]);
+  assert.equal(stickerStrokeToSourceStroke([-15, 50], 4, square, squareCrop, squareWorking, 10), null);
+  assert.equal(stickerStrokeToSourceStroke([-5, 50], 4, square, squareCrop, squareWorking), null);
+  assert.deepEqual(
+    stickerStrokeToSourceStroke([50, 25, 0, 0], 10, stickerSize, crop, workingSize),
+    { points: [0.4, 0.25, 0.2, 0.125], radius: 0.04 },
+  );
+});
+
+test("keepStickerCenter keeps the center after the crop grows", () => {
+  const result = keepStickerCenter(
+    { x: 200, y: 150, width: 100, height: 80, scaleX: 1.5, scaleY: 1.5, rotation: 30 },
+    120,
+    100,
+  );
+
+  // 앞 중심 (234.9519052838329, 239.46152422706632)에서 새 반 크기(90, 75)를 30° 돌려 뺀 값
+  assertClose(result, { x: 194.50961894323342, y: 129.50961894323342 });
+  const centerOf = (x: number, y: number, halfWidth: number, halfHeight: number) => {
+    const radians = (30 * Math.PI) / 180;
+    return {
+      x: x + halfWidth * Math.cos(radians) - halfHeight * Math.sin(radians),
+      y: y + halfWidth * Math.sin(radians) + halfHeight * Math.cos(radians),
+    };
+  };
+  assertClose(centerOf(result.x, result.y, 90, 75), centerOf(200, 150, 75, 60));
+});
+
+test("getRestoreClip expands the crop by the stroke radius and clamps to the photo", () => {
+  const assertRectClose = (actual: { x: number; y: number; width: number; height: number }, expected: typeof actual) => {
+    for (const key of ["x", "y", "width", "height"] as const) {
+      assert.ok(Math.abs(actual[key] - expected[key]) <= 1e-9, `${key}: ${actual[key]} != ${expected[key]}`);
+    }
+  };
+  const size = { width: 1000, height: 500 };
+
+  assertRectClose(getRestoreClip({ x: 100, y: 100, width: 200, height: 100 }, size, 0.01), { x: 0.09, y: 0.18, width: 0.22, height: 0.24 });
+  assertRectClose(getRestoreClip({ x: 0, y: 0, width: 50, height: 50 }, size, 0.01), { x: 0, y: 0, width: 0.06, height: 0.12 });
+  assertRectClose(getRestoreClip({ x: 980, y: 480, width: 20, height: 20 }, size, 0.01), { x: 0.97, y: 0.94, width: 0.03, height: 0.06 });
 });
 
 test("getCutoutBrushScreenRadius caps the brush at 1/8 of the displayed short side", () => {

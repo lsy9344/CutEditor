@@ -1,5 +1,5 @@
-import type { BrushStroke, PhotoEdits } from "./photoEdits.ts";
-import type { CutoutRect, CutoutSize } from "./cutoutTypes.ts";
+import type { PhotoEdits } from "./photoEdits.ts";
+import type { CutoutRect, CutoutSize, CutoutStroke } from "./cutoutTypes.ts";
 import {
   buildCutoutAlpha,
   buildOutlineAlpha,
@@ -66,7 +66,7 @@ export type CutoutRenderResult =
 export async function renderCutoutSticker(
   workingCanvas: HTMLCanvasElement,
   confidence: Float32Array,
-  options: { outline: boolean; eraseStrokes: BrushStroke[] },
+  options: { outline: boolean; eraseStrokes: CutoutStroke[] },
 ): Promise<CutoutRenderResult> {
   const workingWidth = workingCanvas.width;
   const workingHeight = workingCanvas.height;

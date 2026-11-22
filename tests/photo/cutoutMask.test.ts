@@ -16,6 +16,7 @@ import {
   refineAlpha,
   resizeConfidenceBilinear,
 } from "../../src/photo/cutoutMask.ts";
+import { getRestoreClip } from "../../src/photo/cutoutGeometry.ts";
 
 function filledAlpha(length: number, value: number): Uint8ClampedArray {
   const alpha = new Uint8ClampedArray(length);
@@ -291,4 +292,71 @@ test("#21 픽셀 중심 기준 bilinear로 작업 크기에 맞춘다", () => {
 
   close(resizeConfidenceBilinear(Float32Array.of(0, 1), { width: 2, height: 1 }, { width: 4, height: 1 }), [0, 0.25, 0.75, 1]);
   close(resizeConfidenceBilinear(Float32Array.of(0, 1, 1, 0), { width: 2, height: 2 }, { width: 1, height: 1 }), [0.5]);
+});
+
+const fullClip = { x: 0, y: 0, width: 1, height: 1 };
+
+test("#22 같은 자리는 마지막 획이 이긴다", () => {
+  const center = 5 * 10 + 5;
+  const eraseThenRestore = filledAlpha(10 * 10, 255);
+  applyStrokesToAlpha(eraseThenRestore, 10, 10, [
+    { points: [0.55, 0.55], radius: 0.1, action: "erase" },
+    { points: [0.55, 0.55], radius: 0.1, action: "restore", clip: fullClip },
+  ]);
+  assert.equal(eraseThenRestore[center], 255);
+
+  const restoreThenErase = filledAlpha(10 * 10, 255);
+  applyStrokesToAlpha(restoreThenErase, 10, 10, [
+    { points: [0.55, 0.55], radius: 0.1, action: "restore", clip: fullClip },
+    { points: [0.55, 0.55], radius: 0.1, action: "erase" },
+  ]);
+  assert.equal(restoreThenErase[center], 0);
+});
+
+test("#23 종류 없는 옛 획은 지움이고 원본이 투명한 곳은 되살려도 투명하다", () => {
+  const oldStroke = filledAlpha(10 * 10, 255);
+  applyStrokesToAlpha(oldStroke, 10, 10, [{ points: [0.55, 0.55], radius: 0.1 }]);
+  assert.equal(oldStroke[5 * 10 + 5], 0);
+
+  const photo = new Uint8ClampedArray(10 * 10 * 4);
+  photo.fill(255);
+  photo[(5 * 10 + 5) * 4 + 3] = 0;
+  const confidence = new Float32Array(10 * 10).fill(1);
+  const alpha = buildCutoutAlpha(confidence, photo, 10, 10, [
+    { points: [0.55, 0.55], radius: 0.15 },
+    { points: [0.55, 0.55], radius: 0.15, action: "restore", clip: fullClip },
+  ]);
+  assert.ok(alpha);
+  assert.equal(alpha[5 * 10 + 5], 0);
+  assert.ok(alpha[5 * 10 + 6] > 0);
+});
+
+test("#24 되살림은 그 획의 clip 밖을 되살리지 않고 다음 획의 새 clip으로 넓어진다", () => {
+  const size = { width: 10, height: 10 };
+  const row = (alpha: Uint8ClampedArray, y: number) => Array.from(alpha.slice(y * 10, y * 10 + 10));
+  const cover = [0.5, 0.5];
+
+  const alpha = filledAlpha(10 * 10, 0);
+  applyStrokesToAlpha(alpha, 10, 10, [
+    { points: cover, radius: 1, action: "restore", clip: getRestoreClip({ x: 3, y: 3, width: 4, height: 4 }, size, 0.1) },
+  ]);
+  // crop 3..6 안쪽과 경계에서 1px(2, 7)은 되살고, 그 밖(1, 8)은 그대로입니다.
+  assert.deepEqual(row(alpha, 5), [0, 0, 255, 255, 255, 255, 255, 255, 0, 0]);
+  assert.deepEqual(row(alpha, 1), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+  applyStrokesToAlpha(alpha, 10, 10, [
+    { points: cover, radius: 1, action: "restore", clip: getRestoreClip({ x: 2, y: 2, width: 6, height: 6 }, size, 0.1) },
+  ]);
+  assert.deepEqual(row(alpha, 5), [0, 255, 255, 255, 255, 255, 255, 255, 255, 0]);
+  assert.deepEqual(row(alpha, 0), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+  const fractional = (strokeRadius: number) => {
+    const result = filledAlpha(10 * 10, 0);
+    applyStrokesToAlpha(result, 10, 10, [
+      { points: cover, radius: 1, action: "restore", clip: getRestoreClip({ x: 3, y: 3, width: 4, height: 4 }, size, strokeRadius) },
+    ]);
+    return result[5 * 10 + 1];
+  };
+  assert.equal(fractional(0.14), 0); // clip 시작 1.6 > 화소 중심 1.5
+  assert.equal(fractional(0.16), 255); // clip 시작 1.4 < 화소 중심 1.5
 });
