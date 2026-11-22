@@ -741,7 +741,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         className="linear-button linear-button--primary"
         onClick={(event) => {
           if (photoEdit.toolMode === "erase-photo") {
-            eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: event.currentTarget.matches(":focus-visible") });
+            eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "exit", isKeyboardFocused: event.detail === 0 });
           }
           photoEdit.onToolModeChange("none");
         }}
@@ -2845,7 +2845,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                     className="linear-button linear-button--primary"
                     aria-describedby={selectedImage.edits.erase.length === 0 ? 'erase-start-guide' : undefined}
                     onClick={(event) => {
-                      eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: event.currentTarget.matches(":focus-visible") });
+                      eraseFocusTargetRef.current = getEraseModeFocusTarget({ change: "enter", isKeyboardFocused: event.detail === 0 });
                       setShowCustomPalette(false);
                       setErasePanelWidth(controlPanelRef.current?.getBoundingClientRect().width ?? null);
                       setPhotoEraseBrushSize("medium");
