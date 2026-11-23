@@ -7,6 +7,10 @@ import { getDefaultTextPosition } from "./defaultTextPosition";
 
 type TextAlign = "left" | "center" | "right";
 
+// 폰트 목록이 오기 전에 넣은 글씨도 실제 폰트 이름을 갖게 한다.
+// 빈 이름이면 캔버스가 글꼴 지정을 무시해 글씨 크기를 바꿔도 글자가 커지지 않는다.
+const DEFAULT_FONT_FAMILY = "Aritaburi";
+
 const LETTERING_SUGGESTIONS = Array.from(
   new Set([
     "다비야, 너의 1000일을 축하해 :)",
@@ -160,7 +164,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isVertical, setIsVertical] = useState(false);
-  const [fontFamily, setFontFamily] = useState("");
+  const [fontFamily, setFontFamily] = useState(DEFAULT_FONT_FAMILY);
   const [isFontPickerOpen, setFontPickerOpen] = useState(false);
   const [fontColor, setFontColor] = useState("#000000");
   const [textAlign, setTextAlign] = useState<TextAlign>("center");
@@ -169,13 +173,13 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   // 동적 폰트 로딩
   const { fonts, isLoading: fontsLoading } = useFonts();
 
-  // 폰트 목록이 로딩되면, 선택된 텍스트가 없을 때 Aritaburi을 기본값으로 설정
+  // 폰트 목록이 로딩되면, 선택된 텍스트가 없고 지금 폰트가 목록에 없을 때 기본 폰트(없으면 첫 번째 폰트)로 바꾼다
   useEffect(() => {
     if (!fontsLoading && fonts.length > 0 && !selectedText) {
       const names = fonts.map(f => f.name);
       if (!names.includes(fontFamily)) {
-        // Aritaburi이 있으면 기본값으로 사용, 없으면 첫 번째 폰트 사용
-        const defaultFont = names.includes('Aritaburi') ? 'Aritaburi' : names[0];
+        // 기본 폰트가 있으면 기본값으로 사용, 없으면 첫 번째 폰트 사용
+        const defaultFont = names.includes(DEFAULT_FONT_FAMILY) ? DEFAULT_FONT_FAMILY : names[0];
         setFontFamily(defaultFont);
       }
     }
