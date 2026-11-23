@@ -11,6 +11,13 @@ export type FontSource = {
   path: string;
 };
 
+// 기본 글꼴. 폰트 목록(fonts.json)보다 먼저 넣은 글씨도 이 이름을 쓰므로 앱 시작 때 따로 등록한다.
+// 등록해 두지 않으면 저장 대기가 이 글꼴을 준비된 것으로 보고 대체 글꼴로 저장한다.
+export const DEFAULT_FONT: FontSource = {
+  name: "Aritaburi",
+  path: "/font/Aritaburi.ttf",
+};
+
 type FontLoaderDeps<TFace extends FontFaceHandle> = {
   createFace: (family: string, url: string) => TFace;
   addFace: (face: TFace) => void;

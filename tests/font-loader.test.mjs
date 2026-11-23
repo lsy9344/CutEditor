@@ -304,3 +304,38 @@ test("기다림이 실패하면 상한을 기다리지 않고 그 실패를 그�
     /boom/,
   );
 });
+
+test("목록을 받기 전에 등록한 기본 글꼴은 저장 대기가 파일을 받을 때까지 기다리고, 목록이 와도 다시 만들지 않는다", async () => {
+  const { createFontLoader, DEFAULT_FONT } = await loadTsModule("src/utils/fontLoader.ts");
+  const browserFonts = createFakeBrowserFonts();
+  const fontLoader = createFontLoader(browserFonts);
+
+  assert.deepEqual(DEFAULT_FONT, { name: "Aritaburi", path: "/font/Aritaburi.ttf" });
+  fontLoader.register([DEFAULT_FONT]);
+
+  // 등록만 하고 받지는 않는다(편집 화면 진입 때 .ttf 0건).
+  assert.deepEqual(browserFonts.loadCalls, []);
+  assert.equal(fontLoader.isReady("Aritaburi"), false);
+
+  let waitFinished = false;
+  const waitForSave = fontLoader.ensureLoaded(["Aritaburi"]).then((failedFontFamilies) => {
+    waitFinished = true;
+    return failedFontFamilies;
+  });
+  await Promise.resolve();
+  assert.deepEqual(browserFonts.loadCalls, ["Aritaburi"]);
+  assert.equal(waitFinished, false);
+
+  fontLoader.register([
+    { name: "Aritaburi", path: "/font/Aritaburi.ttf" },
+    { name: "DungGeunMo", path: "/font/DungGeunMo.ttf" },
+  ]);
+  assert.deepEqual(
+    browserFonts.added.map((face) => face.family),
+    ["Aritaburi", "DungGeunMo"],
+  );
+
+  browserFonts.created[0].finishLoad();
+  assert.deepEqual(await waitForSave, []);
+  assert.equal(fontLoader.isReady("Aritaburi"), true);
+});

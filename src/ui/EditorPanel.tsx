@@ -4,12 +4,13 @@ import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
 import { getDefaultTextPosition } from "./defaultTextPosition";
+import { DEFAULT_FONT } from "../utils/fontLoader";
 
 type TextAlign = "left" | "center" | "right";
 
 // 폰트 목록이 오기 전에 넣은 글씨도 실제 폰트 이름을 갖게 한다.
 // 빈 이름이면 캔버스가 글꼴 지정을 무시해 글씨 크기를 바꿔도 글자가 커지지 않는다.
-const DEFAULT_FONT_FAMILY = "Aritaburi";
+const DEFAULT_FONT_FAMILY = DEFAULT_FONT.name;
 
 const LETTERING_SUGGESTIONS = Array.from(
   new Set([
