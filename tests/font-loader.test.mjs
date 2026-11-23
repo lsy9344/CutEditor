@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { readHandleExportSource } from "./helpers/readHandleExportSource.mjs";
 import { loadTsModule } from "./helpers/loadTsModule.mjs";
 
 const createFakeBrowserFonts = () => {
@@ -96,7 +97,7 @@ test("목록에 없는 폰트는 받지 않고 바로 준비된 것으로 본다
   assert.equal(fontLoader.isReady("sans-serif"), true);
 });
 
-test("폰트 받기에 실패해도 기다림이 끝나고 대체 폰트로 진행한다", async () => {
+test("폰트 받기에 실패하면 기다림은 끝나지만 준비된 것으로 보지 않고 실패한 이름을 알려 준다", async () => {
   const { createFontLoader } = await loadTsModule("src/utils/fontLoader.ts");
   const fontLoader = createFontLoader({
     createFace: () => {
@@ -114,9 +115,10 @@ test("폰트 받기에 실패해도 기다림이 끝나고 대체 폰트로 진�
   });
   fontLoader.register([{ name: "Aritaburi", path: "/font/Aritaburi.ttf" }]);
 
-  await assert.doesNotReject(fontLoader.ensureLoaded(["Aritaburi"]));
+  const failedFontFamilies = await fontLoader.ensureLoaded(["Aritaburi"]);
 
-  assert.equal(fontLoader.isReady("Aritaburi"), true);
+  assert.deepEqual(failedFontFamilies, ["Aritaburi"]);
+  assert.equal(fontLoader.isReady("Aritaburi"), false);
 });
 
 test("받기에 실패한 폰트는 다음 요청 때 새로 받는다", async () => {
@@ -162,13 +164,18 @@ test("편집 화면의 폰트 목록은 이름만 등록하고 폰트 파일을 
   assert.doesNotMatch(source, /\.load\(\)/);
 });
 
-test("저장은 글자에 쓰인 폰트를 받은 뒤에 화면 오버레이를 지우고 그린다", () => {
-  const source = readFileSync("src/App.tsx", "utf8");
+test("저장은 글자에 쓰인 폰트를 한 번 더 받아 보고, 그래도 못 받으면 대체 폰트로 그리지 않고 멈춘다", () => {
+  const exportSource = readHandleExportSource();
 
   assert.match(
-    source,
-    /await loadTextFonts\(texts\.map\(text => text\.fontFamily\)\);\s*setExportMode\(true\);/,
+    exportSource,
+    /let failedFontFamilies = await loadTextFonts\(textFontFamilies\);\s*if \(failedFontFamilies\.length > 0\) \{\s*failedFontFamilies = await loadTextFonts\(failedFontFamilies\);\s*\}/,
   );
+  const stopIndex = exportSource.indexOf("if (failedFontFamilies.length > 0) {", exportSource.indexOf("failedFontFamilies = await loadTextFonts(failedFontFamilies)"));
+  const renderIndex = exportSource.indexOf("setExportMode(true);");
+  assert.ok(stopIndex > 0 && stopIndex < renderIndex, "폰트 실패 확인은 렌더 전에 있어야 합니다");
+  const stopBlock = exportSource.slice(stopIndex, renderIndex);
+  assert.match(stopBlock, /alert\(FONT_LOAD_FAILED_MESSAGE\);\s*return;/);
 });
 
 test("화면이 먼저 받다가 실패한 폰트도 요청하면 새로 받는다", async () => {
@@ -196,4 +203,80 @@ test("화면이 먼저 받다가 실패한 폰트도 요청하면 새로 받는�
 
   assert.equal(created.length, 2);
   assert.equal(created[1].status, "loaded");
+});
+
+test("폰트 받기에 실패하는 동안 기준 폭을 남기고, 다시 받기가 성공하면 실제 폰트 폭으로 돌아온다", async () => {
+  const { createFontLoader } = await loadTsModule("src/utils/fontLoader.ts");
+  const { applyLoadedFontBoxWidths } = await loadTsModule("src/canvas/textBoxWidth.ts");
+  let shouldFail = true;
+  const fontLoader = createFontLoader({
+    createFace: () => {
+      const face = {
+        status: "unloaded",
+        load: () => {
+          face.status = shouldFail ? "error" : "loaded";
+          return shouldFail ? Promise.reject(new Error("network")) : Promise.resolve(face);
+        },
+      };
+      return face;
+    },
+    addFace: () => {},
+    removeFace: () => {},
+  });
+  fontLoader.register([{ name: "Aritaburi", path: "/font/Aritaburi.ttf" }]);
+  // 대체 폰트로 잰 312px가 들어가 있고, 받기 전 기준 폭은 0(최소 폭만 사용)이다.
+  const textsWithFallbackWidth = [{ fontFamily: "Aritaburi", boxWidth: 312, boxWidthBeforeFontLoad: 0 }];
+  const measureWithCurrentFont = () => (fontLoader.isReady("Aritaburi") ? 305 : 312);
+  const applyWidths = (texts) => applyLoadedFontBoxWidths(texts, {
+    isFontReady: fontLoader.isReady,
+    getMinimumBoxWidth: measureWithCurrentFont,
+  });
+
+  assert.deepEqual(await fontLoader.ensureLoaded(["Aritaburi"]), ["Aritaburi"]);
+  const textsAfterFailure = applyWidths(textsWithFallbackWidth);
+  assert.equal(textsAfterFailure[0].boxWidthBeforeFontLoad, 0);
+
+  shouldFail = false;
+  assert.deepEqual(await fontLoader.ensureLoaded(["Aritaburi"]), []);
+  const textsAfterRetry = applyWidths(textsAfterFailure);
+  assert.equal(textsAfterRetry[0].boxWidth, 305);
+  assert.equal("boxWidthBeforeFontLoad" in textsAfterRetry[0], false);
+});
+
+test("받기에 실패한 폰트는 실패로 표시해, 화면이 글자를 고칠 때마다 다시 받지 않게 한다", async () => {
+  const { createFontLoader } = await loadTsModule("src/utils/fontLoader.ts");
+  const fontLoader = createFontLoader({
+    createFace: () => {
+      const face = {
+        status: "unloaded",
+        load: () => {
+          face.status = "error";
+          return Promise.reject(new Error("network"));
+        },
+      };
+      return face;
+    },
+    addFace: () => {},
+    removeFace: () => {},
+  });
+  fontLoader.register([
+    { name: "Aritaburi", path: "/font/Aritaburi.ttf" },
+    { name: "DungGeunMo", path: "/font/DungGeunMo.ttf" },
+  ]);
+
+  assert.equal(fontLoader.hasFailed("Aritaburi"), false);
+  await fontLoader.ensureLoaded(["Aritaburi"]);
+
+  assert.equal(fontLoader.hasFailed("Aritaburi"), true);
+  assert.equal(fontLoader.hasFailed("DungGeunMo"), false);
+  assert.equal(fontLoader.hasFailed("sans-serif"), false);
+});
+
+test("화면의 폰트 받기는 실패한 폰트를 건너뛴다(다시 받기는 저장할 때만)", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
+
+  assert.match(
+    source,
+    /\.filter\(fontFamily => !fontLoader\.isReady\(fontFamily\) && !fontLoader\.hasFailed\(fontFamily\)\);/,
+  );
 });

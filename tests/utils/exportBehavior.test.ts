@@ -4,6 +4,7 @@ import {
   getMobileSaveFallback,
   isShareAbortError,
   getExportRenderPlan,
+  shouldPickSaveFileBeforeRender,
   shouldShowManualSaveHintImmediately,
 } from "../../src/utils/exportBehavior.ts";
 
@@ -184,4 +185,44 @@ assertEqual(
   horizontalPlan.targetWidthPx,
   7087,
   "가로 프레임은 15cm 기준 목표 폭을 사용해야 한다",
+);
+
+assertEqual(
+  shouldPickSaveFileBeforeRender({
+    expectsBoothySessionSave: false,
+    hasFilePicker: true,
+    prefersTouchExperience: false,
+  }),
+  true,
+  "데스크톱 파일 선택 저장은 클릭 직후(폰트 대기와 렌더 전에) 저장 위치 창을 열어야 한다",
+);
+
+assertEqual(
+  shouldPickSaveFileBeforeRender({
+    expectsBoothySessionSave: true,
+    hasFilePicker: true,
+    prefersTouchExperience: false,
+  }),
+  false,
+  "Boothy 세션 저장은 저장 위치 창을 열지 않아야 한다",
+);
+
+assertEqual(
+  shouldPickSaveFileBeforeRender({
+    expectsBoothySessionSave: false,
+    hasFilePicker: false,
+    prefersTouchExperience: false,
+  }),
+  false,
+  "파일 선택 API가 없으면 다운로드 경로를 유지해야 한다",
+);
+
+assertEqual(
+  shouldPickSaveFileBeforeRender({
+    expectsBoothySessionSave: false,
+    hasFilePicker: true,
+    prefersTouchExperience: true,
+  }),
+  false,
+  "터치 환경은 모바일 저장 시트를 유지해야 한다",
 );

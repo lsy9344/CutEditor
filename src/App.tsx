@@ -32,6 +32,7 @@ import { fontLoader } from './utils/fontLoader'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import {
   getExportExperience,
+  shouldPickSaveFileBeforeRender,
   getMobileExportLimits,
   getMobileSaveFallback,
   isShareAbortError,
@@ -205,6 +206,8 @@ const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
 const BOOTHY_SAVE_NOTICE_AUTO_CLOSE_MS = 1_500;
+const FONT_LOAD_FAILED_MESSAGE = '글씨체를 받지 못해 저장하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.';
+const SAVE_FILE_FAILED_MESSAGE = '파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.';
 
 declare global {
   interface Window {
@@ -440,6 +443,8 @@ function App() {
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
   const [boothySaveNoticeState, setBoothySaveNoticeState] = useState<BoothySaveNoticeState>('idle');
   const stageRef = useRef<Konva.Stage | null>(null);
+  const appContainerRef = useRef<HTMLDivElement>(null);
+  const isExportingRef = useRef(false);
   // 모바일 내보내기 오버레이 상태
   const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
@@ -824,18 +829,20 @@ function App() {
   }, [getTextWidth]);
 
   // 글자에 쓰인 폰트를 받은 뒤 상자 너비를 실제 폰트로 다시 잰다(캔버스도 다시 그려진다).
+  // 받지 못한 폰트 이름을 돌려준다. 그 글자는 받을 때까지 받기 전 기준 폭을 남겨 둔다.
   const loadTextFonts = useCallback(async (fontFamilies: string[]) => {
-    await fontLoader.ensureLoaded(fontFamilies);
+    const failedFontFamilies = await fontLoader.ensureLoaded(fontFamilies);
     setTexts(prev => applyLoadedFontBoxWidths(prev, {
       isFontReady: fontLoader.isReady,
       getMinimumBoxWidth: getMinimumTextBoxWidth,
     }));
+    return failedFontFamilies;
   }, [getMinimumTextBoxWidth]);
 
   useEffect(() => {
     const pendingFontFamilies = texts
       .map(text => text.fontFamily)
-      .filter(fontFamily => !fontLoader.isReady(fontFamily));
+      .filter(fontFamily => !fontLoader.isReady(fontFamily) && !fontLoader.hasFailed(fontFamily));
     if (pendingFontFamilies.length === 0) return;
     void loadTextFonts(pendingFontFamilies);
   }, [texts, loadTextFonts]);
@@ -1154,8 +1161,16 @@ function App() {
     return true;
   }, [boothyLaunchContext, editorState.userImages]);
 
+  // 저장하는 동안(저장 위치 창 → 폰트 대기 → 렌더) 편집과 중복 저장을 막는다. 화면 모양은 그대로 둔다.
+  const setEditorLocked = useCallback((isLocked: boolean) => {
+    if (appContainerRef.current) {
+      appContainerRef.current.inert = isLocked;
+    }
+  }, []);
+
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
   const handleExport = async () => {
+    if (isExportingRef.current) return;
     const frameType = editorState.selectedFrame;
     if (!frameType) {
       alert('프레임을 먼저 선택해주세요.');
@@ -1167,21 +1182,66 @@ function App() {
       && boothyLaunchContext?.sessionId?.trim()
       && boothyLaunchContext?.launchId?.trim(),
     );
+    const filename = makeSuggestedFilename();
+    const textFontFamilies = texts.map(text => text.fontFamily);
 
-    // Stage 준비 및 오버레이 제거
-    if (expectsBoothySessionSave) {
-      setBoothySaveNoticeState('saving');
-    }
-    // 폰트를 다 받기 전에 저장해도 고른 폰트가 들어가도록 먼저 받는다.
-    await loadTextFonts(texts.map(text => text.fontFamily));
-    setExportMode(true);
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    isExportingRef.current = true;
+    setEditorLocked(true);
+    let fileHandle: FileSystemFileHandle | null = null;
+    let shouldAnnounceDownloadFallback = false;
 
     try {
+      // 저장 위치 창은 클릭 직후에만 열 수 있으므로, 폰트를 기다리거나 PNG를 만들기 전에 연다.
+      if (window.showSaveFilePicker && shouldPickSaveFileBeforeRender({
+        expectsBoothySessionSave,
+        hasFilePicker: supportsFilePicker,
+        prefersTouchExperience: isResponsiveMobile,
+      })) {
+        try {
+          fileHandle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            excludeAcceptAllOption: true,
+            startIn: 'desktop',
+            types: [
+              {
+                description: 'PNG 이미지',
+                accept: { 'image/png': ['.png'] },
+              },
+            ],
+          });
+        } catch (error) {
+          // 손님이 창을 닫으면 아무것도 저장하지 않는다.
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            return;
+          }
+          console.warn('파일 저장 위치 선택 실패', error);
+          shouldAnnounceDownloadFallback = true;
+        }
+      }
+
+      // Stage 준비 및 오버레이 제거
+      if (expectsBoothySessionSave) {
+        setBoothySaveNoticeState('saving');
+      }
+      // 폰트를 다 받기 전에 저장해도 고른 폰트가 들어가도록 먼저 받는다. 못 받으면 한 번 더 받아 본다.
+      let failedFontFamilies = await loadTextFonts(textFontFamilies);
+      if (failedFontFamilies.length > 0) {
+        failedFontFamilies = await loadTextFonts(failedFontFamilies);
+      }
+      // 그래도 못 받으면 대체 폰트로 저장하거나 Boothy로 보내지 않는다.
+      if (failedFontFamilies.length > 0) {
+        if (expectsBoothySessionSave) {
+          setBoothySaveNoticeState('idle');
+        }
+        alert(FONT_LOAD_FAILED_MESSAGE);
+        return;
+      }
+      setExportMode(true);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+
       const stage = stageRef.current;
       if (!stage) throw new Error('Stage가 준비되지 않았습니다.');
 
-      const filename = makeSuggestedFilename();
       const blob = await exportBlobFromStage({ frameType, stage });
       const exportFile = new File([blob], filename, { type: 'image/png' });
       const userAgent = getCurrentUserAgent();
@@ -1200,6 +1260,18 @@ function App() {
 
       if (expectsBoothySessionSave) {
         setBoothySaveNoticeState('idle');
+      }
+
+      if (fileHandle) {
+        try {
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        } catch (error) {
+          console.warn('고른 위치에 파일 저장 실패', error);
+          shouldAnnounceDownloadFallback = true;
+        }
       }
 
       const exportExperience = getExportExperience({
@@ -1221,33 +1293,10 @@ function App() {
         return;
       }
 
-      if (exportExperience === 'save-file-picker' && supportsFilePicker && window.showSaveFilePicker) {
-        try {
-          const fileHandle = await window.showSaveFilePicker({
-            suggestedName: filename,
-            excludeAcceptAllOption: true,
-            startIn: 'desktop',
-            types: [
-              {
-                description: 'PNG 이미지',
-                accept: { 'image/png': ['.png'] },
-              },
-            ],
-          });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          return;
-        } catch (error) {
-          const isAbort = error instanceof DOMException && error.name === 'AbortError';
-          if (!isAbort) {
-            console.warn('파일 저장 위치 선택 실패', error);
-            alert('파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.');
-          }
-        }
+      // 파일 시스템 접근 API 미지원 또는 저장 위치 선택·쓰기 실패 시 기본 다운로드로 폴백
+      if (shouldAnnounceDownloadFallback) {
+        alert(SAVE_FILE_FAILED_MESSAGE);
       }
-
-      // 파일 시스템 접근 API 미지원 또는 취소 시 기본 다운로드로 폴백
       const downloadUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = downloadUrl;
@@ -1268,6 +1317,8 @@ function App() {
       );
     } finally {
       setExportMode(false);
+      setEditorLocked(false);
+      isExportingRef.current = false;
     }
   }
 
@@ -1437,7 +1488,7 @@ function App() {
       : '스티커 편집';
 
   return (
-    <div className="app-container">
+    <div ref={appContainerRef} className="app-container">
       {boothySaveNoticeState !== 'idle' && (
         <div
           aria-live="polite"

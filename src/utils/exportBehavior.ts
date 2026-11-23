@@ -86,6 +86,28 @@ export function getExportExperience({
   return "download";
 }
 
+// 저장 위치 고르기 창은 사용자 클릭 직후에만 열 수 있다.
+// 폰트 대기와 렌더 전에 창을 열어야 하는 경우(Boothy가 아닌 데스크톱 파일 선택 저장)를 고른다.
+export function shouldPickSaveFileBeforeRender({
+  expectsBoothySessionSave,
+  hasFilePicker,
+  prefersTouchExperience,
+}: {
+  expectsBoothySessionSave: boolean;
+  hasFilePicker: boolean;
+  prefersTouchExperience: boolean;
+}): boolean {
+  if (expectsBoothySessionSave) {
+    return false;
+  }
+
+  return getExportExperience({
+    hasShareFiles: false,
+    hasFilePicker,
+    prefersTouchExperience,
+  }) === "save-file-picker";
+}
+
 export function getExportRenderPlan({
   frameType,
   logicalCanvasWidth,
