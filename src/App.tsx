@@ -24,9 +24,11 @@ import {
   loadStickerDimensions,
 } from './utils/stickerSizing'
 import {
+  applyLoadedFontBoxWidths,
   getMinimumTextBoxWidthForMeasuredWidth,
-  resolveTextBoxWidth,
+  resolveFontAwareTextBoxWidth,
 } from './canvas/textBoxWidth'
+import { fontLoader } from './utils/fontLoader'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import {
   getExportExperience,
@@ -181,6 +183,7 @@ type CanvasText = {
   isVertical: boolean;
   textAlign: TextAlign;
   rotation: number;
+  boxWidthBeforeFontLoad?: number;
 };
 
 type CanvasSticker = {
@@ -820,6 +823,23 @@ function App() {
     });
   }, [getTextWidth]);
 
+  // 글자에 쓰인 폰트를 받은 뒤 상자 너비를 실제 폰트로 다시 잰다(캔버스도 다시 그려진다).
+  const loadTextFonts = useCallback(async (fontFamilies: string[]) => {
+    await fontLoader.ensureLoaded(fontFamilies);
+    setTexts(prev => applyLoadedFontBoxWidths(prev, {
+      isFontReady: fontLoader.isReady,
+      getMinimumBoxWidth: getMinimumTextBoxWidth,
+    }));
+  }, [getMinimumTextBoxWidth]);
+
+  useEffect(() => {
+    const pendingFontFamilies = texts
+      .map(text => text.fontFamily)
+      .filter(fontFamily => !fontLoader.isReady(fontFamily));
+    if (pendingFontFamilies.length === 0) return;
+    void loadTextFonts(pendingFontFamilies);
+  }, [texts, loadTextFonts]);
+
   const handleTextInsert = (textData: {
     text: string;
     fontSize: number;
@@ -838,7 +858,13 @@ function App() {
       boxWidth: 0,
       rotation: 0,
     };
-    newText.boxWidth = getMinimumTextBoxWidth(newText);
+    Object.assign(newText, resolveFontAwareTextBoxWidth({
+      previousBoxWidth: 0,
+      hasExplicitBoxWidth: false,
+      minimumBoxWidth: getMinimumTextBoxWidth(newText),
+      didOrientationChange: false,
+      isFontReady: fontLoader.isReady(newText.fontFamily),
+    }));
 
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
@@ -890,11 +916,16 @@ function App() {
             updates.isVertical !== text.isVertical &&
             updates.boxWidth === undefined;
 
-          updatedText.boxWidth = resolveTextBoxWidth({
+          const { boxWidth, boxWidthBeforeFontLoad } = resolveFontAwareTextBoxWidth({
             previousBoxWidth: updatedText.boxWidth,
+            boxWidthBeforeFontLoad: text.boxWidthBeforeFontLoad,
+            hasExplicitBoxWidth: updates.boxWidth !== undefined,
             minimumBoxWidth,
             didOrientationChange,
+            isFontReady: fontLoader.isReady(updatedText.fontFamily),
           });
+          updatedText.boxWidth = boxWidth;
+          updatedText.boxWidthBeforeFontLoad = boxWidthBeforeFontLoad;
         }
 
         return updatedText;
@@ -1141,6 +1172,8 @@ function App() {
     if (expectsBoothySessionSave) {
       setBoothySaveNoticeState('saving');
     }
+    // 폰트를 다 받기 전에 저장해도 고른 폰트가 들어가도록 먼저 받는다.
+    await loadTextFonts(texts.map(text => text.fontFamily));
     setExportMode(true);
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
 
