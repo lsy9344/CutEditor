@@ -164,14 +164,18 @@ test("편집 화면의 폰트 목록은 이름만 등록하고 폰트 파일을 
   assert.doesNotMatch(source, /\.load\(\)/);
 });
 
-test("저장은 글자에 쓰인 폰트를 한 번 더 받아 보고, 그래도 못 받으면 대체 폰트로 그리지 않고 멈춘다", () => {
+test("저장은 글자에 쓰인 폰트를 한 번 더 받아 보고, 30초를 넘기거나 그래도 못 받으면 대체 폰트로 그리지 않고 멈춘다", () => {
+  const source = readFileSync("src/App.tsx", "utf8");
   const exportSource = readHandleExportSource();
 
+  assert.match(source, /const SAVE_FONT_WAIT_LIMIT_MS = 30_000;/);
+  // 다시 받기까지 모두 합쳐 상한을 두고, 넘으면 쓰인 폰트를 모두 받지 못한 것으로 본다.
   assert.match(
-    exportSource,
-    /let failedFontFamilies = await loadTextFonts\(textFontFamilies\);\s*if \(failedFontFamilies\.length > 0\) \{\s*failedFontFamilies = await loadTextFonts\(failedFontFamilies\);\s*\}/,
+    source,
+    /const loadTextFontsForSave = useCallback\(\(fontFamilies: string\[\]\) => resolveWithinTimeout\(\s*loadTextFonts\(fontFamilies\)\.then\(\(failedFontFamilies\) => \(\s*failedFontFamilies\.length > 0 \? loadTextFonts\(failedFontFamilies\) : failedFontFamilies\s*\)\),\s*SAVE_FONT_WAIT_LIMIT_MS,\s*fontFamilies,\s*\), \[loadTextFonts\]\);/,
   );
-  const stopIndex = exportSource.indexOf("if (failedFontFamilies.length > 0) {", exportSource.indexOf("failedFontFamilies = await loadTextFonts(failedFontFamilies)"));
+  assert.match(exportSource, /const failedFontFamilies = await loadTextFontsForSave\(textFontFamilies\);/);
+  const stopIndex = exportSource.indexOf("if (failedFontFamilies.length > 0) {", exportSource.indexOf("await loadTextFontsForSave(textFontFamilies)"));
   const renderIndex = exportSource.indexOf("setExportMode(true);");
   assert.ok(stopIndex > 0 && stopIndex < renderIndex, "폰트 실패 확인은 렌더 전에 있어야 합니다");
   const stopBlock = exportSource.slice(stopIndex, renderIndex);
@@ -278,5 +282,25 @@ test("화면의 폰트 받기는 실패한 폰트를 건너뛴다(다시 받기�
   assert.match(
     source,
     /\.filter\(fontFamily => !fontLoader\.isReady\(fontFamily\) && !fontLoader\.hasFailed\(fontFamily\)\);/,
+  );
+});
+
+test("기다림이 상한 안에 끝나면 그 결과를, 넘으면 정해 둔 값을 돌려준다", async () => {
+  const { resolveWithinTimeout } = await loadTsModule("src/utils/fontLoader.ts");
+
+  assert.deepEqual(await resolveWithinTimeout(Promise.resolve([]), 50, ["Aritaburi"]), []);
+
+  const neverSettles = new Promise(() => {});
+  const startedAt = Date.now();
+  assert.deepEqual(await resolveWithinTimeout(neverSettles, 30, ["Aritaburi"]), ["Aritaburi"]);
+  assert.ok(Date.now() - startedAt >= 25, "상한 전에 끝나면 안 됩니다");
+});
+
+test("기다림이 실패하면 상한을 기다리지 않고 그 실패를 그대로 넘긴다", async () => {
+  const { resolveWithinTimeout } = await loadTsModule("src/utils/fontLoader.ts");
+
+  await assert.rejects(
+    resolveWithinTimeout(Promise.reject(new Error("boom")), 10_000, []),
+    /boom/,
   );
 });

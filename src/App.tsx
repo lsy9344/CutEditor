@@ -28,7 +28,7 @@ import {
   getMinimumTextBoxWidthForMeasuredWidth,
   resolveFontAwareTextBoxWidth,
 } from './canvas/textBoxWidth'
-import { fontLoader } from './utils/fontLoader'
+import { fontLoader, resolveWithinTimeout } from './utils/fontLoader'
 import { getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import {
   getExportExperience,
@@ -207,6 +207,8 @@ const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
 const BOOTHY_SAVE_NOTICE_AUTO_CLOSE_MS = 1_500;
 const FONT_LOAD_FAILED_MESSAGE = '글씨체를 받지 못해 저장하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.';
+// 저장할 때 폰트를 기다리는 상한. 넘으면 받기 실패와 같게 저장을 멈춘다.
+const SAVE_FONT_WAIT_LIMIT_MS = 30_000;
 const SAVE_FILE_FAILED_MESSAGE = '파일 저장 위치를 선택하지 못했습니다. 다운로드로 전환합니다.';
 
 declare global {
@@ -440,11 +442,14 @@ function App() {
   const [selectedStickerId, setSelectedStickerId] = useState<string | null>(null);
   const [pendingFrameChange, setPendingFrameChange] = useState<FrameType | null>(null);
   const [exportMode, setExportMode] = useState<boolean>(false);
+  const [isSaveLocked, setSaveLocked] = useState(false);
   const [pendingBoothyImport, setPendingBoothyImport] = useState<PendingBoothyImportState | null>(null);
   const [boothySaveNoticeState, setBoothySaveNoticeState] = useState<BoothySaveNoticeState>('idle');
   const stageRef = useRef<Konva.Stage | null>(null);
   const appContainerRef = useRef<HTMLDivElement>(null);
   const isExportingRef = useRef(false);
+  // 저장 중 도착한 Boothy 사진. 저장이 끝난 뒤 그 슬롯에 넣는다.
+  const deferredBoothyImportRef = useRef<{ file: File; slotId: string } | null>(null);
   // 모바일 내보내기 오버레이 상태
   const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
@@ -733,6 +738,12 @@ function App() {
             return;
           }
 
+          if (isExportingRef.current) {
+            deferredBoothyImportRef.current = { file, slotId: pendingBoothyImport.slotId };
+            setPendingBoothyImport(null);
+            return;
+          }
+
           handleImageUpload(file, pendingBoothyImport.slotId);
           setPendingBoothyImport(null);
         })
@@ -838,6 +849,15 @@ function App() {
     }));
     return failedFontFamilies;
   }, [getMinimumTextBoxWidth]);
+
+  // 저장용: 못 받은 폰트는 한 번 더 받아 보고, 모두 합쳐 상한까지만 기다린다. 넘으면 쓰인 폰트를 모두 못 받은 것으로 본다.
+  const loadTextFontsForSave = useCallback((fontFamilies: string[]) => resolveWithinTimeout(
+    loadTextFonts(fontFamilies).then((failedFontFamilies) => (
+      failedFontFamilies.length > 0 ? loadTextFonts(failedFontFamilies) : failedFontFamilies
+    )),
+    SAVE_FONT_WAIT_LIMIT_MS,
+    fontFamilies,
+  ), [loadTextFonts]);
 
   useEffect(() => {
     const pendingFontFamilies = texts
@@ -1166,6 +1186,8 @@ function App() {
     if (appContainerRef.current) {
       appContainerRef.current.inert = isLocked;
     }
+    // 폰트 창은 앱 밖(document.body)에 떠 있어 inert가 닿지 않으므로 따로 알린다.
+    setSaveLocked(isLocked);
   }, []);
 
   // 내보내기: UI 오버레이 제거 상태에서 고해상도 PNG 추출
@@ -1224,11 +1246,8 @@ function App() {
         setBoothySaveNoticeState('saving');
       }
       // 폰트를 다 받기 전에 저장해도 고른 폰트가 들어가도록 먼저 받는다. 못 받으면 한 번 더 받아 본다.
-      let failedFontFamilies = await loadTextFonts(textFontFamilies);
-      if (failedFontFamilies.length > 0) {
-        failedFontFamilies = await loadTextFonts(failedFontFamilies);
-      }
-      // 그래도 못 받으면 대체 폰트로 저장하거나 Boothy로 보내지 않는다.
+      const failedFontFamilies = await loadTextFontsForSave(textFontFamilies);
+      // 그래도 못 받거나 상한을 넘기면 대체 폰트로 저장하거나 Boothy로 보내지 않는다.
       if (failedFontFamilies.length > 0) {
         if (expectsBoothySessionSave) {
           setBoothySaveNoticeState('idle');
@@ -1319,6 +1338,11 @@ function App() {
       setExportMode(false);
       setEditorLocked(false);
       isExportingRef.current = false;
+      const deferredBoothyImport = deferredBoothyImportRef.current;
+      if (deferredBoothyImport) {
+        deferredBoothyImportRef.current = null;
+        handleImageUpload(deferredBoothyImport.file, deferredBoothyImport.slotId);
+      }
     }
   }
 
@@ -1444,6 +1468,7 @@ function App() {
     onStickerUpdate: handleStickerUpdate,
     onStickerDelete: handleStickerDelete,
     onExport: handleExport,
+    isSaving: isSaveLocked,
   };
 
   const mainCanvasContent = canvasMode === 'gallery' ? (

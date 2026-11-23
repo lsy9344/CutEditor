@@ -89,6 +89,19 @@ export const createFontLoader = <TFace extends FontFaceHandle>({
   return { register, isReady, hasFailed, ensureLoaded };
 };
 
+// 기다림이 limitMs 안에 끝나면 그 결과를, 넘으면 timeoutValue를 돌려준다. 원래 기다림은 멈추지 않는다.
+export const resolveWithinTimeout = <T>(
+  promise: Promise<T>,
+  limitMs: number,
+  timeoutValue: T,
+): Promise<T> => {
+  let timerId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timerId = setTimeout(() => resolve(timeoutValue), limitMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timerId));
+};
+
 export const fontLoader = createFontLoader<FontFace>({
   createFace: (family, url) => new FontFace(family, `url("${encodeURI(url)}")`),
   addFace: (face) => {

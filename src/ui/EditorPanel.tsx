@@ -129,6 +129,7 @@ export type EditorPanelProps = {
   forcedTab?: "text" | "sticker" | null;
   showActionRail?: boolean;
   showExportButton?: boolean;
+  isSaving?: boolean;
 };
 
 export const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -144,6 +145,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   forcedTab,
   showActionRail = true,
   showExportButton = true,
+  isSaving = false,
 }) => {
   const [activeTab, setActiveTab] = useState<"text" | "sticker" | null>(forcedTab ?? null);
   const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
@@ -211,6 +213,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isFontPickerOpen]);
+
+  // 저장이 시작되면 열린 폰트 창을 닫는다(저장은 클릭 시점 글꼴로 한다).
+  useEffect(() => {
+    if (isSaving) setFontPickerOpen(false);
+  }, [isSaving]);
 
   // 선택된 텍스트의 속성을 표시
   const displayedTextSize = selectedText?.fontSize ?? textSize;
@@ -313,6 +320,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   const handleFontFamilyChange = (newFontFamily: string) => {
+    // 창은 저장이 시작되면 닫히지만, 닫히기 전 같은 순간의 고르기도 막는다.
+    if (isSaving) return;
     setFontFamily(newFontFamily);
     if (selectedText && onTextUpdate) {
       onTextUpdate(selectedText.id, { fontFamily: newFontFamily });

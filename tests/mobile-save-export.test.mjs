@@ -92,7 +92,7 @@ test("데스크톱 저장은 클릭 직후 저장 위치 창을 먼저 열고, �
   assert.match(exportSource, /shouldPickSaveFileBeforeRender\(\{/);
   const pickerIndex = exportSource.indexOf("await window.showSaveFilePicker(");
   const firstAwaitIndex = exportSource.indexOf("await ");
-  const fontWaitIndex = exportSource.indexOf("await loadTextFonts(");
+  const fontWaitIndex = exportSource.indexOf("await loadTextFontsForSave(");
   const renderIndex = exportSource.indexOf("await exportBlobFromStage(");
   assert.ok(pickerIndex >= 0, "저장 위치 창 호출이 없습니다");
   assert.equal(firstAwaitIndex, pickerIndex, "저장 위치 창보다 먼저 기다리는 일이 있으면 클릭 활성 상태가 끝날 수 있습니다");
@@ -132,4 +132,39 @@ test("저장하는 동안 편집 화면을 잠그고 중복 저장을 막는다"
   assert.match(exportSource, /if \(isExportingRef\.current\) return;/);
   assert.match(exportSource, /setEditorLocked\(true\);/);
   assert.match(exportSource, /finally \{[\s\S]*setEditorLocked\(false\);[\s\S]*isExportingRef\.current = false;/);
+});
+
+test("저장이 시작되면 열린 폰트 창을 닫고, 저장 중에는 폰트를 바꾸지 않는다", () => {
+  const appSource = readFileSync("src/App.tsx", "utf8");
+  const panelSource = readFileSync("src/ui/EditorPanel.tsx", "utf8");
+
+  // 잠금을 거는 그 자리에서 저장 중 상태도 켜고 끈다(폰트 창은 document.body 포털이라 inert가 닿지 않는다).
+  assert.match(
+    appSource,
+    /const setEditorLocked = useCallback\(\(isLocked: boolean\) => \{[\s\S]*?\.inert = isLocked;[\s\S]*?setSaveLocked\(isLocked\);\s*\}, \[\]\);/,
+  );
+  assert.match(appSource, /const sharedEditorPanelProps = \{[\s\S]*?isSaving: isSaveLocked,[\s\S]*?\};/);
+
+  assert.match(panelSource, /isSaving\?: boolean;/);
+  assert.match(panelSource, /useEffect\(\(\) => \{\s*if \(isSaving\) setFontPickerOpen\(false\);\s*\}, \[isSaving\]\);/);
+  assert.match(
+    panelSource,
+    /const handleFontFamilyChange = \(newFontFamily: string\) => \{\s*(?:\/\/.*\n\s*)?if \(isSaving\) return;/,
+  );
+});
+
+test("저장 중 도착한 Boothy 사진은 바로 넣지 않고 보관했다가, 저장이 끝난 뒤 그 슬롯에 넣는다", () => {
+  const appSource = readFileSync("src/App.tsx", "utf8");
+  const exportSource = readHandleExportSource();
+
+  // 늦은 응답: 저장 중이면 저장 PNG·slotAssignments가 클릭 시점 상태로 맞도록 보관만 한다.
+  assert.match(
+    appSource,
+    /\.then\(\(file\) => \{\s*if \(isDisposed\) \{\s*return;\s*\}\s*if \(isExportingRef\.current\) \{\s*deferredBoothyImportRef\.current = \{ file, slotId: pendingBoothyImport\.slotId \};\s*setPendingBoothyImport\(null\);\s*return;\s*\}\s*handleImageUpload\(file, pendingBoothyImport\.slotId\);/,
+  );
+  // 성공·실패·취소 모두 지나는 finally에서, 잠금을 푼 뒤 보관한 사진을 넣는다.
+  assert.match(
+    exportSource,
+    /finally \{[\s\S]*isExportingRef\.current = false;\s*const deferredBoothyImport = deferredBoothyImportRef\.current;\s*if \(deferredBoothyImport\) \{\s*deferredBoothyImportRef\.current = null;\s*handleImageUpload\(deferredBoothyImport\.file, deferredBoothyImport\.slotId\);\s*\}\s*\}/,
+  );
 });
