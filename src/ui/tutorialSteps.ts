@@ -26,6 +26,29 @@ export type TutorialPlacement = "above" | "left" | "right";
 export type TutorialTooltipLayout = { top: number; left: number; arrowOffset: number };
 
 export const TUTORIAL_TOOLTIP_WIDTH = 224;
+// 말풍선 테두리와 안쪽 여백. 폭은 border-box라 내용 폭은 224 - 3×2 - 16×2 = 186px입니다.
+export const TUTORIAL_TOOLTIP_BORDER = 3;
+export const TUTORIAL_TOOLTIP_PADDING = 16;
+const DEMO_IMAGE_WIDTH = TUTORIAL_TOOLTIP_WIDTH - TUTORIAL_TOOLTIP_BORDER * 2 - TUTORIAL_TOOLTIP_PADDING * 2;
+const DEMO_IMAGE_HEIGHT = 132; // 파일은 2배(372×264)
+
+export type TutorialDemoImage = { src: string; width: number; height: number };
+
+// ④ 내 사진 스티커 단계의 시연 그림(scripts/build-tutorial-cutout-demo.mjs로 만듦). 그 단계에서만 그려서 다른 단계와
+// 건너뛴 손님은 받지 않습니다. 크기는 말풍선 내용 폭에 맞춰 고정해 그림이 늦게 와도 말풍선이 흔들리지 않습니다.
+export const getTutorialDemoImage = ({ target, placement, prefersReducedMotion }: {
+  target: TutorialTarget;
+  placement: TutorialPlacement;
+  prefersReducedMotion: boolean;
+}): TutorialDemoImage | null => {
+  if (target !== "cutout") return null;
+  // 낮은 가로는 말풍선이 이미 화면 높이를 거의 채워 그림을 넣으면 버튼을 가립니다.
+  if (placement === "left") return null;
+  // 움직임 줄이기 설정이면 마지막 결과 장면 한 장만 보입니다.
+  const src = prefersReducedMotion ? "/tutorial/cutout-demo-still.png" : "/tutorial/cutout-demo.webp";
+  return { src, width: DEMO_IMAGE_WIDTH, height: DEMO_IMAGE_HEIGHT };
+};
+
 const TOOLTIP_MARGIN = 16;
 const ARROW_CLAMP = 20; // 화살표가 말풍선 모서리에서 최소 이만큼 안쪽
 const RAIL_TOOLTIP_LEFT = 85;

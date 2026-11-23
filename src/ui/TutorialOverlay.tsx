@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { getWrappedFocusIndex } from '../state/modalFocus';
-import { getTutorialTooltipLayout, TUTORIAL_TOOLTIP_WIDTH } from './tutorialSteps';
+import {
+  getTutorialDemoImage,
+  getTutorialTooltipLayout,
+  TUTORIAL_TOOLTIP_BORDER,
+  TUTORIAL_TOOLTIP_PADDING,
+  TUTORIAL_TOOLTIP_WIDTH,
+} from './tutorialSteps';
 import type { TutorialPlacement, TutorialStep, TutorialTooltipLayout } from './tutorialSteps';
 
 const MARGIN = 16;
-// 말풍선 테두리 폭. 화살표는 테두리 안쪽(padding box)에서부터 놓이므로 바깥 모서리 기준 arrowOffset에서 뺍니다.
-const TOOLTIP_BORDER = 3;
 
 type Props = {
   step: number;
@@ -19,7 +23,8 @@ type Props = {
 export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, placement, steps }) => {
   const [layout, setLayout] = useState<TutorialTooltipLayout>({ top: MARGIN, left: 85, arrowOffset: 80 });
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const arrowPosition = layout.arrowOffset - TOOLTIP_BORDER;
+  // 화살표는 테두리 안쪽(padding box)에서부터 놓이므로 바깥 모서리 기준 arrowOffset에서 테두리 폭을 뺍니다.
+  const arrowPosition = layout.arrowOffset - TUTORIAL_TOOLTIP_BORDER;
   const prefersReducedMotion = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -55,6 +60,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
   }, [step, buttonRefs, placement]);
 
   const currentStep = steps[step];
+  const demoImage = getTutorialDemoImage({ target: currentStep.target, placement, prefersReducedMotion });
   const isLast = step === steps.length - 1;
 
   return (
@@ -84,9 +90,9 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           zIndex: 1000,
           width: `${TUTORIAL_TOOLTIP_WIDTH}px`,
           background: 'var(--linear-neutral-600)',
-          border: `${TOOLTIP_BORDER}px solid #000`,
+          border: `${TUTORIAL_TOOLTIP_BORDER}px solid #000`,
           boxShadow: '4px 4px 0px 0px #000',
-          padding: '16px',
+          padding: `${TUTORIAL_TOOLTIP_PADDING}px`,
           fontFamily: 'var(--linear-font-family)',
           transition: prefersReducedMotion ? 'none' : 'top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)',
         }}
@@ -177,6 +183,17 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
         <p style={{ fontSize: '14px', color: '#333', lineHeight: 1.6, marginBottom: '14px', whiteSpace: 'pre-line' }}>
           {currentStep.description}
         </p>
+
+        {/* 시연 그림(④ 내 사진 스티커). 설명 글이 같은 내용을 말하므로 장식 그림입니다. */}
+        {demoImage && (
+          <img
+            src={demoImage.src}
+            width={demoImage.width}
+            height={demoImage.height}
+            alt=""
+            style={{ display: 'block', width: `${demoImage.width}px`, height: `${demoImage.height}px`, marginBottom: '14px' }}
+          />
+        )}
 
         {/* 버튼 */}
         <div style={{ display: 'flex', gap: '8px' }}>
