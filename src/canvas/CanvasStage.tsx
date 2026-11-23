@@ -363,6 +363,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const currentSlotIdRef = useRef<string | null>(null);
   const stickerLoadSourcesRef = useRef<Map<string, string>>(new Map());
   const stickerImageRefs = useRef<Record<string, Konva.Image | null>>({});
+  const textNodeRefs = useRef<Record<string, Konva.Text>>({});
   // 빠른 선택 스와치 색상 (외부 설정으로 오버라이드 가능)
   const [presetColors, setPresetColors] = useState<string[]>([
     '#FFFFFF', // White
@@ -1315,6 +1316,19 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
       tr.getLayer()?.batchDraw();
     });
   }, [loadedStickerImages, selection, stickers]);
+
+  useEffect(() => {
+    texts.forEach((textItem) => {
+      const node = textNodeRefs.current[textItem.id];
+      if (!node || selection !== textItem.id) return;
+
+      const tr = node.getStage()?.findOne(`#transformer-text-${textItem.id}`) as Konva.Transformer | null;
+      if (!tr) return;
+
+      tr.nodes([node]);
+      tr.getLayer()?.batchDraw();
+    });
+  }, [exportMode, selection, texts]); // 저장이 끝나 Transformer가 새로 생겨도 다시 붙입니다
 
   // 드래그 앤 드롭 핸들러
   const handleDragOver = (e: React.DragEvent) => {
@@ -2793,102 +2807,89 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
                 {texts.map((textItem) => {
                   const isSelected = selection === textItem.id;
 
-                  const TextNode = () => {
-                    const textRef = useRef<Konva.Text | null>(null);
+                  const dimensions = getTextDimensions(
+                    textItem.text,
+                    textItem.fontSize,
+                    textItem.fontFamily,
+                    textItem.isBold,
+                    textItem.isItalic,
+                    textItem.isVertical
+                  );
+                  const renderedTextWidth = textItem.isVertical ? dimensions.width : textItem.boxWidth;
 
-                    useEffect(() => {
-                      if (isSelected && textRef.current) {
-                        const tr = textRef.current.getStage()?.findOne(`#transformer-text-${textItem.id}`);
-                        if (tr) {
-                          (tr as Konva.Transformer).nodes([textRef.current]);
-                          tr.getLayer()?.batchDraw();
-                        }
-                      }
-                    }, [isSelected]);
+                  return (
+                    <Group key={textItem.id}>
+                      <Text
+                        ref={(node) => {
+                          if (node) textNodeRefs.current[textItem.id] = node;
+                          else delete textNodeRefs.current[textItem.id];
+                        }}
+                        x={textItem.x}
+                        y={textItem.y}
+                        width={renderedTextWidth}
+                        offsetX={renderedTextWidth / 2}
+                        offsetY={dimensions.height / 2}
+                        text={formatVerticalText(textItem.text, textItem.isVertical)}
+                        fontSize={textItem.fontSize}
+                        fontFamily={textItem.fontFamily}
+                        fill={textItem.fontColor}
+                        fontStyle={`${textItem.isItalic ? 'italic ' : ''}${textItem.isBold ? 'bold' : ''}`.trim() || 'normal'}
+                        align={textItem.textAlign}
+                        rotation={textItem.rotation}
+                        wrap="none"
+                        lineHeight={textItem.isVertical ? 1.2 : 1}
+                        draggable={true}
+                        onClick={() => selectText(textItem.id)}
+                        onTap={() => selectText(textItem.id)}
+                        onDragEnd={(e) => {
+                          const newX = e.target.x();
+                          const newY = e.target.y();
+                          onTextMove?.(textItem.id, newX, newY);
+                        }}
+                        onTransformEnd={() => {
+                          const node = textNodeRefs.current[textItem.id];
+                          if (!node) return;
 
-                    const dimensions = getTextDimensions(
-                      textItem.text,
-                      textItem.fontSize,
-                      textItem.fontFamily,
-                      textItem.isBold,
-                      textItem.isItalic,
-                      textItem.isVertical
-                    );
-                    const renderedTextWidth = textItem.isVertical ? dimensions.width : textItem.boxWidth;
+                          const nextState = getNextTextTransformState({
+                            boxWidth: renderedTextWidth,
+                            fontSize: textItem.fontSize,
+                          }, {
+                            x: node.x(),
+                            y: node.y(),
+                            rotation: node.rotation(),
+                            width: node.width(),
+                            scaleX: node.scaleX(),
+                            scaleY: node.scaleY(),
+                          });
 
-                    return (
-                      <Group key={textItem.id}>
-                        <Text
-                          ref={textRef}
-                          x={textItem.x}
-                          y={textItem.y}
-                          width={renderedTextWidth}
-                          offsetX={renderedTextWidth / 2}
-                          offsetY={dimensions.height / 2}
-                          text={formatVerticalText(textItem.text, textItem.isVertical)}
-                          fontSize={textItem.fontSize}
-                          fontFamily={textItem.fontFamily}
-                          fill={textItem.fontColor}
-                          fontStyle={`${textItem.isItalic ? 'italic ' : ''}${textItem.isBold ? 'bold' : ''}`.trim() || 'normal'}
-                          align={textItem.textAlign}
-                          rotation={textItem.rotation}
-                          wrap="none"
-                          lineHeight={textItem.isVertical ? 1.2 : 1}
-                          draggable={true}
-                          onClick={() => selectText(textItem.id)}
-                          onTap={() => selectText(textItem.id)}
-                          onDragEnd={(e) => {
-                            const newX = e.target.x();
-                            const newY = e.target.y();
-                            onTextMove?.(textItem.id, newX, newY);
-                          }}
-                          onTransformEnd={() => {
-                            const node = textRef.current;
-                            if (!node) return;
-
-                            const nextState = getNextTextTransformState({
-                              boxWidth: renderedTextWidth,
-                              fontSize: textItem.fontSize,
-                            }, {
-                              x: node.x(),
-                              y: node.y(),
-                              rotation: node.rotation(),
-                              width: node.width(),
-                              scaleX: node.scaleX(),
-                              scaleY: node.scaleY(),
-                            });
-
-                            onTextUpdate?.(textItem.id, nextState);
-                            node.scaleX(1);
-                            node.scaleY(1);
+                          onTextUpdate?.(textItem.id, nextState);
+                          node.scaleX(1);
+                          node.scaleY(1);
+                        }}
+                      />
+                      {isSelected && !exportMode && (
+                        <Transformer
+                          id={`transformer-text-${textItem.id}`}
+                          borderStroke="black"
+                          borderStrokeWidth={3}
+                          anchorSize={24}
+                          anchorStroke="black"
+                          anchorStrokeWidth={3}
+                          anchorFill="white"
+                          anchorCornerRadius={0}
+                          keepRatio={true}
+                          flipEnabled={false}
+                          enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
+                          boundBoxFunc={(oldBox, newBox) => {
+                            if (newBox.width < 10 || newBox.height < 10) {
+                              return oldBox;
+                            }
+                            return newBox;
                           }}
                         />
-                        {isSelected && !exportMode && (
-                          <Transformer
-                            id={`transformer-text-${textItem.id}`}
-                            borderStroke="black"
-                            borderStrokeWidth={3}
-                            anchorSize={24}
-                            anchorStroke="black"
-                            anchorStrokeWidth={3}
-                            anchorFill="white"
-                            anchorCornerRadius={0}
-                            keepRatio={true}
-                            flipEnabled={false}
-                            enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right']}
-                            boundBoxFunc={(oldBox, newBox) => {
-                              if (newBox.width < 10 || newBox.height < 10) {
-                                return oldBox;
-                              }
-                              return newBox;
-                            }}
-                          />
-                        )}
-                      </Group>
-                    );
-                  };
-
-                  return <TextNode key={textItem.id} />;
+                      )}
+                    </Group>
+                  );
                 })}
               </Layer>
 
