@@ -1,15 +1,21 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getWrappedFocusIndex } from '../state/modalFocus';
 import {
   getTutorialDemoImage,
+  getTutorialTooltipHeightWithoutDemoImage,
   getTutorialTooltipLayout,
+  TUTORIAL_DEMO_IMAGE_GAP,
   TUTORIAL_TOOLTIP_BORDER,
+  TUTORIAL_TOOLTIP_MARGIN,
   TUTORIAL_TOOLTIP_PADDING,
   TUTORIAL_TOOLTIP_WIDTH,
 } from './tutorialSteps';
 import type { TutorialPlacement, TutorialStep, TutorialTooltipLayout } from './tutorialSteps';
 
-const MARGIN = 16;
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
+const readPrefersReducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+  && window.matchMedia(REDUCED_MOTION_QUERY).matches;
 
 type Props = {
   step: number;
@@ -21,12 +27,43 @@ type Props = {
 };
 
 export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, placement, steps }) => {
-  const [layout, setLayout] = useState<TutorialTooltipLayout>({ top: MARGIN, left: 85, arrowOffset: 80 });
+  const [layout, setLayout] = useState<TutorialTooltipLayout>({ top: TUTORIAL_TOOLTIP_MARGIN, left: 85, arrowOffset: 80 });
   const tooltipRef = useRef<HTMLDivElement>(null);
   // 화살표는 테두리 안쪽(padding box)에서부터 놓이므로 바깥 모서리 기준 arrowOffset에서 테두리 폭을 뺍니다.
   const arrowPosition = layout.arrowOffset - TUTORIAL_TOOLTIP_BORDER;
-  const prefersReducedMotion = typeof window !== 'undefined'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(readPrefersReducedMotion);
+  const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 0 : window.innerHeight));
+  // 단계마다 그림 없이 잰 말풍선 높이. 재기 전에는 그림을 그리지 않아 들어가지 않는 창에서는 그림을 받지도 않습니다.
+  const [measuredTooltip, setMeasuredTooltip] = useState<{ step: number; heightWithoutImage: number } | null>(null);
+
+  // ④를 보는 중에 바뀐 움직임 줄이기 설정도 그 자리에서 반영합니다.
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const motionMedia = window.matchMedia(REDUCED_MOTION_QUERY);
+    const updateReducedMotion = () => setPrefersReducedMotion(motionMedia.matches);
+    updateReducedMotion();
+    motionMedia.addEventListener?.('change', updateReducedMotion);
+    return () => motionMedia.removeEventListener?.('change', updateReducedMotion);
+  }, []);
+
+  // 창 높이가 바뀌면 그림을 넣을지와 말풍선 자리를 다시 정합니다.
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const updateViewportHeight = () => setViewportHeight(window.innerHeight);
+    updateViewportHeight();
+    window.addEventListener('resize', updateViewportHeight);
+    return () => window.removeEventListener('resize', updateViewportHeight);
+  }, []);
+
+  const currentStep = steps[step];
+  const demoImage = getTutorialDemoImage({
+    target: currentStep.target,
+    placement,
+    prefersReducedMotion,
+    tooltipHeightWithoutImage: measuredTooltip?.step === step ? measuredTooltip.heightWithoutImage : null,
+    viewportHeight,
+  });
+  const isDemoImageShown = demoImage !== null;
 
   // 튜토리얼 상자 안에서만 Tab이 돌고, Esc로 건너뜁니다(설계 6.5, 4.8)
   const handleTooltipKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -47,20 +84,24 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
     if (focusMove.kind === 'move') buttons[focusMove.index].focus();
   };
 
-  useEffect(() => {
+  // 그리기 전에 재서 그림을 넣을지 정하고 자리를 잡습니다(그림이 생겼다 사라지며 깜박이지 않게).
+  useLayoutEffect(() => {
     const el = buttonRefs[step]?.current;
     if (!el) return;
+    const tooltipHeight = tooltipRef.current?.offsetHeight ?? 200;
+    const heightWithoutImage = getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight, isDemoImageShown });
+    setMeasuredTooltip((previous) => (previous?.step === step && previous.heightWithoutImage === heightWithoutImage
+      ? previous
+      : { step, heightWithoutImage }));
     const rect = el.getBoundingClientRect();
     setLayout(getTutorialTooltipLayout({
       placement,
       rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      tooltipHeight: tooltipRef.current?.offsetHeight ?? 200,
-      viewport: { width: window.innerWidth, height: window.innerHeight },
+      tooltipHeight,
+      viewport: { width: window.innerWidth, height: viewportHeight },
     }));
-  }, [step, buttonRefs, placement]);
+  }, [step, buttonRefs, placement, viewportHeight, isDemoImageShown]);
 
-  const currentStep = steps[step];
-  const demoImage = getTutorialDemoImage({ target: currentStep.target, placement, prefersReducedMotion });
   const isLast = step === steps.length - 1;
 
   return (
@@ -191,7 +232,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
             width={demoImage.width}
             height={demoImage.height}
             alt=""
-            style={{ display: 'block', width: `${demoImage.width}px`, height: `${demoImage.height}px`, marginBottom: '14px' }}
+            style={{ display: 'block', width: `${demoImage.width}px`, height: `${demoImage.height}px`, marginBottom: `${TUTORIAL_DEMO_IMAGE_GAP}px` }}
           />
         )}
 

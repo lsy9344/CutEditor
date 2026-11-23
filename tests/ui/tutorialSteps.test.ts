@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { getNextTutorialStep, getTutorialDemoImage, getTutorialSteps, getTutorialTooltipLayout } from "../../src/ui/tutorialSteps.ts";
+import {
+  getNextTutorialStep,
+  getTutorialDemoImage,
+  getTutorialSteps,
+  getTutorialTooltipHeightWithoutDemoImage,
+  getTutorialTooltipLayout,
+} from "../../src/ui/tutorialSteps.ts";
 
 test("누끼 메뉴가 있으면 튜토리얼은 다섯 단계이고 넷째가 내 사진 스티커다", () => {
   const steps = getTutorialSteps({ hasCutoutMenu: true });
@@ -40,33 +46,36 @@ test("낮은 가로 말풍선은 툴바 버튼 왼쪽, 데스크톱은 레일 �
   );
 });
 
+// 넉넉한 데스크톱(④ 말풍선 그림 없는 높이 195px, 창 높이 1080px)
+const ROOMY_DESKTOP = { tooltipHeightWithoutImage: 195, viewportHeight: 1080 };
+
 test("시연 그림은 ④ 내 사진 스티커 단계에서만 움직이는 그림을 고정 크기로 그린다", () => {
   const steps = getTutorialSteps({ hasCutoutMenu: true });
-  const images = steps.map((step) => getTutorialDemoImage({ target: step.target, placement: "right", prefersReducedMotion: false }));
+  const images = steps.map((step) => getTutorialDemoImage({ target: step.target, placement: "right", prefersReducedMotion: false, ...ROOMY_DESKTOP }));
   assert.deepEqual(images, [null, null, null, { src: "/tutorial/cutout-demo.webp", width: 186, height: 132 }, null]);
-  assert.equal(getTutorialDemoImage({ target: "cutout", placement: "above", prefersReducedMotion: false })?.src, "/tutorial/cutout-demo.webp");
+  assert.equal(getTutorialDemoImage({ target: "cutout", placement: "above", prefersReducedMotion: false, ...ROOMY_DESKTOP })?.src, "/tutorial/cutout-demo.webp");
 });
 
 test("낮은 가로(말풍선이 버튼 왼쪽)에서는 ④ 단계여도 시연 그림을 그리지 않는다", () => {
-  assert.equal(getTutorialDemoImage({ target: "cutout", placement: "left", prefersReducedMotion: false }), null);
-  assert.equal(getTutorialDemoImage({ target: "cutout", placement: "left", prefersReducedMotion: true }), null);
+  assert.equal(getTutorialDemoImage({ target: "cutout", placement: "left", prefersReducedMotion: false, ...ROOMY_DESKTOP }), null);
+  assert.equal(getTutorialDemoImage({ target: "cutout", placement: "left", prefersReducedMotion: true, ...ROOMY_DESKTOP }), null);
 });
 
 test("움직임 줄이기 설정이면 ④ 시연 그림은 같은 크기의 정지 PNG다", () => {
   assert.deepEqual(
-    getTutorialDemoImage({ target: "cutout", placement: "above", prefersReducedMotion: true }),
+    getTutorialDemoImage({ target: "cutout", placement: "above", prefersReducedMotion: true, ...ROOMY_DESKTOP }),
     { src: "/tutorial/cutout-demo-still.png", width: 186, height: 132 },
   );
-  assert.equal(getTutorialDemoImage({ target: "save", placement: "right", prefersReducedMotion: true }), null);
+  assert.equal(getTutorialDemoImage({ target: "save", placement: "right", prefersReducedMotion: true, ...ROOMY_DESKTOP }), null);
 });
 
 test("시연 그림은 말풍선 내용 폭(224 - 테두리 3×2 - 여백 16×2 = 186px) 안에 든다", () => {
-  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false });
+  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false, ...ROOMY_DESKTOP });
   assert.equal(image?.width, 186);
 });
 
 test("시연 그림 파일 두 개가 public/tutorial에 있고 화면 크기의 정확히 2배다", () => {
-  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false });
+  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false, ...ROOMY_DESKTOP });
   assert.ok(image);
   const still = readFileSync("public/tutorial/cutout-demo-still.png");
   assert.equal(still.toString("ascii", 12, 16), "IHDR");
@@ -77,13 +86,74 @@ test("시연 그림 파일 두 개가 public/tutorial에 있고 화면 크기의
   assert.deepEqual([anim.readUIntLE(24, 3) + 1, anim.readUIntLE(27, 3) + 1], [image.width * 2, image.height * 2]);
 });
 
+test("④ 말풍선이 그림을 넣고도 화면 안(위아래 16px 여백)에 다 들어갈 때만 그림을 그린다", () => {
+  // 그림 자리는 132px + 아래 여백 14px = 146px. 그림 없는 말풍선 195px이면 195 + 146 + 16×2 = 373px 창부터 들어갑니다.
+  const cutoutRight = { target: "cutout", placement: "right", prefersReducedMotion: false, tooltipHeightWithoutImage: 195 } as const;
+  assert.equal(getTutorialDemoImage({ ...cutoutRight, viewportHeight: 373 })?.src, "/tutorial/cutout-demo.webp");
+  assert.equal(getTutorialDemoImage({ ...cutoutRight, viewportHeight: 372 }), null);
+  assert.equal(getTutorialDemoImage({ ...cutoutRight, viewportHeight: 320 }), null);
+  assert.equal(getTutorialDemoImage({ ...cutoutRight, viewportHeight: 300, prefersReducedMotion: true }), null);
+  assert.equal(getTutorialDemoImage({ ...cutoutRight, placement: "above", viewportHeight: 372 }), null);
+});
+
+test("그림을 넣고 들어간다고 판단한 높이면 배치 계산도 말풍선을 위아래 16px 여백 안에 둔다", () => {
+  // 그림 판단과 배치 계산이 같은 기준을 쓰는지: 373px 창에서 그림을 넣은 341px 말풍선은 위 16, 아래 16 여백에 딱 맞습니다.
+  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false, tooltipHeightWithoutImage: 195, viewportHeight: 373 });
+  assert.ok(image);
+  const layout = getTutorialTooltipLayout({
+    placement: "right",
+    rect: { top: 300, left: 35, width: 53, height: 97 },
+    tooltipHeight: 341,
+    viewport: { width: 1280, height: 373 },
+  });
+  assert.equal(layout.top, 16);
+  assert.equal(373 - (layout.top + 341), 16);
+});
+
+test("그림이 보이는 말풍선을 재면 그림 자리(132 + 아래 여백 14 = 146px)를 빼서 그림 없는 높이를 얻는다", () => {
+  assert.equal(getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight: 341, isDemoImageShown: true }), 195);
+  assert.equal(getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight: 195, isDemoImageShown: false }), 195);
+});
+
+test("말풍선 높이를 아직 재지 않았으면 ④ 그림을 그리지 않는다(재고 나서 들어갈 때만 받음)", () => {
+  assert.equal(
+    getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false, tooltipHeightWithoutImage: null, viewportHeight: 1080 }),
+    null,
+  );
+});
+
 test("튜토리얼 말풍선은 지금 단계·배치·움직임 줄이기로 시연 그림을 고르고 크기를 고정한 장식 그림으로 그린다", () => {
   const overlaySource = readFileSync("src/ui/TutorialOverlay.tsx", "utf8");
-  assert.ok(overlaySource.includes("getTutorialDemoImage({ target: currentStep.target, placement, prefersReducedMotion })"));
+  const callStart = overlaySource.indexOf("getTutorialDemoImage({");
+  assert.notEqual(callStart, -1);
+  const call = overlaySource.slice(callStart, overlaySource.indexOf("})", callStart));
+  for (const part of [
+    "target: currentStep.target",
+    "placement,",
+    "prefersReducedMotion,",
+    "tooltipHeightWithoutImage: measuredTooltip?.step === step ? measuredTooltip.heightWithoutImage : null",
+    "viewportHeight,",
+  ]) {
+    assert.ok(call.includes(part), `${part}가 없다`);
+  }
   const imgStart = overlaySource.indexOf("<img");
   assert.notEqual(imgStart, -1);
   const imgTag = overlaySource.slice(imgStart, overlaySource.indexOf("/>", imgStart));
   for (const part of ["src={demoImage.src}", "width={demoImage.width}", "height={demoImage.height}", 'alt=""']) {
     assert.ok(imgTag.includes(part), `${part}가 없다`);
+  }
+});
+
+test("튜토리얼 말풍선은 움직임 줄이기 설정과 창 크기가 바뀌면 다시 고른다", () => {
+  const overlaySource = readFileSync("src/ui/TutorialOverlay.tsx", "utf8");
+  assert.ok(overlaySource.includes("'(prefers-reduced-motion: reduce)'"));
+  for (const part of [
+    "motionMedia.addEventListener?.('change', updateReducedMotion)",
+    "motionMedia.removeEventListener?.('change', updateReducedMotion)",
+    "window.addEventListener('resize', updateViewportHeight)",
+    "window.removeEventListener('resize', updateViewportHeight)",
+    "getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight, isDemoImageShown })",
+  ]) {
+    assert.ok(overlaySource.includes(part), `${part}가 없다`);
   }
 });
