@@ -9,7 +9,7 @@ import { FrameGallery } from './canvas/FrameGallery'
 import { createInitialState } from './state/store'
 import type { EditorState } from './state/store'
 import type { CanvasSticker, CanvasText, EditorDocument, TextAlign, TextDeleteRecord } from './state/editorDocument'
-import { canUndoTextDelete, collectObjectUrls, collectUrlsToRevoke, hasEditorObject, isSameEditorDocument } from './state/editorDocument'
+import { canUndoTextDelete, collectObjectUrls, collectUrlsToRevoke, createDocumentTextsMapper, hasEditorObject, isSameEditorDocument, mapTextDeleteRecord } from './state/editorDocument'
 import type { History } from './state/history'
 import {
   canRedo,
@@ -17,6 +17,7 @@ import {
   createHistory,
   getHistoryShortcut,
   HISTORY_CAPTURE_DELAY_MS,
+  mapHistory,
   pushHistory,
   redoHistory,
   undoHistory,
@@ -1487,10 +1488,15 @@ function App() {
   // 받지 못한 폰트 이름을 돌려준다. 그 글자는 받을 때까지 받기 전 기준 폭을 남겨 둔다.
   const loadTextFonts = useCallback(async (fontFamilies: string[]) => {
     const failedFontFamilies = await fontLoader.ensureLoaded(fontFamilies);
-    setTexts(prev => applyLoadedFontBoxWidths(prev, {
+    const remeasureTexts = (prevTexts: CanvasText[]) => applyLoadedFontBoxWidths(prevTexts, {
       isFontReady: fontLoader.isReady,
       getMinimumBoxWidth: getMinimumTextBoxWidth,
-    }));
+    });
+    // 재측정은 편집이 아니므로 기록 속 문서에도 똑같이 적용해 새 단계를 만들지 않는다(되돌리기·다시하기 한 번에).
+    const remeasureDocument = createDocumentTextsMapper(remeasureTexts);
+    setTexts(remeasureTexts);
+    setHistory(prev => mapHistory(prev, remeasureDocument));
+    setTextDeleteRecord(prev => mapTextDeleteRecord(prev, remeasureDocument));
     return failedFontFamilies;
   }, [getMinimumTextBoxWidth]);
 

@@ -106,6 +106,32 @@ export function canUndoTextDelete({
   return topPastDocument === record.base && isSameEditorDocument(flushedHistory.present, record.deleted);
 }
 
+// 글씨 목록 보정을 문서에 적용하는 함수를 만듭니다. 같은 문서 객체는 늘 같은 결과 객체로 바꿔,
+// 기록과 글씨 지우기 기록(base 객체 비교)에 함께 적용해도 서로 맞습니다. 바뀐 글씨가 없으면 문서를 그대로 돌려줍니다.
+export function createDocumentTextsMapper(
+  mapTexts: (texts: CanvasText[]) => CanvasText[],
+): (document: EditorDocument) => EditorDocument {
+  const mappedDocuments = new WeakMap<EditorDocument, EditorDocument>();
+  return (document) => {
+    const cachedDocument = mappedDocuments.get(document);
+    if (cachedDocument) return cachedDocument;
+    const nextTexts = mapTexts(document.texts);
+    const nextDocument = nextTexts === document.texts ? document : { ...document, texts: nextTexts };
+    mappedDocuments.set(document, nextDocument);
+    return nextDocument;
+  };
+}
+
+export function mapTextDeleteRecord(
+  record: TextDeleteRecord | null,
+  mapDocument: (document: EditorDocument) => EditorDocument,
+): TextDeleteRecord | null {
+  if (record === null) return null;
+  const base = mapDocument(record.base);
+  const deleted = mapDocument(record.deleted);
+  return base === record.base && deleted === record.deleted ? record : { base, deleted };
+}
+
 export function collectObjectUrls(document: EditorDocument): Set<string> {
   const urls = new Set<string>();
   document.userImages.forEach((image) => urls.add(image.url));

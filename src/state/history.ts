@@ -23,6 +23,18 @@ export function pushHistory<T>(
   };
 }
 
+// 기록의 모든 값에 같은 보정을 적용합니다. 편집이 아닌 보정(글꼴 도착 뒤 글씨 상자 폭 재측정)을 새 단계 없이 반영할 때 씁니다.
+// 바뀐 값이 없으면 같은 기록 객체를 돌려줍니다.
+export function mapHistory<T>(history: History<T>, mapValue: (value: T) => T): History<T> {
+  const past = history.past.map(mapValue);
+  const present = mapValue(history.present);
+  const future = history.future.map(mapValue);
+  const didChange = present !== history.present
+    || past.some((value, index) => value !== history.past[index])
+    || future.some((value, index) => value !== history.future[index]);
+  return didChange ? { past, present, future } : history;
+}
+
 export function undoHistory<T>(history: History<T>): History<T> {
   if (history.past.length === 0) return history;
 
