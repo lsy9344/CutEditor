@@ -16,6 +16,7 @@
 //   1. 세로 9:16 사진을 고릅니다. 위쪽 1/3쯤은 글씨·스티커가 들어갈 단순한 여백이면 좋습니다.
 //   2. 앱에 사진을 넣고 '내 사진 스티커'로 한 사람을 오린 뒤, 뒤집거나 지우지 않은 채 '이 스티커만 저장'으로 PNG를 받습니다.
 //   3. 앱에 넣은 원본 사진과 받은 PNG를 이 스크립트에 넣습니다. 스크립트가 PNG가 사진의 어디에서 오렸는지 스스로 찾습니다.
+//      ①의 아래 칸에 크게 넣는 얼굴도 그 자리(오린 사람의 얼굴 둘레)에서 잘라 냅니다.
 //      ②의 글씨를 바꾸려면 아래 DEMO_TEXT를 고칩니다.
 //   4. public/tutorial/의 여덟 파일을 눈으로 확인하고 커밋합니다(각 WebP 150KB, PNG 80KB 이하. tests/ui/tutorialSteps.test.ts가 확인).
 //
@@ -52,10 +53,9 @@ const COLORS = {
   panel: [255, 249, 245], // --linear-neutral-700
   slot: [245, 235, 230], // --linear-neutral-900
   primary: [227, 213, 202], // --linear-primary-500(글씨 넣기 버튼)
-  selected: [255, 183, 3], // --linear-accent-warning(고른 프레임)
-  frame: [255, 155, 155], // --linear-accent-error-bg(씌우는 프레임)
+  selected: [255, 183, 3], // --linear-accent-warning(고른 칸 배치 카드)
   heart: [230, 57, 70], // --linear-accent-error(글씨의 ♥)
-  thumbPhoto: [217, 217, 217], // 프레임 목록의 빈 사진 자리
+  thumbPhoto: [217, 217, 217], // 칸 배치의 빈 사진 칸
   white: [255, 255, 255],
 };
 const CHECKER_LIGHT = 255;
@@ -411,13 +411,12 @@ const createStage = () => createImage(WIDTH, HEIGHT, COLORS.tooltip);
 const drawPanel = (image) => drawCard(image, PANEL_CARD.x, PANEL_CARD.y, PANEL_INNER.width, PANEL_INNER.height, COLORS.panel);
 
 // 인화지 카드(테두리·그림자 포함)를 따로 그려 '톡'에 맞춰 키웠다 줄일 수 있게 합니다.
-// photoAlpha가 1보다 작으면 사진 뒤 체크무늬(투명)가 드러납니다. decorate는 인화지 안쪽 좌표로 꾸밈을 그립니다.
-const createPrintCard = (assets, { photoAlpha = 1, overlay = null } = {}) => {
+// photoAlpha가 1보다 작으면 사진 뒤 체크무늬(투명)가 드러납니다.
+const createPrintCard = (assets, { photoAlpha = 1 } = {}) => {
   const card = createImage(PRINT.width + BORDER * 2 + SHADOW, PRINT.height + BORDER * 2 + SHADOW);
   drawCard(card, 0, 0, PRINT.width, PRINT.height, COLORS.white);
   if (photoAlpha < 1) fillChecker(card, BORDER, BORDER, PRINT.width, PRINT.height);
   drawImage(card, assets.photo, BORDER, BORDER, { alpha: photoAlpha });
-  if (overlay) drawImage(card, overlay, BORDER, BORDER);
   return card;
 };
 
@@ -430,94 +429,100 @@ const drawPrintCard = (image, card, scale = 1) => {
 
 const PRINT_CLIP = { x: PRINT_INNER.x, y: PRINT_INNER.y, width: PRINT.width, height: PRINT.height };
 
-// ---- ① 프레임 ----
+// ---- ① 프레임(칸 배치 고르기 + 빈 칸에 사진 넣기) ----
 
-// 인화지 위에 씌우는 프레임 세 가지(목록 순서). scale은 인화지 크기 대비 배율이며 목록 썸네일도 같은 그림을 줄여 씁니다.
-const FRAME_STYLES = ['white', 'pink', 'film'];
-const PICKED_FRAME = 1;
+// 목록의 칸 배치 카드(위에서부터). 앱 ① 단계처럼 사진 몇 장으로 만들지 고르면 인화지가 그 빈 칸들로 바뀝니다.
+const LAYOUTS = [{ rows: 1, cols: 1 }, { rows: 2, cols: 1 }, { rows: 2, cols: 2 }];
+const PICKED_LAYOUT = 1; // 2칸
+const PRINT_SLOT_PAD = 10; // 인화지 가장자리와 칸 사이
+const PRINT_SLOT_GAP = 8; // 칸 사이
 
-const drawFrameStyle = (image, style, x, y, width, height) => {
-  const scale = width / PRINT.width;
-  if (style === 'white') {
-    fillRect(image, x, y, width, 12 * scale, COLORS.white);
-    fillRect(image, x, y + height - 40 * scale, width, 40 * scale, COLORS.white);
-    fillRect(image, x, y, 12 * scale, height, COLORS.white);
-    fillRect(image, x + width - 12 * scale, y, 12 * scale, height, COLORS.white);
-    return;
-  }
-  if (style === 'pink') {
-    const band = 16 * scale;
-    fillRect(image, x, y, width, band, COLORS.frame);
-    fillRect(image, x, y + height - band, width, band, COLORS.frame);
-    fillRect(image, x, y, band, height, COLORS.frame);
-    fillRect(image, x + width - band, y, band, height, COLORS.frame);
-    const line = Math.max(1, 3 * scale);
-    fillRect(image, x + band, y + band, width - band * 2, line, COLORS.white);
-    fillRect(image, x + band, y + height - band - line, width - band * 2, line, COLORS.white);
-    fillRect(image, x + band, y + band, line, height - band * 2, COLORS.white);
-    fillRect(image, x + width - band - line, y + band, line, height - band * 2, COLORS.white);
-    // 네 모서리의 흰 점
-    for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-      fillRect(image, x + band / 2 - 3 * scale + dx * (width - band), y + band / 2 - 3 * scale + dy * (height - band), 6 * scale, 6 * scale, COLORS.white);
-    }
-    return;
-  }
-  // 필름: 양옆 검정 띠에 흰 구멍
-  const side = 22 * scale;
-  fillRect(image, x, y, side, height, COLORS.ink);
-  fillRect(image, x + width - side, y, side, height, COLORS.ink);
-  fillRect(image, x, y, width, 10 * scale, COLORS.ink);
-  fillRect(image, x, y + height - 10 * scale, width, 10 * scale, COLORS.ink);
-  for (let hole = 0; hole < 12; hole += 1) {
-    const hy = y + (14 + hole * 28) * scale;
-    fillRect(image, x + 7 * scale, hy, 8 * scale, 12 * scale, COLORS.white);
-    fillRect(image, x + width - 15 * scale, hy, 8 * scale, 12 * scale, COLORS.white);
-  }
+// 칸 배치를 width×height 안의 칸 상자 목록(왼쪽 위부터 줄 순서)으로 나눕니다.
+const layoutSlots = ({ rows, cols }, width, height, pad, gap) => {
+  const slotWidth = (width - pad * 2 - gap * (cols - 1)) / cols;
+  const slotHeight = (height - pad * 2 - gap * (rows - 1)) / rows;
+  return Array.from({ length: rows * cols }, (_, index) => ({
+    x: pad + (index % cols) * (slotWidth + gap),
+    y: pad + Math.floor(index / cols) * (slotHeight + gap),
+    width: slotWidth,
+    height: slotHeight,
+  }));
 };
+
+// 고른 배치의 인화지 칸. 칸에 넣을 사진도 이 크기로 미리 잘라 둡니다(loadAssets).
+const PRINT_SLOTS = layoutSlots(LAYOUTS[PICKED_LAYOUT], PRINT.width, PRINT.height, PRINT_SLOT_PAD, PRINT_SLOT_GAP);
+const SLOT_FILL_SIZE = { width: Math.round(PRINT_SLOTS[0].width), height: Math.round(PRINT_SLOTS[0].height) };
+// 인화지와 칸의 '톡'은 작게(최대 약 1.05배) 해서 인화지가 무대 밖으로, 칸이 인화지 테두리 밖으로 넘치지 않게 합니다.
+const softTocScale = (frame, dropFrame) => 1 + (tocScale(frame, dropFrame) - 1) * 0.25;
 
 const THUMB = { width: 52, height: 92 };
 const thumbBox = (index) => {
   const outerHeight = THUMB.height + ITEM_BORDER * 2;
-  const gap = (PANEL_INNER.height - outerHeight * FRAME_STYLES.length) / (FRAME_STYLES.length + 1);
+  const gap = (PANEL_INNER.height - outerHeight * LAYOUTS.length) / (LAYOUTS.length + 1);
   const x = Math.round(PANEL_CENTER_X - (THUMB.width + ITEM_BORDER * 2) / 2);
   const y = Math.round(PANEL_INNER.y + gap + index * (outerHeight + gap));
   return { x, y, center: { x: x + THUMB.width / 2 + ITEM_BORDER, y: y + outerHeight / 2 } };
 };
 
-const createThumb = (style, picked) => {
+// 앱 사이드바 카드처럼 흰 카드에 회색 빈 칸을 그린 썸네일. 고르면 노란 테를 두릅니다.
+const createThumb = (layout, picked) => {
   const ring = 5;
   const thumb = createImage(THUMB.width + ITEM_BORDER * 2 + ITEM_SHADOW + ring * 2, THUMB.height + ITEM_BORDER * 2 + ITEM_SHADOW + ring * 2);
   if (picked) fillRect(thumb, 0, 0, THUMB.width + ITEM_BORDER * 2 + ring * 2, THUMB.height + ITEM_BORDER * 2 + ring * 2, COLORS.selected);
-  drawCard(thumb, ring, ring, THUMB.width, THUMB.height, COLORS.thumbPhoto, { border: ITEM_BORDER, shadow: ITEM_SHADOW });
-  drawFrameStyle(thumb, style, ring + ITEM_BORDER, ring + ITEM_BORDER, THUMB.width, THUMB.height);
+  drawCard(thumb, ring, ring, THUMB.width, THUMB.height, COLORS.white, { border: ITEM_BORDER, shadow: ITEM_SHADOW });
+  for (const slot of layoutSlots(layout, THUMB.width, THUMB.height, 4, 3)) {
+    fillRect(thumb, ring + ITEM_BORDER + slot.x, ring + ITEM_BORDER + slot.y, slot.width, slot.height, COLORS.thumbPhoto);
+  }
   return { sprite: thumb, ring };
 };
 
+// 빈 인화지(아직 안 고름) 또는 고른 배치의 빈 칸이 있는 인화지
+const createLayoutCard = (slots) => {
+  const card = createImage(PRINT.width + BORDER * 2 + SHADOW, PRINT.height + BORDER * 2 + SHADOW);
+  drawCard(card, 0, 0, PRINT.width, PRINT.height, COLORS.white);
+  for (const slot of slots) fillRect(card, BORDER + slot.x, BORDER + slot.y, slot.width, slot.height, COLORS.thumbPhoto);
+  return card;
+};
+
 const buildFramesDemo = (assets) => {
-  const total = 75;
-  const press = 16;
-  const target = thumbBox(PICKED_FRAME).center;
-  const keys = [[0, CURSOR_REST], [4, CURSOR_REST], [press - 1, target], [press + 22, target], [press + 36, CURSOR_REST]];
-  const overlay = createImage(PRINT.width, PRINT.height);
-  drawFrameStyle(overlay, FRAME_STYLES[PICKED_FRAME], 0, 0, PRINT.width, PRINT.height);
-  const plainCard = createPrintCard(assets);
-  const framedCard = createPrintCard(assets, { overlay });
+  const total = 80;
+  const pick = 14; // 2칸 카드를 누름
+  const fills = [
+    { press: 30, sprite: assets.frames.familySlot }, // 위 칸: 가족사진
+    { press: 46, sprite: assets.frames.faceSlot }, // 아래 칸: 아이 얼굴 크게
+  ];
+  const card = thumbBox(PICKED_LAYOUT).center;
+  const slotCenters = PRINT_SLOTS.map((slot) => onPrint(slot.x + slot.width / 2, slot.y + slot.height / 2));
+  const keys = [
+    [0, CURSOR_REST], [4, CURSOR_REST], [pick - 1, card], [pick + 2, card],
+    [fills[0].press - 1, slotCenters[0]], [fills[0].press + 2, slotCenters[0]],
+    [fills[1].press - 1, slotCenters[1]], [fills[1].press + 3, slotCenters[1]],
+    [fills[1].press + 18, CURSOR_REST],
+  ];
+  const blankCard = createLayoutCard([]);
+  const slotsCard = createLayoutCard(PRINT_SLOTS);
   const render = (frame, { cursor = true } = {}) => {
     const image = createStage();
     drawPanel(image);
-    FRAME_STYLES.forEach((style, index) => {
-      const isPicked = index === PICKED_FRAME && frame >= press;
-      const { sprite, ring } = createThumb(style, isPicked);
+    LAYOUTS.forEach((layout, index) => {
+      const isPicked = index === PICKED_LAYOUT && frame >= pick;
+      const { sprite, ring } = createThumb(layout, isPicked);
       const box = thumbBox(index);
-      const scale = index === PICKED_FRAME ? tocScale(frame, press) : 1;
+      const scale = index === PICKED_LAYOUT ? tocScale(frame, pick) : 1;
       drawScaled(image, sprite, box.x - ring + sprite.width / 2, box.y - ring + sprite.height / 2, scale);
     });
-    // 누르면 프레임이 인화지에 씌워지며 인화지가 '톡'
-    drawPrintCard(image, frame >= press + 1 ? framedCard : plainCard, frame >= press + 1 ? tocScale(frame, press + 1) : 1);
+    // 카드를 누르면 인화지가 그 배치의 빈 칸들로 바뀌며 '톡'
+    const picked = frame >= pick + 1;
+    drawPrintCard(image, picked ? slotsCard : blankCard, picked ? softTocScale(frame, pick + 1) : 1);
+    // 빈 칸을 누르면 사진이 그 칸에 '톡' 들어갑니다.
+    fills.forEach(({ press, sprite }, index) => {
+      if (frame < press + 1) return;
+      drawScaled(image, sprite, slotCenters[index].x, slotCenters[index].y, softTocScale(frame, press + 1));
+    });
     if (cursor) {
-      const point = pathAt(keys, frame);
-      drawRipple(image, target, frame, press);
-      drawCursor(image, assets, point);
+      drawRipple(image, card, frame, pick);
+      fills.forEach(({ press }, index) => drawRipple(image, slotCenters[index], frame, press));
+      drawCursor(image, assets, pathAt(keys, frame));
     }
     return image;
   };
@@ -807,6 +812,28 @@ const renderTextPrefixes = (workDir) => {
 const readSticker = (name, size) => readRgba(join(STICKER_DIR, `${name}.png`), size, size,
   `scale=${size}:${size}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=black@0`);
 
+// ①의 칸에 넣을 두 사진: 가족사진을 칸에 꽉 차게, 오린 사람의 얼굴 둘레를 크게. at은 작업 사진에서 오린 PNG의 자리입니다.
+const createSlotFills = (photoPath, working, sticker, at) => {
+  const { width, height } = SLOT_FILL_SIZE;
+  const toWorking = `scale=${working.width}:${working.height}:flags=area`;
+  const faceY = at.y + sticker.height * 0.17; // 오린 사람의 얼굴 높이(④의 화살표 자리와 같은 비율)
+  const clampCrop = (start, size, limit) => Math.round(Math.max(0, Math.min(limit - size, start)));
+  // 가족사진: 칸을 꽉 채우게 키우고, 얼굴들이 칸 가운데쯤 오게 위아래를 자릅니다.
+  const scale = Math.max(width / working.width, height / working.height);
+  const scaledWidth = Math.round(working.width * scale);
+  const scaledHeight = Math.round(working.height * scale);
+  const familyX = clampCrop((scaledWidth - width) / 2, width, scaledWidth);
+  const familyY = clampCrop(faceY * scale - height * 0.55, height, scaledHeight);
+  const familySlot = readRgba(photoPath, width, height, `${toWorking},scale=${scaledWidth}:${scaledHeight}:flags=lanczos,crop=${width}:${height}:${familyX}:${familyY}`);
+  // 얼굴 크게: 오린 사람 폭의 0.8만큼을 칸 비율로 잘라 얼굴이 가운데보다 조금 위에 오게 합니다.
+  const cropWidth = Math.round(Math.min(working.width, sticker.width * 0.8));
+  const cropHeight = Math.round(Math.min(working.height, (cropWidth * height) / width));
+  const faceX = clampCrop(at.x + sticker.width / 2 - cropWidth / 2, cropWidth, working.width);
+  const faceTop = clampCrop(faceY - cropHeight * 0.42, cropHeight, working.height);
+  const faceSlot = readRgba(photoPath, width, height, `${toWorking},crop=${cropWidth}:${cropHeight}:${faceX}:${faceTop},scale=${width}:${height}:flags=lanczos`);
+  return { familySlot, faceSlot };
+};
+
 const loadAssets = (photoPath, cutoutPath, workDir) => {
   const natural = readSize(photoPath);
   const working = getWorkingSize(natural);
@@ -827,6 +854,7 @@ const loadAssets = (photoPath, cutoutPath, workDir) => {
   // 결과 자리와 붙일 때 쓰는 큰 그림(가장 큰 쓰임인 결과 자리 높이에 맞춤)
   const largeHeight = KID_SLOT_HEIGHT;
   const kidLarge = readRgba(cutoutPath, Math.round((sticker.width * largeHeight) / sticker.height), largeHeight);
+  const frames = createSlotFills(photoPath, working, sticker, at);
 
   const assets = {
     photo,
@@ -835,6 +863,7 @@ const loadAssets = (photoPath, cutoutPath, workDir) => {
     stickers: STICKER_FILES.map((name) => readSticker(name, STICKER_ICON)),
     stickerLarge: readSticker(STICKER_FILES[0], STICKER_DROP),
     cutout: { kidPrint, kidOutline: createOutlineSprite(kidPrint), kidPosition, kidLarge },
+    frames,
   };
   assets.plainCard = createPrintCard(assets);
   return assets;
