@@ -36,7 +36,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
   // 단계마다 그림 없이 잰 말풍선 높이. 재기 전에는 그림을 그리지 않아 들어가지 않는 창에서는 그림을 받지도 않습니다.
   const [measuredTooltip, setMeasuredTooltip] = useState<{ step: number; heightWithoutImage: number } | null>(null);
 
-  // ④를 보는 중에 바뀐 움직임 줄이기 설정도 그 자리에서 반영합니다.
+  // 시연 그림을 보는 중에 바뀐 움직임 줄이기 설정도 그 자리에서 반영합니다.
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const motionMedia = window.matchMedia(REDUCED_MOTION_QUERY);
@@ -225,7 +225,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           {currentStep.description}
         </p>
 
-        {/* 시연 그림(④ 내 사진 스티커). 설명 글이 같은 내용을 말하므로 장식 그림입니다. */}
+        {/* 시연 그림(①~④ 단계). 설명 글이 같은 내용을 말하므로 장식 그림입니다. */}
         {demoImage && (
           <img
             src={demoImage.src}

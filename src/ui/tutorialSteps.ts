@@ -30,7 +30,7 @@ export const TUTORIAL_TOOLTIP_WIDTH = 224;
 export const TUTORIAL_TOOLTIP_BORDER = 3;
 export const TUTORIAL_TOOLTIP_PADDING = 16;
 const DEMO_IMAGE_WIDTH = TUTORIAL_TOOLTIP_WIDTH - TUTORIAL_TOOLTIP_BORDER * 2 - TUTORIAL_TOOLTIP_PADDING * 2;
-const DEMO_IMAGE_HEIGHT = 132; // 파일은 2배(372×264)
+const DEMO_IMAGE_HEIGHT = 196; // 파일은 2배(372×392). 왼쪽 목록과 오른쪽 9:16 인화지가 들어가는 높이
 export const TUTORIAL_DEMO_IMAGE_GAP = 14; // 그림 아래 여백
 const DEMO_IMAGE_BLOCK_HEIGHT = DEMO_IMAGE_HEIGHT + TUTORIAL_DEMO_IMAGE_GAP; // 그림이 말풍선에 더하는 높이
 export const TUTORIAL_TOOLTIP_MARGIN = 16; // 말풍선과 화면 가장자리 사이
@@ -48,8 +48,11 @@ export const getTutorialTooltipHeightWithoutDemoImage = ({ tooltipHeight, isDemo
 
 export type TutorialDemoImage = { src: string; width: number; height: number };
 
-// ④ 내 사진 스티커 단계의 시연 그림(scripts/build-tutorial-cutout-demo.mjs로 만듦). 그 단계에서만 그려서 다른 단계와
-// 건너뛴 손님은 받지 않습니다. 크기는 말풍선 내용 폭에 맞춰 고정해 그림이 늦게 와도 말풍선이 흔들리지 않습니다.
+// 시연 그림이 있는 단계(scripts/build-tutorial-demos.mjs로 만듦). ⑤ 저장은 글만 둡니다.
+const DEMO_TARGETS: readonly TutorialTarget[] = ["frames", "text", "sticker", "cutout"];
+
+// ①~④ 단계의 시연 그림. 보이는 단계에서만 그려서 다른 단계와 건너뛴 손님은 받지 않습니다. 네 단계 모두 크기가 같고
+// 말풍선 내용 폭에 맞춰 고정해 그림이 늦게 오거나 단계를 넘겨도 말풍선이 흔들리지 않습니다.
 // tooltipHeightWithoutImage는 이 단계 말풍선을 그림 없이 잰 높이이고, 아직 재지 않았으면 null입니다.
 export const getTutorialDemoImage = ({ target, placement, prefersReducedMotion, tooltipHeightWithoutImage, viewportHeight }: {
   target: TutorialTarget;
@@ -58,15 +61,15 @@ export const getTutorialDemoImage = ({ target, placement, prefersReducedMotion, 
   tooltipHeightWithoutImage: number | null;
   viewportHeight: number;
 }): TutorialDemoImage | null => {
-  if (target !== "cutout") return null;
+  if (!DEMO_TARGETS.includes(target)) return null;
   // 낮은 가로는 말풍선이 이미 화면 높이를 거의 채워 그림을 넣으면 버튼을 가립니다.
   if (placement === "left") return null;
   // 그림을 넣은 말풍선이 화면 안에 다 들어가지 않으면(낮은 데스크톱 창 등) [다음]·[건너뛰기]가 잘리므로 그리지 않습니다.
   if (tooltipHeightWithoutImage === null) return null;
   const tooltipHeightWithImage = tooltipHeightWithoutImage + DEMO_IMAGE_BLOCK_HEIGHT;
   if (getLowestTooltipTop(tooltipHeightWithImage, viewportHeight) < TUTORIAL_TOOLTIP_MARGIN) return null;
-  // 움직임 줄이기 설정이면 마지막 결과 장면 한 장만 보입니다.
-  const src = prefersReducedMotion ? "/tutorial/cutout-demo-still.png" : "/tutorial/cutout-demo.webp";
+  // 움직임 줄이기 설정이면 꾸민 뒤의 결과 장면 한 장만 보입니다.
+  const src = prefersReducedMotion ? `/tutorial/${target}-demo-still.png` : `/tutorial/${target}-demo.webp`;
   return { src, width: DEMO_IMAGE_WIDTH, height: DEMO_IMAGE_HEIGHT };
 };
 
