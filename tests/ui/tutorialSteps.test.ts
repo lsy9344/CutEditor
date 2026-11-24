@@ -6,8 +6,9 @@ import {
   getNextTutorialStep,
   getTutorialDemoImage,
   getTutorialSteps,
-  getTutorialTooltipHeightWithoutDemoImage,
   getTutorialTooltipLayout,
+  getTutorialTooltipTransition,
+  isTutorialDemoTarget,
 } from "../../src/ui/tutorialSteps.ts";
 
 test("누끼 메뉴가 있으면 튜토리얼은 다섯 단계이고 넷째가 내 사진 스티커다", () => {
@@ -46,8 +47,8 @@ test("낮은 가로 말풍선은 툴바 버튼 왼쪽, 데스크톱은 레일 �
   );
 });
 
-// 넉넉한 데스크톱(④ 말풍선 그림 없는 높이 195px, 창 높이 1080px)
-const ROOMY_DESKTOP = { tooltipHeightWithoutImage: 195, viewportHeight: 1080 };
+// 넉넉한 데스크톱(①~④ 말풍선을 그림 없이 잰 높이가 모두 195px, 창 높이 1080px)
+const ROOMY_DESKTOP = { demoTooltipHeights: [195, 195, 195, 195], viewportHeight: 1080 };
 
 test("시연 그림은 ①~④ 단계마다 각자의 움직이는 그림을 같은 크기로 그리고 ⑤ 저장에는 없다", () => {
   const steps = getTutorialSteps({ hasCutoutMenu: true });
@@ -109,7 +110,7 @@ test("①~④ 시연 그림 파일이 public/tutorial에 있고 화면 크기의
 test("①~④ 말풍선이 그림을 넣고도 화면 안(위아래 16px 여백)에 다 들어갈 때만 그림을 그린다", () => {
   // 그림 자리는 196px + 아래 여백 14px = 210px. 그림 없는 말풍선 195px이면 195 + 210 + 16×2 = 437px 창부터 들어갑니다.
   for (const target of DEMO_TARGETS) {
-    const right = { target, placement: "right", prefersReducedMotion: false, tooltipHeightWithoutImage: 195 } as const;
+    const right = { target, placement: "right", prefersReducedMotion: false, demoTooltipHeights: [195] } as const;
     assert.equal(getTutorialDemoImage({ ...right, viewportHeight: 437 })?.src, `/tutorial/${target}-demo.webp`);
     assert.equal(getTutorialDemoImage({ ...right, viewportHeight: 436 }), null, target);
     assert.equal(getTutorialDemoImage({ ...right, viewportHeight: 320 }), null, target);
@@ -120,7 +121,7 @@ test("①~④ 말풍선이 그림을 넣고도 화면 안(위아래 16px 여백)
 
 test("그림을 넣고 들어간다고 판단한 높이면 배치 계산도 말풍선을 위아래 16px 여백 안에 둔다", () => {
   // 그림 판단과 배치 계산이 같은 기준을 쓰는지: 437px 창에서 그림을 넣은 405px 말풍선은 위 16, 아래 16 여백에 딱 맞습니다.
-  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false, tooltipHeightWithoutImage: 195, viewportHeight: 437 });
+  const image = getTutorialDemoImage({ target: "cutout", placement: "right", prefersReducedMotion: false, demoTooltipHeights: [195], viewportHeight: 437 });
   assert.ok(image);
   const layout = getTutorialTooltipLayout({
     placement: "right",
@@ -132,15 +133,32 @@ test("그림을 넣고 들어간다고 판단한 높이면 배치 계산도 말�
   assert.equal(437 - (layout.top + 405), 16);
 });
 
-test("그림이 보이는 말풍선을 재면 그림 자리(196 + 아래 여백 14 = 210px)를 빼서 그림 없는 높이를 얻는다", () => {
-  assert.equal(getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight: 405, isDemoImageShown: true }), 195);
-  assert.equal(getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight: 195, isDemoImageShown: false }), 195);
+test("①~④ 그림은 가장 높은 말풍선 하나로 정해 네 단계가 같이 보이거나 같이 숨는다(단계를 넘길 때 말풍선이 출렁이지 않게)", () => {
+  // ① 218px이 가장 높습니다. 218 + 그림 자리 210 + 위아래 16×2 = 460px 창부터 네 단계 모두 그림이 들어갑니다.
+  // ②(173px)만 보면 415px 창에도 들어가지만, ①과 다르게 보였다 숨으면 단계마다 말풍선 높이가 크게 바뀝니다.
+  const demoTooltipHeights = [218, 173, 195, 195];
+  const shownAt = (viewportHeight: number) => DEMO_TARGETS.map((target) =>
+    getTutorialDemoImage({ target, placement: "above", prefersReducedMotion: false, demoTooltipHeights, viewportHeight }) !== null);
+  assert.deepEqual(shownAt(459), [false, false, false, false]);
+  assert.deepEqual(shownAt(425), [false, false, false, false]);
+  assert.deepEqual(shownAt(460), [true, true, true, true]);
+});
+
+test("시연 그림이 있는 단계는 ①~④이고 ⑤ 저장은 아니다(말풍선이 그림 없는 높이를 재는 단계)", () => {
+  assert.deepEqual(getTutorialSteps({ hasCutoutMenu: true }).map((step) => isTutorialDemoTarget(step.target)), [true, true, true, true, false]);
+});
+
+test("그림이 보이거나 숨어 말풍선 높이가 바뀌는 때는 0.25초 이동 없이 새 자리에 바로 놓는다", () => {
+  const moving = "top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)";
+  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: false, isDemoImageToggled: false }), moving);
+  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: false, isDemoImageToggled: true }), "none");
+  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: true, isDemoImageToggled: false }), "none");
 });
 
 test("말풍선 높이를 아직 재지 않았으면 ①~④ 그림을 그리지 않는다(재고 나서 들어갈 때만 받음)", () => {
   for (const target of DEMO_TARGETS) {
     assert.equal(
-      getTutorialDemoImage({ target, placement: "right", prefersReducedMotion: false, tooltipHeightWithoutImage: null, viewportHeight: 1080 }),
+      getTutorialDemoImage({ target, placement: "right", prefersReducedMotion: false, demoTooltipHeights: null, viewportHeight: 1080 }),
       null,
     );
   }
@@ -155,7 +173,7 @@ test("튜토리얼 말풍선은 지금 단계·배치·움직임 줄이기로 �
     "target: currentStep.target",
     "placement,",
     "prefersReducedMotion,",
-    "tooltipHeightWithoutImage: measuredTooltip?.step === step ? measuredTooltip.heightWithoutImage : null",
+    "demoTooltipHeights,",
     "viewportHeight,",
   ]) {
     assert.ok(call.includes(part), `${part}가 없다`);
@@ -176,7 +194,7 @@ test("튜토리얼 말풍선은 움직임 줄이기 설정과 창 크기가 바�
     "motionMedia.removeEventListener?.('change', updateReducedMotion)",
     "window.addEventListener('resize', updateViewportHeight)",
     "window.removeEventListener('resize', updateViewportHeight)",
-    "getTutorialTooltipHeightWithoutDemoImage({ tooltipHeight, isDemoImageShown })",
+    "getTutorialTooltipTransition({ prefersReducedMotion, isDemoImageToggled",
   ]) {
     assert.ok(overlaySource.includes(part), `${part}가 없다`);
   }

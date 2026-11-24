@@ -40,38 +40,43 @@ export const TUTORIAL_TOOLTIP_MARGIN = 16; // 말풍선과 화면 가장자리 �
 const getLowestTooltipTop = (tooltipHeight: number, viewportHeight: number) =>
   viewportHeight - tooltipHeight - TUTORIAL_TOOLTIP_MARGIN;
 
-// 그림이 보이는 채로 잰 말풍선 높이에서 그림 자리를 빼 그림 없는 높이를 얻습니다.
-export const getTutorialTooltipHeightWithoutDemoImage = ({ tooltipHeight, isDemoImageShown }: {
-  tooltipHeight: number;
-  isDemoImageShown: boolean;
-}): number => (isDemoImageShown ? tooltipHeight - DEMO_IMAGE_BLOCK_HEIGHT : tooltipHeight);
-
 export type TutorialDemoImage = { src: string; width: number; height: number };
 
 // 시연 그림이 있는 단계(scripts/build-tutorial-demos.mjs로 만듦). ⑤ 저장은 글만 둡니다.
 const DEMO_TARGETS: readonly TutorialTarget[] = ["frames", "text", "sticker", "cutout"];
+export const isTutorialDemoTarget = (target: TutorialTarget): boolean => DEMO_TARGETS.includes(target);
 
 // ①~④ 단계의 시연 그림. 보이는 단계에서만 그려서 다른 단계와 건너뛴 손님은 받지 않습니다. 네 단계 모두 크기가 같고
 // 말풍선 내용 폭에 맞춰 고정해 그림이 늦게 오거나 단계를 넘겨도 말풍선이 흔들리지 않습니다.
-// tooltipHeightWithoutImage는 이 단계 말풍선을 그림 없이 잰 높이이고, 아직 재지 않았으면 null입니다.
-export const getTutorialDemoImage = ({ target, placement, prefersReducedMotion, tooltipHeightWithoutImage, viewportHeight }: {
+// demoTooltipHeights는 ①~④ 말풍선을 각각 그림 없이 잰 높이이고, 아직 재지 않았으면 null입니다. 그림을 넣을지는 그중
+// 가장 높은 말풍선 하나로 정해 네 단계가 같이 보이거나 같이 숨습니다(단계마다 다르면 넘길 때 말풍선 높이가 크게 바뀜).
+export const getTutorialDemoImage = ({ target, placement, prefersReducedMotion, demoTooltipHeights, viewportHeight }: {
   target: TutorialTarget;
   placement: TutorialPlacement;
   prefersReducedMotion: boolean;
-  tooltipHeightWithoutImage: number | null;
+  demoTooltipHeights: readonly number[] | null;
   viewportHeight: number;
 }): TutorialDemoImage | null => {
-  if (!DEMO_TARGETS.includes(target)) return null;
+  if (!isTutorialDemoTarget(target)) return null;
   // 낮은 가로는 말풍선이 이미 화면 높이를 거의 채워 그림을 넣으면 버튼을 가립니다.
   if (placement === "left") return null;
+  if (demoTooltipHeights === null || demoTooltipHeights.length === 0) return null;
   // 그림을 넣은 말풍선이 화면 안에 다 들어가지 않으면(낮은 데스크톱 창 등) [다음]·[건너뛰기]가 잘리므로 그리지 않습니다.
-  if (tooltipHeightWithoutImage === null) return null;
-  const tooltipHeightWithImage = tooltipHeightWithoutImage + DEMO_IMAGE_BLOCK_HEIGHT;
-  if (getLowestTooltipTop(tooltipHeightWithImage, viewportHeight) < TUTORIAL_TOOLTIP_MARGIN) return null;
+  const tallestHeightWithImage = Math.max(...demoTooltipHeights) + DEMO_IMAGE_BLOCK_HEIGHT;
+  if (getLowestTooltipTop(tallestHeightWithImage, viewportHeight) < TUTORIAL_TOOLTIP_MARGIN) return null;
   // 움직임 줄이기 설정이면 꾸민 뒤의 결과 장면 한 장만 보입니다.
   const src = prefersReducedMotion ? `/tutorial/${target}-demo-still.png` : `/tutorial/${target}-demo.webp`;
   return { src, width: DEMO_IMAGE_WIDTH, height: DEMO_IMAGE_HEIGHT };
 };
+
+// 말풍선이 다음 단계 자리로 0.25초 동안 옮겨 갑니다. 그림이 보이거나 숨어 높이가 갑자기 바뀌는 때는 옛 자리에서 바뀐
+// 높이로 움직이는 동안 버튼이 화면 밖으로 나갈 수 있어 새 자리에 바로 놓습니다.
+export const getTutorialTooltipTransition = ({ prefersReducedMotion, isDemoImageToggled }: {
+  prefersReducedMotion: boolean;
+  isDemoImageToggled: boolean;
+}): string => (prefersReducedMotion || isDemoImageToggled
+  ? "none"
+  : "top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)");
 
 const ARROW_CLAMP = 20; // 화살표가 말풍선 모서리에서 최소 이만큼 안쪽
 const RAIL_TOOLTIP_LEFT = 85;

@@ -18,7 +18,8 @@
 //   3. 앱에 넣은 원본 사진과 받은 PNG를 이 스크립트에 넣습니다. 스크립트가 PNG가 사진의 어디에서 오렸는지 스스로 찾습니다.
 //      ①의 아래 칸에 크게 넣는 얼굴도 그 자리(오린 사람의 얼굴 둘레)에서 잘라 냅니다.
 //      ②의 글씨를 바꾸려면 아래 DEMO_TEXT를 고칩니다.
-//   4. public/tutorial/의 여덟 파일을 눈으로 확인하고 커밋합니다(각 WebP 150KB, PNG 80KB 이하. tests/ui/tutorialSteps.test.ts가 확인).
+//   4. public/tutorial/의 여덟 파일을 눈으로 확인하고 커밋합니다(각 WebP 150KB, PNG 80KB 이하. 스크립트가 넣기 전에,
+//      tests/ui/tutorialSteps.test.ts가 커밋 전에 확인). 여덟 개가 다 만들어지고 한도 안일 때만 폴더를 바꿉니다.
 //
 // 그림 속 글자는 ②의 DEMO_TEXT 하나뿐입니다. 글꼴은 public/font/NotoSansKR-Light.ttf입니다. 파일의 이름 표(name ID 13)에
 // 'SIL Open Font License, Version 1.1'이 적혀 있어 상업 이용과 그림으로 넣기가 됩니다. ♥(U+2665)도 이 글꼴에 있습니다.
@@ -27,9 +28,9 @@
 // 해서 FFmpeg 필터 식으로는 지나치게 복잡해짐). FFmpeg는 사진·스티커 읽기와 크기 조정, 글자 그리기, 인코딩을 맡습니다.
 // 인코딩은 반드시 libwebp_anim입니다(일반 libwebp는 장면 사이 중복을 못 줄여 열 배 넘게 커짐).
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
@@ -62,6 +63,9 @@ const CHECKER_LIGHT = 255;
 const CHECKER_DARK = 221;
 const CHECKER_SIZE = 10;
 const WORKING_MAX_SIDE = 2048; // src/photo/cutoutRender.ts CUTOUT_WORKING_MAX_SIDE: 오린 PNG는 이 크기의 작업 사진에서 잘립니다
+// 파일 용량 한도(tests/ui/tutorialSteps.test.ts의 ANIMATION_MAX_BYTES·STILL_MAX_BYTES와 같음)
+const ANIMATION_MAX_BYTES = 150 * 1024;
+const STILL_MAX_BYTES = 80 * 1024;
 const MATCH_MAX_DIFF = 16; // 사진과 PNG가 맞는지 판단하는 평균 화소 차이 한도(0~255)
 
 // 네 시연이 함께 쓰는 무대: 왼쪽 목록 패널 + 오른쪽 세로 9:16 인화지
@@ -896,8 +900,20 @@ const encodeDemo = (name, demo, outDir) => {
     '-vf', 'format=rgb24,split=2[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=sierra2_4a',
     '-frames:v', '1', '-update', '1', '-map_metadata', '-1', stillPath,
   ], { input: Buffer.from(demo.still.data.buffer, demo.still.data.byteOffset, demo.still.data.byteLength), stdio: ['pipe', 'inherit', 'inherit'] });
-  console.log(`${animPath} ${statSync(animPath).size} B (${demo.total}장, ${(demo.total / FPS).toFixed(2)}초)`);
-  console.log(`${stillPath} ${statSync(stillPath).size} B`);
+  console.log(`${name}-demo.webp ${statSync(animPath).size} B (${demo.total}장, ${(demo.total / FPS).toFixed(2)}초)`);
+  console.log(`${name}-demo-still.png ${statSync(stillPath).size} B`);
+  return [{ path: animPath, maxBytes: ANIMATION_MAX_BYTES }, { path: stillPath, maxBytes: STILL_MAX_BYTES }];
+};
+
+// 여덟 파일이 모두 만들어지고 용량 한도 안일 때만 출력 폴더에 한꺼번에 넣습니다. 하나라도 실패하면 기존 파일을 그대로 둡니다.
+const publishDemos = (files, outDir) => {
+  const oversized = files.filter(({ path, maxBytes }) => statSync(path).size > maxBytes);
+  if (oversized.length > 0) {
+    fail(`용량 한도를 넘어 ${outDir}를 바꾸지 않았습니다: ${oversized.map(({ path, maxBytes }) => `${basename(path)} ${statSync(path).size} B(한도 ${maxBytes} B)`).join(', ')}`);
+  }
+  mkdirSync(outDir, { recursive: true });
+  for (const { path } of files) copyFileSync(path, join(outDir, basename(path)));
+  console.log(`${outDir}에 ${files.length}개 파일을 넣었습니다.`);
 };
 
 const main = () => {
@@ -910,11 +926,16 @@ const main = () => {
   const workDir = mkdtempSync(join(tmpdir(), 'tutorial-demos-'));
   try {
     const assets = loadAssets(photoPath, cutoutPath, workDir);
-    mkdirSync(outDir, { recursive: true });
-    encodeDemo('frames', buildFramesDemo(assets), outDir);
-    encodeDemo('text', buildTextDemo(assets), outDir);
-    encodeDemo('sticker', buildStickerDemo(assets), outDir);
-    encodeDemo('cutout', buildCutoutDemo(assets), outDir);
+    // 먼저 임시 폴더에 여덟 개를 모두 만들고, 다 되면 출력 폴더에 넣습니다.
+    const stagingDir = join(workDir, 'demos');
+    mkdirSync(stagingDir);
+    const files = [
+      ...encodeDemo('frames', buildFramesDemo(assets), stagingDir),
+      ...encodeDemo('text', buildTextDemo(assets), stagingDir),
+      ...encodeDemo('sticker', buildStickerDemo(assets), stagingDir),
+      ...encodeDemo('cutout', buildCutoutDemo(assets), stagingDir),
+    ];
+    publishDemos(files, outDir);
   } finally {
     rmSync(workDir, { recursive: true, force: true });
   }
