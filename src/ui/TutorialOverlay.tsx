@@ -1,17 +1,21 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getWrappedFocusIndex } from '../state/modalFocus';
 import {
+  getTutorialCardScrollDelta,
   getTutorialDemoImage,
+  getTutorialPlacement,
   getTutorialTooltipLayout,
   getTutorialTooltipTransition,
+  isTutorialCardTarget,
   isTutorialDemoTarget,
+  TUTORIAL_CARD_MIN_VISIBLE,
   TUTORIAL_DEMO_IMAGE_GAP,
   TUTORIAL_TOOLTIP_BORDER,
   TUTORIAL_TOOLTIP_MARGIN,
   TUTORIAL_TOOLTIP_PADDING,
   TUTORIAL_TOOLTIP_WIDTH,
 } from './tutorialSteps';
-import type { TutorialPlacement, TutorialStep, TutorialTooltipLayout } from './tutorialSteps';
+import type { TutorialPlacement, TutorialScreen, TutorialStep, TutorialTooltipLayout } from './tutorialSteps';
 
 const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
 
@@ -25,31 +29,47 @@ const TOOLTIP_BOX_STYLE: React.CSSProperties = {
   fontFamily: 'var(--linear-font-family)',
 };
 
+// 가장 가까운 세로 스크롤 조상(없으면 문서). 편집 카드는 데스크톱에서는 카드 안이, 휴대폰에서는 문서가 굴러갑니다.
+const getScrollParent = (element: HTMLElement): Element => {
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    if (/(auto|scroll)/.test(getComputedStyle(parent).overflowY) && parent.scrollHeight > parent.clientHeight) return parent;
+  }
+  return document.scrollingElement ?? document.documentElement;
+};
+
 const readPrefersReducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
   && window.matchMedia(REDUCED_MOTION_QUERY).matches;
 
 type Props = {
   step: number;
-  buttonRefs: React.RefObject<HTMLButtonElement | null>[];
+  // 단계마다 가리킬 곳의 후보. 화면에 있는 첫 후보를 가리킵니다(예: 편집 카드의 그 구획, 없으면 카드 전체). 다 없으면 가운데입니다.
+  targetRefs: React.RefObject<HTMLElement | null>[][];
   onNext: () => void;
   onSkip: () => void;
-  placement: TutorialPlacement;
+  screen: TutorialScreen;
   steps: TutorialStep[];
 };
 
-export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onSkip, placement, steps }) => {
-  const [layout, setLayout] = useState<TutorialTooltipLayout>({ top: TUTORIAL_TOOLTIP_MARGIN, left: 85, arrowOffset: 80 });
+type PlacedLayout = TutorialTooltipLayout & { placement: TutorialPlacement };
+
+export const TutorialOverlay: React.FC<Props> = ({ step, targetRefs, onNext, onSkip, screen, steps }) => {
+  const [layout, setLayout] = useState<PlacedLayout>({ top: TUTORIAL_TOOLTIP_MARGIN, left: 85, arrowOffset: 80, placement: 'center' });
   const tooltipRef = useRef<HTMLDivElement>(null);
   // 화살표는 테두리 안쪽(padding box)에서부터 놓이므로 바깥 모서리 기준 arrowOffset에서 테두리 폭을 뺍니다.
   const arrowPosition = layout.arrowOffset - TUTORIAL_TOOLTIP_BORDER;
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(readPrefersReducedMotion);
   const [viewportHeight, setViewportHeight] = useState(() => (typeof window === 'undefined' ? 0 : window.innerHeight));
-  // ①~④ 말풍선을 그림 없이 잰 높이(숨은 사본에서 잼). 재기 전에는 그림을 그리지 않아 들어가지 않는 창에서는 그림을 받지도 않습니다.
+  // 시연 단계 말풍선을 그림 없이 잰 높이(숨은 사본에서 잼). 재기 전에는 그림을 그리지 않아 들어가지 않는 창에서는 그림을 받지도 않습니다.
   const [demoTooltipHeights, setDemoTooltipHeights] = useState<number[] | null>(null);
   const demoMeasureRefs = useRef<(HTMLDivElement | null)[]>([]);
   // 바로 앞 자리 잡기 때 그림이 보였는지. 이번에 달라졌으면 말풍선을 옮기는 동안 버튼이 잘리지 않게 바로 놓습니다.
   const wasDemoImageShownRef = useRef(false);
   const [isDemoImageToggled, setIsDemoImageToggled] = useState(false);
+  // 바로 앞 자리 잡기의 자리 종류. 바뀌었으면(레일 옆 ↔ 가운데 ↔ 카드 옆) 말풍선을 옮기지 않고 바로 놓습니다.
+  const placementRef = useRef<TutorialPlacement | null>(null);
+  const [isPlacementChanged, setIsPlacementChanged] = useState(false);
+  // 휴대폰 세로 편집기(카드가 있음)에서 말풍선 아래에 남길 높이: 툴바 + 툴바 위로 보일 카드 구획. 그 밖에는 0입니다.
+  const [bottomReserve, setBottomReserve] = useState(0);
 
   // 시연 그림을 보는 중에 바뀐 움직임 줄이기 설정도 그 자리에서 반영합니다.
   useEffect(() => {
@@ -74,10 +94,11 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
   const demoStepIndexes = steps.flatMap((tutorialStep, index) => (isTutorialDemoTarget(tutorialStep.target) ? [index] : []));
   const demoImage = getTutorialDemoImage({
     target: currentStep.target,
-    placement,
+    screen,
     prefersReducedMotion,
     demoTooltipHeights,
     viewportHeight,
+    bottomReserve,
   });
   const isDemoImageShown = demoImage !== null;
   const demoStepIndexCount = demoStepIndexes.length;
@@ -103,21 +124,42 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
 
   // 그리기 전에 재서 그림을 넣을지 정하고 자리를 잡습니다(그림이 생겼다 사라지며 깜박이지 않게).
   useLayoutEffect(() => {
-    const el = buttonRefs[step]?.current;
-    if (!el) return;
+    const target = currentStep.target;
+    const element = targetRefs[step]?.map((ref) => ref.current).find((candidate) => candidate !== null) ?? null;
+    const placement = getTutorialPlacement({ target, screen, hasTargetElement: element !== null });
     const tooltipHeight = tooltipRef.current?.offsetHeight ?? 200;
+    // 편집 카드 단계는 가리킬 구획이 보이게 카드를 굴립니다(휴대폰 세로는 구획이 말풍선 바로 아래에 오게).
+    if (element && isTutorialCardTarget(target)) {
+      const elementRect = element.getBoundingClientRect();
+      const scrollDelta = getTutorialCardScrollDelta({ placement, rect: elementRect, tooltipHeight, viewportHeight });
+      if (scrollDelta !== 0) getScrollParent(element).scrollTop += scrollDelta;
+    }
     const measuredHeights = demoMeasureRefs.current.slice(0, demoStepIndexCount).map((copy) => copy?.offsetHeight ?? 0);
     setDemoTooltipHeights((previous) => (previous && previous.join() === measuredHeights.join() ? previous : measuredHeights));
     setIsDemoImageToggled(wasDemoImageShownRef.current !== isDemoImageShown);
     wasDemoImageShownRef.current = isDemoImageShown;
-    const rect = el.getBoundingClientRect();
-    setLayout(getTutorialTooltipLayout({
+    // 툴바 높이는 메뉴 단계가 가리키는 툴바 버튼 윗변으로 잽니다.
+    const hasCard = steps.some((tutorialStep, index) => isTutorialCardTarget(tutorialStep.target) && targetRefs[index]?.some((ref) => ref.current !== null));
+    const toolbarTops = steps.flatMap((tutorialStep, index) => (isTutorialCardTarget(tutorialStep.target)
+      ? []
+      : (targetRefs[index] ?? []).flatMap((ref) => (ref.current ? [ref.current.getBoundingClientRect().top] : []))));
+    const nextBottomReserve = screen === 'phonePortrait' && hasCard && toolbarTops.length > 0
+      ? Math.max(0, viewportHeight - Math.min(...toolbarTops)) + TUTORIAL_CARD_MIN_VISIBLE
+      : 0;
+    setBottomReserve((previous) => (Math.abs(previous - nextBottomReserve) < 1 ? previous : nextBottomReserve));
+    setIsPlacementChanged(placementRef.current !== placement);
+    placementRef.current = placement;
+    const rect = element?.getBoundingClientRect() ?? null;
+    setLayout({
+      ...getTutorialTooltipLayout({
+        placement,
+        rect: rect && { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+        tooltipHeight,
+        viewport: { width: window.innerWidth, height: viewportHeight },
+      }),
       placement,
-      rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
-      tooltipHeight,
-      viewport: { width: window.innerWidth, height: viewportHeight },
-    }));
-  }, [step, buttonRefs, placement, viewportHeight, isDemoImageShown, demoStepIndexCount]);
+    });
+  }, [step, currentStep.target, steps, targetRefs, screen, viewportHeight, isDemoImageShown, demoStepIndexCount]);
 
   // 단계 표시·제목·설명. 숨은 사본은 같은 글로 높이만 재므로 제목 id를 두지 않습니다.
   const renderStepText = (stepIndex: number, titleId?: string) => (
@@ -185,11 +227,11 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
           left: `${layout.left}px`,
           top: `${layout.top}px`,
           zIndex: 1000,
-          transition: getTutorialTooltipTransition({ prefersReducedMotion, isDemoImageToggled }),
+          transition: getTutorialTooltipTransition({ prefersReducedMotion, isDemoImageToggled, isPlacementChanged }),
         }}
       >
-        {/* 화살표 — 데스크톱: 왼쪽, 휴대폰 세로: 아래쪽, 낮은 가로: 오른쪽 */}
-        {placement === 'above' ? (
+        {/* 화살표 — 레일 오른쪽: 왼쪽, 대상 위: 아래쪽, 대상 왼쪽: 오른쪽, 가운데: 없음 */}
+        {layout.placement === 'center' ? null : layout.placement === 'above' ? (
           <>
             <div style={{
               position: 'absolute',
@@ -212,7 +254,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
               borderTop: '8px solid #fff',
             }} />
           </>
-        ) : placement === 'right' ? (
+        ) : layout.placement === 'right' ? (
           <>
             <div style={{
               position: 'absolute',
@@ -262,7 +304,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
 
         {renderStepText(step, 'tutorial-title')}
 
-        {/* 시연 그림(①~④ 단계). 설명 글이 같은 내용을 말하므로 장식 그림입니다. */}
+        {/* 시연 그림(저장을 뺀 단계). 설명 글이 같은 내용을 말하므로 장식 그림입니다. */}
         {demoImage && (
           <img
             src={demoImage.src}
@@ -276,7 +318,7 @@ export const TutorialOverlay: React.FC<Props> = ({ step, buttonRefs, onNext, onS
         {renderButtons(step, false)}
       </div>
 
-      {/* ①~④ 말풍선을 그림 없이 그린 숨은 사본. 가장 높은 것으로 그림을 넣을지 한 번에 정합니다. */}
+      {/* 시연 단계 말풍선을 그림 없이 그린 숨은 사본. 가장 높은 것으로 그림을 넣을지 한 번에 정합니다. */}
       {demoStepIndexes.map((demoStepIndex, order) => (
         <div
           key={demoStepIndex}

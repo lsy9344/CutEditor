@@ -10,5 +10,6 @@
 ## CanvasStage Props/Events (예시)
 - props: { template, slots[], guides, selection, zoom }
 - events: onSelect(objectId), onTransform(change), onDropImage(file, slotId)
+- tutorialAnchorRefs?: 튜토리얼 ⑤바닥 얼룩 지우기·⑥사진 색·⑦프레임 색 단계가 가리킬 편집 카드와 그 구획 ref. App이 만들어 TutorialOverlay에 넘기며, 카드 내용과 동작은 바꾸지 않습니다.
 
 컴포넌트를 새로 만들지 말고 /Users/sooyeol/Desktop/Code/cut_editor_250830/src/components/components.css 컴포넌트만 사용하세요.

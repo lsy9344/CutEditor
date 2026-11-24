@@ -128,6 +128,14 @@ export type CanvasCutoutEditProps = {
   firstPickCancelRef: React.RefObject<HTMLButtonElement>;
 };
 
+// 튜토리얼이 가리킬 편집 카드와 그 구획(카드 내용과 동작은 바꾸지 않고 자리만 알려 줌). 구획이 없으면 null입니다.
+export type CanvasTutorialAnchorRefs = {
+  card: React.MutableRefObject<HTMLDivElement | null>;
+  erase: React.MutableRefObject<HTMLDivElement | null>;
+  color: React.MutableRefObject<HTMLDivElement | null>;
+  frameColor: React.MutableRefObject<HTMLDivElement | null>;
+};
+
 export type CanvasStageProps = {
   template: Template | null;
   selection: string | null;
@@ -149,6 +157,7 @@ export type CanvasStageProps = {
   stageDisplayRefExternal?: React.MutableRefObject<StageDisplayTransform | null>; // 마지막으로 커밋한 Stage 표시 변환(저장 뒤 복원용, 보정표 D-13)
   isMobilePortraitLayout?: boolean; // components.css의 휴대폰 세로 배치 미디어 조건 값(App이 change 이벤트로 따라감)
   isNarrowLandscapeLayout?: boolean; // 768px 이하 낮은 가로 편집 화면: 캔버스와 제어판을 가로로 놓음(App이 정함)
+  tutorialAnchorRefs?: CanvasTutorialAnchorRefs;
   texts?: Array<{
     id: string;
     text: string;
@@ -296,6 +305,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   stageDisplayRefExternal,
   isMobilePortraitLayout = false,
   isNarrowLandscapeLayout = false,
+  tutorialAnchorRefs,
   texts = [],
   stickers = [],
   onSelect,
@@ -387,6 +397,10 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
   const [erasePanelWidth, setErasePanelWidth] = useState<number | null>(null);
   const [erasePanelAvailableWidth, setErasePanelAvailableWidth] = useState<number | null>(null);
   const controlPanelRef = useRef<HTMLDivElement | null>(null);
+  const setControlPanelElement = useCallback((panel: HTMLDivElement | null) => {
+    controlPanelRef.current = panel;
+    if (tutorialAnchorRefs) tutorialAnchorRefs.card.current = panel;
+  }, [tutorialAnchorRefs]);
   const activeBrushSize = photoEdit.toolMode === "erase-photo" ? photoEraseBrushSize : photoEdit.brushSize;
   const setActiveBrushSize = (size: BrushSize) => {
     if (photoEdit.toolMode === "erase-photo") setPhotoEraseBrushSize(size);
@@ -2919,7 +2933,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
         </div>
 
         <div
-          ref={controlPanelRef}
+          ref={setControlPanelElement}
           className="canvas-control-panel"
           onKeyDown={handleControlPanelKeyDown}
           style={{
@@ -3065,7 +3079,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
           {!isPhotoEraseMode && (
             <>
               {selectedImage && photoEditSections.showErase && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
+                <div ref={tutorialAnchorRefs?.erase} style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', boxSizing: 'border-box' }}>
                   <button
                     ref={eraseStartButtonRef}
                     type="button"
@@ -3095,6 +3109,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
 
               {selectedImage && photoEditSections.showAdjust && (
                 <div
+                  ref={tutorialAnchorRefs?.color}
                   role="group"
                   aria-labelledby="photo-color-title"
                   style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', boxSizing: 'border-box', borderTop: '1px solid var(--linear-neutral-500)', paddingTop: '12px' }}
@@ -3282,7 +3297,7 @@ export const CanvasStage: React.FC<CanvasStageProps> = ({
               )}
 
           {selectedFrame !== "1l" && (
-            <div>
+            <div ref={tutorialAnchorRefs?.frameColor}>
               <div ref={paletteAnchorRef} style={{ marginBottom: 6 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
                   <button

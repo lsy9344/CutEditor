@@ -85,11 +85,11 @@ import { CUTOUT_COPY } from './photo/cutoutCopy'
 import type { CutoutChanges, CutoutImagesState, CutoutSubject } from './photo/cutoutTypes'
 import type { CutoutAttempt } from './photo/cutoutCreate'
 import { getCutoutNotFoundMessage, getCutoutSubject, getPickChanges, getStartTarget } from './photo/cutoutCreate'
-import { PHOTO_EDIT_FEATURES } from './photo/photoEditFeatures'
+import { getPhotoEditSections, PHOTO_EDIT_FEATURES } from './photo/photoEditFeatures'
 import type { EditorMenu } from './ui/editorMenu'
 import { getMenuAfterSelect, getSelectedMenu } from './ui/editorMenu'
-import type { TutorialTarget } from './ui/tutorialSteps'
-import { getNextTutorialStep, getTutorialSteps } from './ui/tutorialSteps'
+import type { TutorialCardTarget, TutorialMenuTarget, TutorialScreen, TutorialTarget } from './ui/tutorialSteps'
+import { getNextTutorialStep, getTutorialSteps, isTutorialCardTarget } from './ui/tutorialSteps'
 import { getInlineStatusView, getNoticeView, splitPhotosByFrame } from './state/appNotice'
 import type { AppNotice, InlineStatus, NoticeActionId, NoticeTone } from './state/appNotice'
 import type { FocusReturnOrigin, PickFocusTarget } from './state/modalFocus'
@@ -231,7 +231,7 @@ type PendingBoothyImportState = {
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
-const TUTORIAL_STEPS = getTutorialSteps({ hasCutoutMenu: PHOTO_EDIT_FEATURES.cutout })
+const TUTORIAL_STEPS = getTutorialSteps({ hasCutoutMenu: PHOTO_EDIT_FEATURES.cutout, photoEditSections: getPhotoEditSections(PHOTO_EDIT_FEATURES) })
 
 declare global {
   interface Window {
@@ -842,6 +842,14 @@ function App() {
   const toolbarStickerButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarCutoutButtonRef = useRef<HTMLButtonElement>(null);
   const toolbarSaveButtonRef = useRef<HTMLButtonElement>(null);
+  // 튜토리얼 편집 카드 단계가 가리킬 카드와 그 구획(CanvasStage가 채움. 첫 화면 칸 고르기에는 카드가 없어 null)
+  const tutorialCardRef = useRef<HTMLDivElement | null>(null);
+  const tutorialEraseRef = useRef<HTMLDivElement | null>(null);
+  const tutorialColorRef = useRef<HTMLDivElement | null>(null);
+  const tutorialFrameColorRef = useRef<HTMLDivElement | null>(null);
+  const tutorialAnchorRefs = useMemo(() => ({
+    card: tutorialCardRef, erase: tutorialEraseRef, color: tutorialColorRef, frameColor: tutorialFrameColorRef,
+  }), []);
   const mobileSheetOpenerRef = useRef<HTMLElement | null>(null); // 휴대폰 시트를 연 툴바 버튼
   const mobileSheetRef = useRef<HTMLDivElement>(null); // 시트 배경(app-container의 직계 자식)
   const mobileSheetCardRef = useRef<HTMLDivElement>(null); // 포커스를 받는 시트 카드
@@ -2620,6 +2628,7 @@ function App() {
       onTextDelete={handleTextDelete}
       onStickerDelete={handleStickerDelete}
       onStickerUpdate={handleStickerUpdate}
+      tutorialAnchorRefs={tutorialAnchorRefs}
     />
   );
 
@@ -2641,13 +2650,20 @@ function App() {
 
   // 튜토리얼 강조는 단계 숫자가 아니라 대상으로 정합니다(설계 8장). 배치에 따라 레일 또는 툴바 버튼을 가리킵니다.
   const tutorialTarget: TutorialTarget | null = tutorialStep === null ? null : TUTORIAL_STEPS[tutorialStep]?.target ?? null
-  const railTutorialRefs: Record<TutorialTarget, React.RefObject<HTMLButtonElement>> = {
+  const railTutorialRefs: Record<TutorialMenuTarget, React.RefObject<HTMLButtonElement>> = {
     frames: railFrameButtonRef, text: railTextButtonRef, sticker: railStickerButtonRef, cutout: railCutoutButtonRef, save: railSaveButtonRef,
   }
-  const toolbarTutorialRefs: Record<TutorialTarget, React.RefObject<HTMLButtonElement>> = {
+  const toolbarTutorialRefs: Record<TutorialMenuTarget, React.RefObject<HTMLButtonElement>> = {
     frames: toolbarFrameButtonRef, text: toolbarTextButtonRef, sticker: toolbarStickerButtonRef, cutout: toolbarCutoutButtonRef, save: toolbarSaveButtonRef,
   }
-  const tutorialButtonRefs = TUTORIAL_STEPS.map((tutorialItem) => (isMobileEditor ? toolbarTutorialRefs : railTutorialRefs)[tutorialItem.target])
+  // 편집 카드 단계는 그 구획을 먼저, 구획이 없으면(사진을 안 골랐거나 1칸 프레임) 카드 전체를 가리킵니다.
+  const cardTutorialRefs: Record<TutorialCardTarget, React.RefObject<HTMLElement>[]> = {
+    erase: [tutorialEraseRef, tutorialCardRef], color: [tutorialColorRef, tutorialCardRef], frameColor: [tutorialFrameColorRef, tutorialCardRef],
+  }
+  const tutorialTargetRefs = TUTORIAL_STEPS.map((tutorialItem) => (isTutorialCardTarget(tutorialItem.target)
+    ? cardTutorialRefs[tutorialItem.target]
+    : [(isMobileEditor ? toolbarTutorialRefs : railTutorialRefs)[tutorialItem.target]]))
+  const tutorialScreen: TutorialScreen = !isMobileEditor ? 'desktop' : layoutMedia.isShortLandscape ? 'shortLandscape' : 'phonePortrait'
 
   const mobileSheetTitle = mobilePanel === 'frames'
     ? '프레임 선택'
@@ -2684,10 +2700,10 @@ function App() {
           <TutorialOverlay
             step={tutorialStep}
             steps={TUTORIAL_STEPS}
-            buttonRefs={tutorialButtonRefs}
+            targetRefs={tutorialTargetRefs}
             onNext={handleTutorialNext}
             onSkip={handleTutorialSkip}
-            placement={!isMobileEditor ? 'right' : layoutMedia.isShortLandscape ? 'left' : 'above'}
+            screen={tutorialScreen}
           />
         )}
       </div>
