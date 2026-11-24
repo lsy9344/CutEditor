@@ -10,10 +10,12 @@ const STEP_NUMBERS = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
 
 // 튜토리얼 단계(설계 8장). 왼쪽 메뉴 ①~④ 뒤에 오른쪽 편집 카드 단계가 오고, 다 꾸민 뒤 누르는 저장이 맨 끝입니다.
 // 누끼 메뉴나 바닥 얼룩 지우기·사진 색 구획이 꺼진 구성은 그 단계를 빼고 번호를 당깁니다.
-// 카드 단계 글은 기기와 무관하게 어디서 찾는지('사진 칸을 고르면 나오는 편집 카드')를 알려 줍니다. 첫 화면(칸 고르기)에는 카드가 없습니다.
-export const getTutorialSteps = ({ hasCutoutMenu, photoEditSections }: {
+// 카드 단계 글은 기기와 무관하게 그 기능이 나타나는 조건('사진 칸을 고르면', '프레임을 고르면')을 알려 줍니다.
+// 첫 화면(칸 고르기)에는 카드가 없습니다. isFrameColorLocked는 지금 프레임이 색을 바꿀 수 없는 경우(1컷 '사진에 글씨새기기')입니다.
+export const getTutorialSteps = ({ hasCutoutMenu, photoEditSections, isFrameColorLocked = false }: {
   hasCutoutMenu: boolean;
   photoEditSections: Pick<PhotoEditSections, "showErase" | "showAdjust">;
+  isFrameColorLocked?: boolean;
 }): TutorialStep[] => {
   const steps: { target: TutorialTarget; name: string; description: string }[] = [
     { target: "frames", name: "프레임 고르기", description: "사진 몇 장으로 만들지 골라요.\n빈 칸을 누르면 사진을 넣을 수 있어요." },
@@ -28,9 +30,15 @@ export const getTutorialSteps = ({ hasCutoutMenu, photoEditSections }: {
     ...(photoEditSections.showAdjust ? [{
       target: "color" as const,
       name: "사진 색",
-      description: "편집 카드의 [사진 색]에서 색을 고르거나 [자세히]에서 밝기·선명하게·색감·따뜻함을 맞춰요.",
+      description: "사진 칸을 고르면 나오는 편집 카드의 [사진 색]에서 고르거나 [자세히]에서 밝기·선명하게·색감·따뜻함을 맞춰요.",
     }] : []),
-    { target: "frameColor", name: "프레임 색", description: "편집 카드의 [프레임 색 바꾸기]를 누르고 색을 골라요." },
+    {
+      target: "frameColor",
+      name: "프레임 색",
+      description: isFrameColorLocked
+        ? "이 프레임은 색을 바꿀 수 없어요.\n다른 프레임에서는 [프레임 색 바꾸기]로 바꿔요."
+        : "프레임을 고르면 나오는 편집 카드에서 [프레임 색 바꾸기]를 누르고 색을 골라요.",
+    },
     { target: "save", name: "저장", description: "다 꾸몄으면 [저장]을 눌러요." },
   ];
   return steps.map(({ target, name, description }, index) => ({ target, title: `${STEP_NUMBERS[index]} ${name}`, description }));
@@ -88,20 +96,38 @@ export const getTutorialPlacement = ({ target, screen, hasTargetElement }: {
   return "right";
 };
 
+// 휴대폰 세로(위 배치)에서 카드 구획이 보이기 시작하는 높이: 말풍선 아래, 그리고 위에 고정된 캔버스·되돌리기 줄(visibleTop) 아래
+const getCardVisibleTop = (tooltipHeight: number, visibleTop: number) =>
+  Math.max(tooltipHeight + TUTORIAL_TOOLTIP_MARGIN * 2, visibleTop);
+
 // 편집 카드 단계에서 가리킬 구획이 보이게 카드를 굴릴 양(px, 양수면 내용이 위로 올라감). 휴대폰 세로(위 배치)는
-// 구획 윗변이 말풍선 바로 아래에 오게 하고(말풍선이 구획을 가리지 않게), 옆 배치는 화면 밖일 때만 가장 가까운 만큼 굴립니다.
-// 굴릴 수 있는 범위 끝에서는 브라우저가 알아서 멈춥니다.
-export const getTutorialCardScrollDelta = ({ placement, rect, tooltipHeight, viewportHeight }: {
+// 구획 윗변이 말풍선과 고정 캔버스 바로 아래에 오게 하고(가려지지 않게), 옆 배치는 화면 밖일 때만 가장 가까운 만큼 굴립니다.
+// 굴릴 수 있는 범위 끝에서는 브라우저가 알아서 멈춥니다. visibleTop·visibleBottom은 스크롤 상자에서 실제로 보이는 위아래 끝입니다
+// (휴대폰 세로 문서는 위에 고정된 캔버스·되돌리기 줄 아래(scroll-padding-top), 데스크톱 카드는 카드 안쪽이 화면에 보이는 범위).
+export const getTutorialCardScrollDelta = ({ placement, rect, tooltipHeight, visibleTop = 0, visibleBottom }: {
   placement: TutorialPlacement;
   rect: { top: number; height: number };
   tooltipHeight: number;
-  viewportHeight: number;
+  visibleTop?: number;
+  visibleBottom: number;
 }): number => {
-  if (placement === "above") return rect.top - (tooltipHeight + TUTORIAL_TOOLTIP_MARGIN * 2);
-  if (rect.top < 0) return rect.top - TUTORIAL_TOOLTIP_MARGIN;
+  if (placement === "above") return rect.top - getCardVisibleTop(tooltipHeight, visibleTop);
+  if (rect.top < visibleTop) return rect.top - visibleTop - TUTORIAL_TOOLTIP_MARGIN;
   const bottom = rect.top + rect.height;
-  if (bottom > viewportHeight) return Math.min(bottom - viewportHeight + TUTORIAL_TOOLTIP_MARGIN, rect.top - TUTORIAL_TOOLTIP_MARGIN);
+  if (bottom > visibleBottom) return Math.min(bottom - visibleBottom + TUTORIAL_TOOLTIP_MARGIN, rect.top - visibleTop - TUTORIAL_TOOLTIP_MARGIN);
   return 0;
+};
+
+// 휴대폰 세로에서 굴린 뒤 구획이 말풍선·고정 캔버스 아래, 툴바(visibleBottom) 위로 48px(구획이 더 낮으면 다) 보이는지.
+// 아니면(낮은 창) 가려진 곳을 가리키지 않게 꼬리 없는 가운데 말풍선으로 설명합니다.
+export const isTutorialCardTargetShown = ({ rect, visibleTop, tooltipHeight, visibleBottom }: {
+  rect: { top: number; height: number };
+  visibleTop: number;
+  tooltipHeight: number;
+  visibleBottom: number;
+}): boolean => {
+  const visibleHeight = Math.min(rect.top + rect.height, visibleBottom) - Math.max(rect.top, getCardVisibleTop(tooltipHeight, visibleTop));
+  return visibleHeight >= Math.min(rect.height, TUTORIAL_CARD_MIN_VISIBLE);
 };
 
 // 시연 단계의 그림. 보이는 단계에서만 그려서 다른 단계와 건너뛴 손님은 받지 않습니다. 모든 단계의 크기가 같고
@@ -131,13 +157,15 @@ export const getTutorialDemoImage = ({ target, screen, prefersReducedMotion, dem
   return { src, width: DEMO_IMAGE_WIDTH, height: DEMO_IMAGE_HEIGHT };
 };
 
-// 말풍선이 다음 단계 자리로 0.25초 동안 옮겨 갑니다. 그림이 보이거나 숨는 때와 자리 종류가 바뀌는 때(레일 옆 ↔ 가운데 ↔
-// 카드 옆)는 높이가 크게 바뀌어 옛 자리에서 움직이는 동안 버튼이 화면 밖으로 나갈 수 있어 새 자리에 바로 놓습니다.
-export const getTutorialTooltipTransition = ({ prefersReducedMotion, isDemoImageToggled, isPlacementChanged }: {
+// 말풍선은 단계를 넘길 때만 다음 자리로 0.25초 동안 옮겨 갑니다. 그림이 보이거나 숨는 때와 자리 종류가 바뀌는 때(레일 옆 ↔
+// 가운데 ↔ 카드 옆)는 높이가 크게 바뀌고, 창 크기가 바뀌는 때는 옛 자리가 화면 밖일 수 있어, 움직이는 동안 버튼이 잘리지 않게
+// 새 자리에 바로 놓습니다.
+export const getTutorialTooltipTransition = ({ prefersReducedMotion, isStepChanged, isDemoImageToggled, isPlacementChanged }: {
   prefersReducedMotion: boolean;
+  isStepChanged: boolean;
   isDemoImageToggled: boolean;
   isPlacementChanged: boolean;
-}): string => (prefersReducedMotion || isDemoImageToggled || isPlacementChanged
+}): string => (prefersReducedMotion || !isStepChanged || isDemoImageToggled || isPlacementChanged
   ? "none"
   : "top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)");
 

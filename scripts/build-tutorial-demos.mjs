@@ -27,11 +27,12 @@
 //      tests/ui/tutorialSteps.test.ts가 커밋 전에 확인). 열네 개가 다 만들어지고 한도 안일 때만 폴더를 바꿉니다.
 //
 // 그림 속 글자: ②의 DEMO_TEXT와, ⑤~⑦ 왼쪽 판의 앱 버튼 이름(얼룩/지우기, 따뜻하게, 자세히, 밝기, 선명하게, 색감,
-// 따뜻함, 숫자 0·5·10·15·25·30, 프레임 색/바꾸기)입니다. 글꼴은 public/font/NotoSansKR-Light.ttf입니다. 파일의 이름 표
+// 따뜻함, 숫자 0·5·10·15·30, 프레임 색/바꾸기)입니다. 글꼴은 public/font/NotoSansKR-Light.ttf입니다. 파일의 이름 표
 // (name ID 13)에 'SIL Open Font License, Version 1.1'이 적혀 있어 상업 이용과 그림으로 넣기가 됩니다. ♥(U+2665)도 이 글꼴에 있습니다.
 //
 // 만드는 방법: 장면 합성은 이 스크립트가 RGBA 화소로 직접 합니다(마우스 화살표의 이동·누름 물결·끌기·'톡'을 장마다 계산해야
-// 해서 FFmpeg 필터 식으로는 지나치게 복잡해짐). FFmpeg는 사진·스티커 읽기와 크기 조정, 색 바꾸기(⑥), 글자 그리기, 인코딩을 맡습니다.
+// 해서 FFmpeg 필터 식으로는 지나치게 복잡해짐). FFmpeg는 사진·스티커 읽기와 크기 조정, 글자 그리기, 인코딩을 맡습니다.
+// ⑥의 색 바꾸기는 앱의 색 보정 계산(src/photo/photoAdjust.ts)을 그대로 불러 씁니다(Node가 .ts를 바로 읽음, Node 23.6 이상).
 // 인코딩은 반드시 libwebp_anim입니다(일반 libwebp는 장면 사이 중복을 못 줄여 열 배 넘게 커짐). 손실 인코딩은 앞 장과 차이가
 // 작은 8×8 칸을 그대로 두므로, 사진 전체가 여러 장에 걸쳐 조금씩 바뀌는 장면은 만들지 않습니다(네모 얼룩이 남음).
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -39,6 +40,8 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyPhotoAdjust } from '../src/photo/photoAdjust.ts';
+import { PHOTO_ADJUST_FIELDS, PHOTO_PRESETS } from '../src/photo/photoEdits.ts';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const FONT_PATH = join(REPO, 'public', 'font', 'NotoSansKR-Light.ttf');
@@ -981,25 +984,32 @@ const buildEraseDemo = (assets) => {
     }
     return image;
   };
-  // 정지 그림: 칠하는 도중(왼쪽 자국은 칠했고 오른쪽 긁힘은 아직 남음). 깨끗해진 결과만으로는 무엇을 했는지 보이지 않고,
-  // 다 칠한 장은 얼룩이 붓 색에 가려 보이지 않습니다.
-  const stillFrame = paintStart + 3 * strokeFrames; // 붓이 긁힘 가운데(ERASE_STROKE 네 번째 점)에 온 장
+  // 정지 그림: 다른 단계처럼 결과 장면(손을 뗀 뒤 얼룩이 지워진 인화지)입니다.
+  const stillFrame = paintEnd + 1 + healFrames;
   return { total, render, cursorRestFrame: keys[keys.length - 1][0], still: render(stillFrame, { cursor: false }) };
 };
 
 // ---- ⑥ 사진 색 ----
 
-// 앱의 '따뜻하게' 묶음(밝기 5, 색감 10, 따뜻함 30)과 밝기 +10씩을 작게 봐도 분명히 보이게 FFmpeg 필터로 사진에 씁니다.
-const COLOR_FILTERS = {
-  warm: 'colorbalance=rs=0.12:gs=0.03:bs=-0.12:rm=0.10:gm=0.02:bm=-0.10:rh=0.05:bh=-0.06,eq=saturation=1.25:brightness=0.02',
-  brighter: ',eq=brightness=0.05:gamma=1.05', // 밝기 + 한 번마다 덧붙임
+// 앱의 '따뜻하게' 묶음과 밝기 [+]는 앱과 같은 값(src/photo/photoEdits.ts)을 앱과 같은 색 보정 계산(src/photo/photoAdjust.ts)으로
+// 사진에 씁니다. 화면에 보이는 숫자와 사진이 앱에서 그 숫자일 때와 같습니다.
+// 밝은 사진은 밝기를 두 번 올리면(25) 바닥이 하얗게 날아가 '밝기를 올리면 사진이 망가진다'로 보여 한 번(15)만 누릅니다.
+const WARM_ADJUST = PHOTO_PRESETS.find((preset) => preset.id === 'warm').adjust;
+const BRIGHTNESS_STEP = PHOTO_ADJUST_FIELDS.find((field) => field.key === 'brightness').step;
+const BRIGHTNESS_PRESSES = 1;
+const COLOR_ROWS = PHOTO_ADJUST_FIELDS.map((field) => ({
+  key: field.key,
+  label: field.label,
+  values: field.key === 'brightness'
+    ? Array.from({ length: BRIGHTNESS_PRESSES + 1 }, (_, press) => WARM_ADJUST.brightness + press * BRIGHTNESS_STEP)
+    : [WARM_ADJUST[field.key]],
+}));
+// 사진에 앱의 색 보정을 씁니다(adjust는 앱의 PhotoAdjust).
+const adjustPhoto = (photo, adjust) => {
+  const adjusted = copyImage(photo);
+  applyPhotoAdjust(adjusted.data, adjust);
+  return adjusted;
 };
-const COLOR_ROWS = [
-  { key: 'brightness', label: '밝기', values: [5, 15, 25] },
-  { key: 'contrast', label: '선명하게', values: [0] },
-  { key: 'saturation', label: '색감', values: [10] },
-  { key: 'warmth', label: '따뜻함', values: [30] },
-];
 const PRESET_BUTTON = { x: CARD_BUTTON.x, y: PANEL_INNER.y + 6, width: CARD_BUTTON.width, height: 30 };
 const DETAIL_BUTTON = { x: CARD_BUTTON.x, y: PRESET_BUTTON.y + 46, width: CARD_BUTTON.width, height: 30 };
 const ROW_TOP = DETAIL_BUTTON.y + 50;
@@ -1023,18 +1033,19 @@ const buildColorDemo = (assets) => {
   const { photos, labels } = assets.card.color;
   const presetPress = 12;
   const detailPress = presetPress + 16;
-  const plusPresses = [detailPress + 16, detailPress + 26];
-  const total = plusPresses[1] + 32;
+  const plusPresses = Array.from({ length: BRIGHTNESS_PRESSES }, (_, press) => detailPress + 16 + press * 10);
+  const lastPlusPress = plusPresses[plusPresses.length - 1];
+  const total = lastPlusPress + 32;
   const preset = buttonCenter(PRESET_BUTTON);
   const detail = buttonCenter(DETAIL_BUTTON);
   const plus = buttonCenter(rowButtons(0).plus);
   const keys = [
     [0, CURSOR_REST], [3, CURSOR_REST], [presetPress - 1, preset], [presetPress + 3, preset],
-    [detailPress - 1, detail], [detailPress + 3, detail], [plusPresses[0] - 1, plus], [plusPresses[1] + 4, plus],
-    [plusPresses[1] + 20, CURSOR_REST],
+    [detailPress - 1, detail], [detailPress + 3, detail], [plusPresses[0] - 1, plus], [lastPlusPress + 4, plus],
+    [lastPlusPress + 20, CURSOR_REST],
   ];
   const isPressed = (frame, pressFrame) => frame >= pressFrame && frame < pressFrame + 3;
-  // 지금 사진: 원본 → 따뜻하게 → 밝기 +1 → 밝기 +2. 누른 다음 장에 한 번에 바뀝니다.
+  // 지금 사진: 원본 → 따뜻하게 → 밝기 [+]마다 한 단계. 누른 다음 장에 한 번에 바뀝니다.
   // (사진 전체가 몇 장에 걸쳐 조금씩 바뀌면 libwebp_anim이 차이가 작은 8×8 칸을 앞 장 그대로 두어 네모 얼룩이 남습니다.)
   const photoAt = (frame) => photos[[presetPress, ...plusPresses].filter((pressFrame) => frame > pressFrame).length];
   const render = (frame, { cursor = true } = {}) => {
@@ -1284,7 +1295,8 @@ const loadCardAssets = (fullbodyPath, renderLabel) => {
   const readPrint = (filter = '') => readRgba(fullbodyPath, PRINT.width, PRINT.height, `${cover}${filter}`);
   const clean = readPrint();
   const stainMap = createStainMap();
-  const photos = [clean, ...[0, 1, 2].map((brighter) => readPrint(`,${COLOR_FILTERS.warm}${COLOR_FILTERS.brighter.repeat(brighter)}`))];
+  const brightnessValues = COLOR_ROWS.find((row) => row.key === 'brightness').values;
+  const photos = [clean, ...brightnessValues.map((brightness) => adjustPhoto(clean, { ...WARM_ADJUST, brightness }))];
   const fills = FRAME_FILL_CROPS.map((crop) => {
     const cropWidth = Math.round(natural.width * crop.width);
     const cropHeight = Math.round((cropWidth * FRAME_SLOT_SIZE.height) / FRAME_SLOT_SIZE.width);

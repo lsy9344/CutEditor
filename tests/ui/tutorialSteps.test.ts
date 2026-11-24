@@ -10,6 +10,7 @@ import {
   getTutorialSteps,
   getTutorialTooltipLayout,
   getTutorialTooltipTransition,
+  isTutorialCardTargetShown,
   isTutorialDemoTarget,
 } from "../../src/ui/tutorialSteps.ts";
 
@@ -31,6 +32,24 @@ test("누끼 메뉴가 있으면 튜토리얼은 여덟 단계이고 왼쪽 메�
   assert.ok(steps[5].description.includes("[자세히]"));
   for (const name of ["밝기", "선명하게", "색감", "따뜻함"]) assert.ok(steps[5].description.includes(name), name);
   assert.ok(steps[6].description.includes("[프레임 색 바꾸기]"));
+});
+
+test("편집 카드 단계 글은 기능마다 나타나는 조건을 밝힌다(⑥ 사진 칸을 고르면, ⑦ 프레임을 고르면)", () => {
+  const steps = getTutorialSteps({ hasCutoutMenu: true, photoEditSections: { showErase: false, showAdjust: true } });
+  // ⑤가 꺼진 구성에서도 ⑥이 사진 칸을 골라야 한다는 것을 스스로 알려 줌
+  assert.equal(steps[4].target, "color");
+  assert.ok(steps[4].description.startsWith("사진 칸을 고르면 나오는 편집 카드"), steps[4].description);
+  assert.equal(steps[5].target, "frameColor");
+  assert.ok(steps[5].description.startsWith("프레임을 고르면"), steps[5].description);
+});
+
+test("색을 바꿀 수 없는 프레임(1컷 사진에 글씨새기기)에서 ⑦은 단계를 그대로 두고 바꿀 수 없다고 알려 준다", () => {
+  const steps = getTutorialSteps({ hasCutoutMenu: true, photoEditSections: ALL_SECTIONS, isFrameColorLocked: true });
+  const usual = getTutorialSteps({ hasCutoutMenu: true, photoEditSections: ALL_SECTIONS });
+  assert.deepEqual(steps.map((step) => step.title), usual.map((step) => step.title));
+  assert.equal(steps[6].target, "frameColor");
+  assert.ok(steps[6].description.startsWith("이 프레임은 색을 바꿀 수 없어요."), steps[6].description);
+  assert.notEqual(steps[6].description, usual[6].description);
 });
 
 test("누끼 메뉴가 없으면 번호를 하나씩 당겨 일곱 단계이고 마지막이 ⑦ 저장이다", () => {
@@ -109,17 +128,41 @@ test("왼쪽 메뉴 단계는 지금처럼 데스크톱 레일 오른쪽·휴대
 
 test("휴대폰 세로 카드 단계는 구획 윗변이 말풍선 바로 아래에 오게 굴린다(말풍선이 구획을 가리지 않음)", () => {
   // 말풍선 450px + 위 여백 16 + 꼬리 쪽 여백 16 = 구획 윗변 482px 자리
-  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 302, height: 100 }, tooltipHeight: 450, viewportHeight: 844 }), -180);
-  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 626, height: 244 }, tooltipHeight: 450, viewportHeight: 844 }), 144);
-  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 482, height: 100 }, tooltipHeight: 450, viewportHeight: 844 }), 0);
+  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 302, height: 100 }, tooltipHeight: 450, visibleBottom: 844 }), -180);
+  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 626, height: 244 }, tooltipHeight: 450, visibleBottom: 844 }), 144);
+  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 482, height: 100 }, tooltipHeight: 450, visibleBottom: 844 }), 0);
+});
+
+test("휴대폰 세로 카드 단계는 위에 고정된 캔버스·되돌리기 줄(visibleTop) 아래까지 구획을 내린다", () => {
+  // 360×560: 말풍선 240이면 구획 윗변 272 자리지만 고정 캔버스 321 + 되돌리기 줄 64 = 385까지 가려짐
+  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 272, height: 52 }, tooltipHeight: 240, visibleBottom: 560, visibleTop: 385 }), -113);
+  // 말풍선이 더 높으면 말풍선 아래가 기준
+  assert.equal(getTutorialCardScrollDelta({ placement: "above", rect: { top: 600, height: 52 }, tooltipHeight: 450, visibleBottom: 844, visibleTop: 385 }), 118);
+});
+
+test("카드 구획이 고정 캔버스·말풍선 아래, 툴바 위로 48px(구획이 더 낮으면 다) 보일 때만 그 구획을 가리킨다", () => {
+  const shownAt = (rect: { top: number; height: number }, visibleBottom: number) =>
+    isTutorialCardTargetShown({ rect, visibleTop: 385, tooltipHeight: 240, visibleBottom });
+  assert.equal(shownAt({ top: 385, height: 52 }, 454), true); // 360×560: 툴바 윗변 454
+  assert.equal(shownAt({ top: 385, height: 52 }, 376), false); // 360×482: 고정 캔버스 아래 남는 곳이 없음
+  assert.equal(shownAt({ top: 385, height: 52 }, 420), false); // 35px만 보임
+  assert.equal(shownAt({ top: 385, height: 27 }, 420), true); // ⑥ 제목 27px는 다 보임
+  assert.equal(shownAt({ top: 272, height: 52 }, 454), false); // 고정 캔버스 밑(272~324)에 깔림
+  assert.equal(isTutorialCardTargetShown({ rect: { top: 200, height: 52 }, visibleTop: 0, tooltipHeight: 240, visibleBottom: 800 }), false); // 말풍선 밑
 });
 
 test("옆 배치 카드 단계는 구획이 화면 밖일 때만 가장 가까운 만큼 굴린다", () => {
-  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 300, height: 200 }, tooltipHeight: 450, viewportHeight: 800 }), 0);
-  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: -50, height: 200 }, tooltipHeight: 450, viewportHeight: 800 }), -66);
-  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 700, height: 200 }, tooltipHeight: 450, viewportHeight: 800 }), 116);
+  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 300, height: 200 }, tooltipHeight: 450, visibleBottom: 800 }), 0);
+  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: -50, height: 200 }, tooltipHeight: 450, visibleBottom: 800 }), -66);
+  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 700, height: 200 }, tooltipHeight: 450, visibleBottom: 800 }), 116);
   // 화면보다 큰 구획은 윗변을 맞춤
-  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 300, height: 900 }, tooltipHeight: 200, viewportHeight: 800 }), 284);
+  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 300, height: 900 }, tooltipHeight: 200, visibleBottom: 800 }), 284);
+});
+
+test("옆 배치 카드 단계는 카드 안쪽이 화면에 보이는 범위(visibleTop~visibleBottom)에 구획을 맞춘다", () => {
+  // 1280×482: 카드 안쪽이 y 60~423만 보이면 416~460 구획은 아래로 잘림 → 460 - 423 + 16 = 53
+  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 416, height: 44 }, tooltipHeight: 200, visibleTop: 60, visibleBottom: 423 }), 53);
+  assert.equal(getTutorialCardScrollDelta({ placement: "left", rect: { top: 40, height: 44 }, tooltipHeight: 200, visibleTop: 60, visibleBottom: 423 }), -36);
 });
 
 test("편집 카드 단계는 카드가 있으면 데스크톱·낮은 가로는 카드 왼쪽, 휴대폰 세로는 카드 위이고 카드가 없으면(칸 고르기 화면) 가운데다", () => {
@@ -252,13 +295,17 @@ test("시연 그림이 있는 단계는 ①~⑦이고 ⑧ 저장은 아니다(�
   );
 });
 
-test("그림이 보이거나 숨거나 말풍선 자리 종류가 바뀌는 때는 0.25초 이동 없이 새 자리에 바로 놓는다", () => {
+test("말풍선은 단계를 넘길 때만 0.25초 옮겨 가고, 그림이 보이거나 숨거나 자리 종류가 바뀌는 때는 바로 놓는다", () => {
   const moving = "top 0.25s cubic-bezier(0.4,0,0.2,1), left 0.25s cubic-bezier(0.4,0,0.2,1)";
-  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: false, isDemoImageToggled: false, isPlacementChanged: false }), moving);
-  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: false, isDemoImageToggled: true, isPlacementChanged: false }), "none");
-  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: true, isDemoImageToggled: false, isPlacementChanged: false }), "none");
+  const transition = (changes: { prefersReducedMotion?: boolean; isStepChanged?: boolean; isDemoImageToggled?: boolean; isPlacementChanged?: boolean }) =>
+    getTutorialTooltipTransition({ prefersReducedMotion: false, isStepChanged: true, isDemoImageToggled: false, isPlacementChanged: false, ...changes });
+  assert.equal(transition({}), moving);
+  assert.equal(transition({ isDemoImageToggled: true }), "none");
+  assert.equal(transition({ prefersReducedMotion: true }), "none");
   // ④ 레일 옆 → ⑤ 가운데처럼 자리 종류가 바뀌면 높이도 달라져, 옛 자리에서 움직이는 동안 버튼이 화면 밖으로 나갈 수 있음
-  assert.equal(getTutorialTooltipTransition({ prefersReducedMotion: false, isDemoImageToggled: false, isPlacementChanged: true }), "none");
+  assert.equal(transition({ isPlacementChanged: true }), "none");
+  // 같은 단계에서 창 크기가 바뀌면(360×844 → 360×482) 옛 자리에서 움직이는 동안 버튼이 화면 밖으로 나감
+  assert.equal(transition({ isStepChanged: false }), "none");
 });
 
 test("말풍선 높이를 아직 재지 않았으면 ①~⑦ 그림을 그리지 않는다(재고 나서 들어갈 때만 받음)", () => {
@@ -301,7 +348,7 @@ test("튜토리얼 말풍선은 움직임 줄이기 설정과 창 크기가 바�
     "motionMedia.removeEventListener?.('change', updateReducedMotion)",
     "window.addEventListener('resize', updateViewportHeight)",
     "window.removeEventListener('resize', updateViewportHeight)",
-    "getTutorialTooltipTransition({ prefersReducedMotion, isDemoImageToggled",
+    "getTutorialTooltipTransition({ prefersReducedMotion, isStepChanged, isDemoImageToggled, isPlacementChanged })",
   ]) {
     assert.ok(overlaySource.includes(part), `${part}가 없다`);
   }

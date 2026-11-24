@@ -231,7 +231,10 @@ type PendingBoothyImportState = {
 const DEFAULT_CANVAS_WIDTH = EXACT_VERTICAL_CANVAS.width;
 const DEFAULT_CANVAS_HEIGHT = EXACT_VERTICAL_CANVAS.height;
 const BOOTHY_HOST_SAVE_TIMEOUT_MS = 30_000;
-const TUTORIAL_STEPS = getTutorialSteps({ hasCutoutMenu: PHOTO_EDIT_FEATURES.cutout, photoEditSections: getPhotoEditSections(PHOTO_EDIT_FEATURES) })
+const TUTORIAL_STEP_OPTIONS = { hasCutoutMenu: PHOTO_EDIT_FEATURES.cutout, photoEditSections: getPhotoEditSections(PHOTO_EDIT_FEATURES) }
+const TUTORIAL_STEPS = getTutorialSteps(TUTORIAL_STEP_OPTIONS)
+// 1컷 '사진에 글씨새기기'(1l)는 프레임 색을 바꿀 수 없어 ⑦ 글만 다릅니다(단계 수·순서는 같음)
+const TUTORIAL_STEPS_FRAME_COLOR_LOCKED = getTutorialSteps({ ...TUTORIAL_STEP_OPTIONS, isFrameColorLocked: true })
 
 declare global {
   interface Window {
@@ -891,7 +894,8 @@ function App() {
     tutorialOpenerRef.current = null;
     mobileSheetOpenerRef.current = null;
     const returnIndex = pickFocusReturnIndex(candidates.map(describeFocusCandidate));
-    if (returnIndex >= 0) candidates[returnIndex]?.focus();
+    // 튜토리얼이 굴린 화면은 닫힐 때 되돌렸으므로 포커스를 돌려줄 때 다시 굴리지 않습니다(휴대폰 툴바 버튼).
+    if (returnIndex >= 0) candidates[returnIndex]?.focus({ preventScroll: true });
   }, [isTutorialOpen]);
 
   // 휴대폰 시트가 닫히면 연 툴바 버튼으로 돌아갑니다(배경, '닫기', 컷 수 고르기, 사진·스티커 넣기로 닫힐 때 모두).
@@ -2699,7 +2703,7 @@ function App() {
         {tutorialStep !== null && (
           <TutorialOverlay
             step={tutorialStep}
-            steps={TUTORIAL_STEPS}
+            steps={canvasMode === 'editor' && editorState.selectedFrame === '1l' ? TUTORIAL_STEPS_FRAME_COLOR_LOCKED : TUTORIAL_STEPS}
             targetRefs={tutorialTargetRefs}
             onNext={handleTutorialNext}
             onSkip={handleTutorialSkip}
