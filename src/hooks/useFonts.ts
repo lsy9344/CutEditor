@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { fontLoader } from '../utils/fontLoader';
 
 export interface FontInfo {
   name: string;
@@ -51,32 +52,23 @@ export const useFonts = () => {
     return ['GowunBatang-Regular.ttf', 'NanumSquareL.ttf'];
   };
 
+  // 이름 목록만 만든다. 폰트 파일은 fontLoader가 필요할 때만 받는다.
   const loadFontsFromDirectory = async (): Promise<FontInfo[]> => {
     try {
-      const fontInfos: FontInfo[] = [];
       const ttfFiles = await getPublicTtfList();
-
-      for (const fileName of ttfFiles) {
-        if (!/\.ttf$/i.test(fileName)) continue;
-        const url = `/font/${fileName}`;
-        const fontName = fileName.replace(/\.ttf$/i, '');
-
-        const source = `url("${encodeURI(url)}")`;
-        const fontFace = new FontFace(fontName, source);
-        try {
-          await fontFace.load();
-          document.fonts.add(fontFace);
-          fontInfos.push({
+      const fontInfos = ttfFiles
+        .filter((fileName) => /\.ttf$/i.test(fileName))
+        .map((fileName) => {
+          const fontName = fileName.replace(/\.ttf$/i, '');
+          return {
             name: fontName,
             displayName: fontName,
             fileName,
-            path: url,
-          });
-        } catch (fontError) {
-          console.warn(`Failed to load font ${fileName}:`, fontError);
-        }
-      }
+            path: `/font/${fileName}`,
+          };
+        });
 
+      fontLoader.register(fontInfos);
       return fontInfos;
     } catch (err) {
       throw new Error(`폰트를 불러오는데 실패했습니다: ${err}`);

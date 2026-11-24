@@ -46,9 +46,11 @@ import {
   loadStickerDimensions,
 } from './utils/stickerSizing'
 import {
+  applyLoadedFontBoxWidths,
   getMinimumTextBoxWidthForMeasuredWidth,
-  resolveTextBoxWidth,
+  resolveFontAwareTextBoxWidth,
 } from './canvas/textBoxWidth'
+import { fontLoader, resolveWithinTimeout } from './utils/fontLoader'
 import { getCategorySelectionOutcome, getFrameSelectionDecision, hasFrameContent } from './utils/frameChangeFlow'
 import type { BrushStroke, PhotoEdits } from './photo/photoEdits'
 import { appendEraseStroke, copyAdjustToAll, createDefaultPhotoEdits } from './photo/photoEdits'
@@ -235,6 +237,9 @@ const TUTORIAL_STEP_OPTIONS = { hasCutoutMenu: PHOTO_EDIT_FEATURES.cutout, photo
 const TUTORIAL_STEPS = getTutorialSteps(TUTORIAL_STEP_OPTIONS)
 // 1컷 '사진에 글씨새기기'(1l)는 프레임 색을 바꿀 수 없어 ⑦ 글만 다릅니다(단계 수·순서는 같음)
 const TUTORIAL_STEPS_FRAME_COLOR_LOCKED = getTutorialSteps({ ...TUTORIAL_STEP_OPTIONS, isFrameColorLocked: true })
+const FONT_LOAD_FAILED_MESSAGE = '글씨체를 받지 못해 저장하지 않았습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.';
+// 저장할 때 폰트를 기다리는 상한. 넘으면 받기 실패와 같게 저장을 멈춘다.
+const SAVE_FONT_WAIT_LIMIT_MS = 30_000;
 
 declare global {
   interface Window {
@@ -814,6 +819,8 @@ function App() {
   // 저장이 끝나기 전에 같은 Stage로 두 번째 저장이 들어와 임시 크기·배율을 복원값으로
   // 기억하지 않도록 동기 ref로 중복 진입을 막는다.
   const exportInFlightRef = useRef(false);
+  // 저장 중 도착한 Boothy 사진. 저장이 끝난 뒤 그 슬롯에 넣는다.
+  const deferredBoothyImportRef = useRef<{ file: File; slotId: string } | null>(null);
   // 모바일 내보내기 오버레이 상태
   const [exportOverlayOpen, setExportOverlayOpen] = useState<boolean>(false);
   const [exportBlob, setExportBlob] = useState<Blob | null>(null);
@@ -1322,6 +1329,8 @@ function App() {
 
           if (isCutoutLocked()) {
             heldBoothyImportRef.current = { file, slotId: pendingBoothyImport.slotId }; // 잠금 중: 마지막 한 건만 보관했다가 풀린 뒤 적용
+          } else if (exportInFlightRef.current) {
+            deferredBoothyImportRef.current = { file, slotId: pendingBoothyImport.slotId }; // 저장 중: 저장이 끝난 뒤 적용
           } else {
             handleImageUpload(file, pendingBoothyImport.slotId);
           }
@@ -1356,6 +1365,14 @@ function App() {
       handleImageUpload(heldImport.file, heldImport.slotId);
     }
   }, [cutoutBusyId]);
+
+  // 저장이 끝나면 저장 중 도착한 Boothy 사진을 그 슬롯에 넣습니다.
+  useEffect(() => {
+    if (isExportInFlight) return;
+    const deferredImport = deferredBoothyImportRef.current;
+    deferredBoothyImportRef.current = null;
+    if (deferredImport) handleImageUpload(deferredImport.file, deferredImport.slotId);
+  }, [isExportInFlight]);
 
   const handleImageTransform = (imageId: string, transform: Partial<UserImage>) => {
     setEditorState(prev => ({
@@ -1466,6 +1483,34 @@ function App() {
     });
   }, [getTextWidth]);
 
+  // 글자에 쓰인 폰트를 받은 뒤 상자 너비를 실제 폰트로 다시 잰다(캔버스도 다시 그려진다).
+  // 받지 못한 폰트 이름을 돌려준다. 그 글자는 받을 때까지 받기 전 기준 폭을 남겨 둔다.
+  const loadTextFonts = useCallback(async (fontFamilies: string[]) => {
+    const failedFontFamilies = await fontLoader.ensureLoaded(fontFamilies);
+    setTexts(prev => applyLoadedFontBoxWidths(prev, {
+      isFontReady: fontLoader.isReady,
+      getMinimumBoxWidth: getMinimumTextBoxWidth,
+    }));
+    return failedFontFamilies;
+  }, [getMinimumTextBoxWidth]);
+
+  // 저장용: 못 받은 폰트는 한 번 더 받아 보고, 모두 합쳐 상한까지만 기다린다. 넘으면 쓰인 폰트를 모두 못 받은 것으로 본다.
+  const loadTextFontsForSave = useCallback((fontFamilies: string[]) => resolveWithinTimeout(
+    loadTextFonts(fontFamilies).then((failedFontFamilies) => (
+      failedFontFamilies.length > 0 ? loadTextFonts(failedFontFamilies) : failedFontFamilies
+    )),
+    SAVE_FONT_WAIT_LIMIT_MS,
+    fontFamilies,
+  ), [loadTextFonts]);
+
+  useEffect(() => {
+    const pendingFontFamilies = texts
+      .map(text => text.fontFamily)
+      .filter(fontFamily => !fontLoader.isReady(fontFamily) && !fontLoader.hasFailed(fontFamily));
+    if (pendingFontFamilies.length === 0) return;
+    void loadTextFonts(pendingFontFamilies);
+  }, [texts, loadTextFonts]);
+
   const handleTextInsert = (textData: {
     text: string;
     fontSize: number;
@@ -1484,7 +1529,13 @@ function App() {
       boxWidth: 0,
       rotation: 0,
     };
-    newText.boxWidth = getMinimumTextBoxWidth(newText);
+    Object.assign(newText, resolveFontAwareTextBoxWidth({
+      previousBoxWidth: 0,
+      hasExplicitBoxWidth: false,
+      minimumBoxWidth: getMinimumTextBoxWidth(newText),
+      didOrientationChange: false,
+      isFontReady: fontLoader.isReady(newText.fontFamily),
+    }));
 
     setTexts(prev => [...prev, newText]);
     setSelectedTextId(newText.id); // 새로 삽입한 텍스트를 선택 상태로
@@ -1538,11 +1589,16 @@ function App() {
             updates.isVertical !== text.isVertical &&
             updates.boxWidth === undefined;
 
-          updatedText.boxWidth = resolveTextBoxWidth({
+          const { boxWidth, boxWidthBeforeFontLoad } = resolveFontAwareTextBoxWidth({
             previousBoxWidth: updatedText.boxWidth,
+            boxWidthBeforeFontLoad: text.boxWidthBeforeFontLoad,
+            hasExplicitBoxWidth: updates.boxWidth !== undefined,
             minimumBoxWidth,
             didOrientationChange,
+            isFontReady: fontLoader.isReady(updatedText.fontFamily),
           });
+          updatedText.boxWidth = boxWidth;
+          updatedText.boxWidthBeforeFontLoad = boxWidthBeforeFontLoad;
         }
 
         return updatedText;
@@ -2075,6 +2131,8 @@ function App() {
       setNotice({ kind: 'save-failed', hasPickedFile: Boolean(retrySaveRef.current?.fileHandle), isWaitingForPhotos: false });
       return;
     }
+    const textFontFamilies = texts.map((text) => text.fontFamily); // 누른 순간의 글씨에 쓰인 글꼴. 렌더 전에 받습니다
+    let isFontLoadFailed = false;
     let missingStickerCount = 0; // 화면에도 그려지지 않는 스티커(누끼·일반) 수. 렌더할 캔버스의 보고로 prepareCanvas에서 셉니다. 저장을 막지 않음
 
     const isMobileLayoutAtSave = isResponsiveMobile; // 누른 순간의 배치. 저장이 끝날 때까지 이 배치를 지킵니다(UX4-1)
@@ -2101,6 +2159,12 @@ function App() {
           ...makeFileSaveDeps(),
           // 확인은 기다린 뒤 읽은 캔버스 하나에만 합니다(UX3-1). 렌더도 그 캔버스로 합니다.
           prepareCanvas: async () => {
+            // 글꼴을 다 받기 전에 저장해도 고른 글꼴이 들어가도록 먼저 받습니다. 못 받거나 상한을 넘기면 대체 글꼴로 저장하지 않습니다.
+            const failedFontFamilies = await loadTextFontsForSave(textFontFamilies);
+            if (failedFontFamilies.length > 0) {
+              isFontLoadFailed = true;
+              throw new Error(`글씨체를 받지 못했어요: ${failedFontFamilies.join(', ')}`);
+            }
             setCompareHeld(false);
             endPhotoEraseMode();
             setExportMode(true);
@@ -2137,6 +2201,14 @@ function App() {
         retrySaveRef.current = result.retry;
         setNotice(null);
         setInlineStatus({ kind: 'save-blocked', message: PHOTO_FAILED_SAVE_MESSAGE });
+        return;
+      }
+      if (result.kind === 'failed' && isFontLoadFailed) {
+        // 렌더·쓰기 전에 멈췄습니다. 고른 경로·이름·핸들은 남겨 다시 저장할 때 씁니다.
+        console.warn('글씨체 받기 실패', result.error);
+        retrySaveRef.current = result.retry;
+        setNotice(null);
+        setInlineStatus({ kind: 'save-blocked', message: FONT_LOAD_FAILED_MESSAGE });
         return;
       }
       if (result.kind === 'failed') {
@@ -2543,6 +2615,7 @@ function App() {
     onStickerUpdate: handleStickerUpdate,
     onStickerDelete: handleStickerDelete,
     onExport: handleSaveRequest,
+    isSaving: isExportInFlight,
     cutoutSection: {
       images: cutoutCandidateImages,
       errorMessage: cutoutError && cutoutCandidateImages.some((image) => image.id === cutoutError.targetId) ? cutoutError.message : null,

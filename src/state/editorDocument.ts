@@ -19,6 +19,7 @@ export type CanvasText = {
   isVertical: boolean;
   textAlign: TextAlign;
   rotation: number;
+  boxWidthBeforeFontLoad?: number; // 글꼴을 받기 전 기준 폭. 받으면 이 폭으로 다시 잽니다
 };
 
 export type CanvasSticker = {

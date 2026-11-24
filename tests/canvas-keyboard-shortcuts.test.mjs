@@ -189,7 +189,7 @@ test("텍스트 정렬은 캔버스가 아니라 선택 박스 폭을 기준으�
 
   assert.match(appSource, /boxWidth:\s*number;/);
   assert.match(appSource, /const getMinimumTextBoxWidth = useCallback/);
-  assert.match(appSource, /newText\.boxWidth = getMinimumTextBoxWidth\(newText\);/);
+  assert.match(appSource, /Object\.assign\(newText, resolveFontAwareTextBoxWidth\(\{[\s\S]*?minimumBoxWidth: getMinimumTextBoxWidth\(newText\),/);
   assert.doesNotMatch(appSource, /updatedText\.x = getAlignedTextX\(updatedText, updatedText\.textAlign\);/);
 
   assert.match(stageSource, /const renderedTextWidth = textItem\.isVertical \? dimensions\.width : textItem\.boxWidth;/);

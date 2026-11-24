@@ -86,7 +86,7 @@ test("App은 텍스트 박스 폭 helper를 사용해 세로쓰기 전환 폭을
 
   assert.match(
     source,
-    /import \{\s*getMinimumTextBoxWidthForMeasuredWidth,\s*resolveTextBoxWidth,\s*\} from '\.\/canvas\/textBoxWidth'/s,
+    /import \{\s*applyLoadedFontBoxWidths,\s*getMinimumTextBoxWidthForMeasuredWidth,\s*resolveFontAwareTextBoxWidth,\s*\} from '\.\/canvas\/textBoxWidth'/s,
   );
   assert.match(
     source,
@@ -98,6 +98,6 @@ test("App은 텍스트 박스 폭 helper를 사용해 세로쓰기 전환 폭을
   );
   assert.match(
     source,
-    /updatedText\.boxWidth = resolveTextBoxWidth\(\{\s*previousBoxWidth: updatedText\.boxWidth,\s*minimumBoxWidth,\s*didOrientationChange,\s*\}\);/s,
+    /resolveFontAwareTextBoxWidth\(\{\s*previousBoxWidth: updatedText\.boxWidth,[\s\S]*?minimumBoxWidth,\s*didOrientationChange,[\s\S]*?\}\);\s*updatedText\.boxWidth = boxWidth;/s,
   );
 });

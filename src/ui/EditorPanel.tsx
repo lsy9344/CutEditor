@@ -4,6 +4,7 @@ import { useFonts } from "../hooks/useFonts";
 import type { FrameType } from "../types/frame";
 import { STICKER_CATEGORIES } from "./stickerCatalog";
 import { getDefaultTextPosition } from "./defaultTextPosition";
+import { DEFAULT_FONT } from "../utils/fontLoader";
 import { CUTOUT_COPY } from "../photo/cutoutCopy";
 import { getStickerAltText } from "../state/editorLabels";
 import { PHOTO_EDIT_FEATURES } from "../photo/photoEditFeatures";
@@ -31,7 +32,7 @@ const DETAIL_BUTTON_STYLE = { minHeight: '32px', fontSize: '14px', padding: '0 8
 
 // 폰트 목록이 오기 전에 넣은 글씨도 실제 폰트 이름을 갖게 한다.
 // 빈 이름이면 캔버스가 글꼴 지정을 무시해 글씨 크기를 바꿔도 글자가 커지지 않는다.
-const DEFAULT_FONT_FAMILY = "Aritaburi";
+const DEFAULT_FONT_FAMILY = DEFAULT_FONT.name;
 
 const LETTERING_SUGGESTIONS = Array.from(
   new Set([
@@ -167,6 +168,7 @@ export type EditorPanelProps = {
   forcedTab?: EditorPanelTab | null;
   showActionRail?: boolean;
   showExportButton?: boolean;
+  isSaving?: boolean;
 };
 
 export const EditorPanel: React.FC<EditorPanelProps> = ({
@@ -185,6 +187,7 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   forcedTab,
   showActionRail = true,
   showExportButton = true,
+  isSaving = false,
 }) => {
   const [activeTab, setActiveTab] = useState<EditorPanelTab | null>(forcedTab ?? null);
   const [selectedStickerCategory, setSelectedStickerCategory] = useState<string | null>(null);
@@ -300,6 +303,11 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
     if (focusMove.kind === 'move') buttons[focusMove.index].focus();
   };
 
+  // 저장이 시작되면 열린 폰트 창을 닫는다(저장은 클릭 시점 글꼴로 한다).
+  useEffect(() => {
+    if (isSaving) setFontPickerOpen(false);
+  }, [isSaving]);
+
   // 선택된 텍스트의 속성을 표시
   const displayedTextSize = selectedText?.fontSize ?? textSize;
   const displayedFontFamily = selectedText?.fontFamily ?? fontFamily;
@@ -398,6 +406,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
   };
 
   const handleFontFamilyChange = (newFontFamily: string) => {
+    // 창은 저장이 시작되면 닫히지만, 닫히기 전 같은 순간의 고르기도 막는다.
+    if (isSaving) return;
     setFontFamily(newFontFamily);
     if (selectedText && onTextUpdate) {
       onTextUpdate(selectedText.id, { fontFamily: newFontFamily });
